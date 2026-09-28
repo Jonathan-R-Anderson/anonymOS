@@ -209,6 +209,29 @@ public bool vmxDetect() {
     return (c & (1u << 5)) != 0;
 }
 
+// Report the VMX capability set (no VMXON needed — these are capability-reporting MSRs).  Guest
+// entry here is EPT-mandatory, and a nested hypervisor may withhold EPT from its guest; if so, no
+// guest can enter regardless of VMCS correctness.  Reads are guarded so an unsupported MSR never
+// #GPs the boot (IA32_VMX_PROCBASED_CTLS2 only exists when activate-secondary is allowed; the EPT
+// cap MSR only when EPT is allowed).
+public void vmxCapProbe() {
+    if (!vmxDetect()) { klog("[vmx] caps: no VMX on this CPU\n"); return; }
+    const ulong basic = vmxRdmsr(IA32_VMX_BASIC);
+    const ulong pctls = vmxRdmsr(0x482);                    // IA32_VMX_PROCBASED_CTLS
+    const bool secOK  = ((pctls >> 32) & (1u << 31)) != 0;  // activate-secondary controls allowed-1
+    klog("[vmx] caps: vmx=Y basic="); klog_hex(basic);
+    klog(" secondary="); klog(secOK ? "Y" : "N");
+    if (secOK) {
+        const ulong ctls2 = vmxRdmsr(0x48B);                // IA32_VMX_PROCBASED_CTLS2
+        const bool eptOK  = ((ctls2 >> 32) & (1u << 1)) != 0;  // Enable-EPT allowed-1
+        const bool urgOK  = ((ctls2 >> 32) & (1u << 7)) != 0;  // Unrestricted-guest allowed-1
+        klog(" ept="); klog(eptOK ? "Y" : "N");
+        klog(" unrestricted="); klog(urgOK ? "Y" : "N");
+        if (eptOK) { const ulong eptcap = vmxRdmsr(0x48C); klog(" ept_vpid_cap="); klog_hex(eptcap); }
+    }
+    klog("\n");
+}
+
 // Fail-soft per-CPU init.  Must run ON the target CPU (it sets that CPU's
 // CR4.VMXE and executes VMXON there).  Never panics: any problem leaves
 // this CPU's ready=false and the boot continues without virtualization.
@@ -243,6 +266,10 @@ public void vmxCpuInit(uint cpuId) {
 
     // VMXON region: 4K page, revision ID in the low 31 bits.
     ulong basic = vmxRdmsr(IA32_VMX_BASIC);
+    // The revision id is IA32_VMX_BASIC[30:0].  It was declared (g_vmcsRevId) and used for the VMXON
+    // region + every VMCS, but never assigned — so VMXON/VMPTRLD/VMLAUNCH validated against 0 and
+    // VMfail'd on real silicon.  Set it from the MSR before first use.
+    g_vmcsRevId = cast(uint)(basic & 0x7FFFFFFF);
     ulong vmxonPhys = alloc_phys_page();
     if (vmxonPhys == 0) {
         klog("[vmx] VMXON region allocation failed\n");

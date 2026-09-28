@@ -19,7 +19,7 @@ module core.virt.backend;
 
 import core.virt.vm : Vm, Vcpu;
 import core.virt.vmx : vmxBootInit, vmxCpuInit, vmxIsReady, vmxEnter,
-    vmxDecodeExit;
+    vmxDecodeExit, vmxCapProbe;
 import core.virt.svm : svmBootInit, svmCpuInit, svmAvailable, svmEnter,
     svmDecodeExit;
 import core.virt.vmexit : VirtExitInfo, virtValidateGuestState;
@@ -96,6 +96,9 @@ public void virtBootInit() {
     klog("[virt] backend=");
     klog(k == VirtBackendKind.Svm ? "svm" : k == VirtBackendKind.Vmx ? "vmx" : "none");
     klog("; boot-time enable deferred (guest-entry not yet implemented)\n");
+    // Report the VMX capability set so we know whether this environment exposes the EPT that guest
+    // entry requires (nested hypervisors may withhold it).  Detection-only; no VMXON.
+    if (k == VirtBackendKind.Vmx) vmxCapProbe();
 }
 
 // Per-CPU initialization for application processors.  The active backend

@@ -92,25 +92,29 @@ private extern(C) void handleIPv6Protocol(ubyte protocol, const(ubyte)* data, si
 
 /// Process incoming packets (call this regularly from main loop)
 export extern(C) void networkStackPoll() @nogc nothrow {
-    if (!g_stackRunning) return;
-    
+    cast(void)networkStackPollOne();
+}
+
+/// Receive and dispatch at most one frame; true when a frame was taken off the NIC.
+export extern(C) bool networkStackPollOne() @nogc nothrow {
+    if (!g_stackRunning) return false;
+
     enum MAX_FRAME_SIZE = 1518;
     ubyte[MAX_FRAME_SIZE] buffer;
-    
     EthernetFrame frame;
+
     int received = receiveEthernetFrame(&frame, buffer.ptr, MAX_FRAME_SIZE);
-    
-    if (received <= 0) return;
-    
+    if (received <= 0) return false;
+
     // Check if frame is for us
-    if (!isFrameForUs(frame)) return;
-    
+    if (!isFrameForUs(frame)) return true;
+
     // Handle by EtherType
     switch (frame.header.etherType) {
         case EtherType.ARP:
             arpHandlePacket(frame.payload, frame.payloadLength);
             break;
-            
+
         case EtherType.IPv4:
             ipv4HandlePacket(frame.payload, frame.payloadLength, &handleIPv4Protocol);
             break;
@@ -118,11 +122,21 @@ export extern(C) void networkStackPoll() @nogc nothrow {
         case EtherType.IPv6:
             ipv6HandlePacket(frame.payload, frame.payloadLength, &handleIPv6Protocol);
             break;
-            
+
         default:
             // Unknown EtherType
             break;
     }
+    return true;
+}
+
+/// Drain up to `max` frames (the kernel tick's RX budget).  One frame per 1 kHz tick capped a TCP
+/// download at ~1000 segments/s -- ~1.4 MB/s even on an idle LAN -- and let a burst overrun the
+/// NIC's 32-slot ring; draining a bounded batch keeps up without letting RX monopolise the tick.
+export extern(C) uint networkStackDrain(uint max) @nogc nothrow {
+    uint n = 0;
+    while (n < max && networkStackPollOne()) ++n;
+    return n;
 }
 
 /// Configure network interface

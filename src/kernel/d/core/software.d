@@ -75,13 +75,14 @@ private uint swToken(const(char)* cmd, size_t len, ref size_t pos, char[] dst) {
     return n;
 }
 
-// Is a usable network up?  The LKL provider owns the NIC and the DHCP lease marker is what the
-// rest of the system already treats as "we have an address" (kernel_main.d's udhcpc supervisor
-// latches on the same file), so this asks the same question rather than inventing a second answer.
+// Is a usable network up?  Either the LKL provider's DHCP lease marker (the Wi-Fi path; kernel_main.d's
+// udhcpc supervisor latches on the same file) or the in-kernel wired stack with an address.
 private bool swNetworkUp() {
-    import core.syscalls.posix : linux_sys_access, unixSocketListenerReady;
+    import core.syscalls.posix : linux_sys_access, nativeNetUp;
     if (linux_sys_access(cast(ulong)"/run/wifi/dhcp-ok\0".ptr, 0) == 0) return true;
-    return false;
+    // ...or the in-kernel stack: a wired NIC with an address, over which the fetcher now speaks
+    // TCP directly (network/tcp.d) -- no LKL provider needed.
+    return nativeNetUp();
 }
 
 // The control-write endpoint: "install <pkgmgr> <name> <baseurl>".

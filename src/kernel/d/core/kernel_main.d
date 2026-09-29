@@ -4686,6 +4686,8 @@ private void dispatchSyscall(int tid) {
         // socket and died with "recvfrom: Resource temporarily unavailable" before the echo
         // reply could arrive.
         ((rax == 45 || rax == 47) && inetBlockingRecvFd(rdi)) ||
+        // ...and a plain read() on a blocking TCP socket (an HTTP client's read loop).
+        (rax == 0 && inetBlockingRecvFd(rdi)) ||
         // ...and on a BLOCKING connected AF_UNIX socket (signal-hook's blocking recv on a socketpair
         // panics on EAGAIN).  MSG_DONTWAIT (0x40) opts out: recvfrom flags=r10, recvmsg flags=rdx.
         (rax == 45 && (r10 & 0x40) == 0 && localBlockingRecvFd(rdi)) ||
@@ -4720,6 +4722,25 @@ private void dispatchSyscall(int tid) {
         bootProgressEventHex("park", rax, g_parkScreenTrace);
         scheduleNext();
         return;
+    }
+
+    // TCP: a BLOCKING connect() still in its handshake, accept() with nothing queued, or write /
+    // writev / sendto / sendmsg into a full send ring returned EAGAIN -- park and re-run it, the
+    // same treatment as a blocking read (inetTcpBlockingFd excludes O_NONBLOCK sockets, and
+    // MSG_DONTWAIT opts a single send out: sendto flags=r10, sendmsg flags=rdx).
+    if (ret == -11 && (rax == 42 || rax == 43 || rax == 288 || rax == 1 || rax == 20 ||
+                       (rax == 44 && (r10 & 0x40) == 0) || (rax == 46 && (rdx & 0x40) == 0))) {
+        import core.syscalls.posix : inetTcpBlockingFd;
+        if (inetTcpBlockingFd(rdi)) {
+            g_pollBlocked[tid]  = true;
+            g_pollDeadline[tid] = 0;
+            g_pollEpfd[tid]     = -1;
+            task.waiting        = true;
+            task.regs[REG_RIP] -= 2;
+            bootProgressEventHex("park", rax, g_parkScreenTrace);
+            scheduleNext();
+            return;
+        }
     }
 
     // Cooperative blocking for poll/ppoll/select: when nothing is ready yet but
@@ -5267,6 +5288,20 @@ private void networkSelfTest(bool deepProbe) @nogc nothrow {
     // belongs to nobody, so the box ARPs for a gateway that does not exist and nothing ever
     // routes.  Ask the network who we are; fall back to the slirp static only if nothing
     // answers, so the plain-QEMU path keeps behaving exactly as it did.
+    // Wait (bounded) for the link: VirtualBox's e1000 keeps it down ~5 s after reset, and a
+    // DISCOVER sent into a down link is simply lost -- that is how every VBox boot fell back to
+    // the static address with rx frames = 0.
+    {
+        import drivers.network.network : netLinkUp;
+        import core.ticks : tscMs;
+        const ulong t0 = tscMs();
+        // Iteration cap as well as the clock: this runs early in boot, where an uncalibrated TSC
+        // falls back to a PIT count that is not advancing yet, and must never hang the boot.
+        for (ulong spin = 0; !netLinkUp() && tscMs() - t0 < 8000 && spin < 400_000_000UL; ++spin)
+            asm @nogc nothrow { rep; nop; }
+        klog(netLinkUp() ? "[net] link up after " : "[net] link still DOWN after ");
+        klog_dec(tscMs() - t0); klog(" ms\n");
+    }
     auto zeroIP = IPv4Address(0,0,0,0);
     setLocalIPAddress(&zeroIP);                  // a DHCP client is IP-less until it has a lease
     const uint dhcpMs = deepProbe ? 5000 : 3000; // install media pays 3 s for real addressing
@@ -5443,7 +5478,12 @@ bool kernelIrqDrainBottomHalf() @nogc nothrow {
         increment_ticks();
         cpuAccountTick(g_idleTid >= 0 && g_current_task_id == cast(ulong)g_idleTid);
         cpuAccountTaskTick(cast(uint)g_current_task_id);   // same jiffy, attributed to a NAME
-        networkStackPoll();
+        {   // same RX budget + TCP timers as the user-mode tick path
+            import network.stack : networkStackDrain;
+            import network.tcp : tcpTick;
+            networkStackDrain(32);
+            tcpTick(pitMs());
+        }
         resched = true;
     }
     if (g_kirqWakeDue || resched) {
@@ -5840,9 +5880,14 @@ private void kernelLoop() {
                     // every other call site is inside a blocking helper (dhcp/dns/http/https), so
                     // before this the LAN only received while some request was already spinning on
                     // it -- no background RX, no unsolicited inbound packet, ever.  One frame per
-                    // 1 kHz tick caps RX at ~1000 pps, which is ample for DHCP/DNS/TCP; raise it to
-                    // a bounded drain loop if throughput ever matters.
-                    networkStackPoll();
+                    // 1 kHz tick capped RX at ~1000 pps -- too slow for a TCP download -- so it is
+                    // now a bounded drain; then the TCP retransmission / TIME_WAIT timers.
+                    {
+                        import network.stack : networkStackDrain;
+                        import network.tcp : tcpTick;
+                        networkStackDrain(32);
+                        tcpTick(pitMs());
+                    }
                     wakePollers();
                     picEOI(false);    // harmless when PIC IRQ0 is masked; covers the legacy-PIT case
                     scheduleNext();

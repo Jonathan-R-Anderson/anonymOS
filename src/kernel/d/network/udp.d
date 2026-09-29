@@ -105,6 +105,7 @@ export extern(C) void udpHandlePacket(const(ubyte)* data, size_t len,
     ushort srcPort = ntohs(header.srcPort);
     
     // Find socket bound to this port
+    bool matched = false;
     for (size_t i = 0; i < g_udpSocketCount; i++) {
         if (g_udpSockets[i].bound && g_udpSockets[i].localPort == destPort) {
             // Deliver to socket
@@ -114,11 +115,18 @@ export extern(C) void udpHandlePacket(const(ubyte)* data, size_t len,
             if (g_udpSockets[i].callback !is null) {
                 g_udpSockets[i].callback(cast(int)i, payload, payloadLen, srcIP, srcPort);
             }
-            
+            matched = true;
             return;
         }
     }
+    // Nothing bound: say so (bounded) -- a reply to a port nobody holds is otherwise invisible.
+    if (!matched && g_udpUnmatchedLog < 20) {
+        import core.io : klog, klog_dec;
+        ++g_udpUnmatchedLog;
+        klog("[udp] rx to unbound port "); klog_dec(destPort); klog(" from port "); klog_dec(srcPort); klog("\n");
+    }
 }
+private __gshared uint g_udpUnmatchedLog = 0;
 
 /// Close UDP socket
 export extern(C) void udpClose(int sockfd) @nogc nothrow {

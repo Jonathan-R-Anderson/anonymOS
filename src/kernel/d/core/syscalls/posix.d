@@ -673,7 +673,25 @@ public bool inetBlockingRecvFd(ulong fd) @nogc nothrow {
     if (f.flags & 0x800 /*O_NONBLOCK*/) return false;   // genuine non-blocking socket: real EAGAIN
     auto s = fileSocket(f);
     if (!inetIsInet(s)) return false;
+    if (s.inetTcp >= 0) {
+        import network.tcp : tcpReadable;
+        return !tcpReadable(s.inetTcp);
+    }
     return socketBufferReadable(s.rx) < INET_DGRAM_HDR;  // nothing whole to pop yet
+}
+
+// A BLOCKING TCP socket whose operation must wait: a write into a full send ring, a connect()
+// still in its handshake, an accept() with nothing queued.  The dispatcher parks the task on the
+// EAGAIN and re-runs the syscall (kernel_main.d), exactly like a blocking read.
+public bool inetTcpBlockingFd(ulong fd) @nogc nothrow {
+    initFdTable();
+    int ifd = cast(int)fd;
+    if (ifd < 0 || ifd >= 1024) return false;
+    auto f = &g_fdTable[ifd];
+    if (f.type != FileType.FD_SOCKET) return false;
+    if (f.flags & 0x800 /*O_NONBLOCK*/) return false;
+    auto s = fileSocket(f);
+    return inetIsInet(s) && s.inetTcp >= 0;
 }
 
 // A BLOCKING connected AF_UNIX socket with nothing queued and a live peer: park, don't EAGAIN.
@@ -1204,6 +1222,11 @@ private enum int EHOSTUNREACH = 113;  // ipv4Send() could not put the frame on t
 private enum int ECONNREFUSED = 111;
 private enum int EISCONN = 106;
 private enum int ENOTCONN = 107;
+private enum int EINPROGRESS = 115;
+private enum int EALREADY = 114;
+private enum int ENOBUFS = 105;
+private enum int EADDRNOTAVAIL = 99;
+private enum int ENETUNREACH = 101;
 
 private enum size_t localSocketMax = 128;
 private enum size_t localSocketBufferCapacity = 16384;
@@ -1256,6 +1279,11 @@ private struct LocalSocket
     // SOCK_RAW (IPPROTO_ICMP) state.  A raw socket has no UDP fd at all -- it sends
     // straight through ipv4Send() and receives from the ICMP tap, so inetUdpFd stays -1.
     bool   inetRawIcmp;
+    // SOCK_STREAM: the network/tcp.d connection behind this socket (-1: not TCP), and whether a
+    // connect() is in flight -- a BLOCKING connect() parks and is re-run, and the re-run has to
+    // report the handshake's outcome rather than start a second one.
+    int    inetTcp = -1;
+    bool   tcpConnectPending;
     int refCount;     // number of fds referencing this socket (dup-aware close)
     LocalSocketState state;
     size_t backlog;
@@ -1758,6 +1786,7 @@ private ssize_t localSocketRead(File* f, void* buffer, size_t length)
     {
         return negErrno(EBADF);
     }
+    if (sock.domain == AF_INET && sock.inetTcp >= 0) return tcpSockRead(sock, buffer, length);
     if (buffer is null && length != 0)
     {
         return negErrno(EFAULT);
@@ -1788,6 +1817,7 @@ private ssize_t localSocketWrite(File* f, const(void)* buffer, size_t length)
     {
         return negErrno(EBADF);
     }
+    if (sock.domain == AF_INET && sock.inetTcp >= 0) return tcpSockWrite(sock, buffer, length);
     if (buffer is null && length != 0)
     {
         return negErrno(EFAULT);
@@ -7768,7 +7798,13 @@ private void rtAddFile(const(char)* rel, size_t relLen, const(ubyte)* data, uint
 // The trailing flag is what lets the desktop distinguish "on a LAN" from "actually online" --
 // the kernel proves the difference at boot with a real DNS lookup, and used to keep it to
 // itself, so there was no way to tell from the UI whether the box had internet.
+// True once the in-kernel stack has a wired link with an address -- the native TCP/IP path
+// (network/tcp.d) the Software Center's fetcher uses when no LKL lease exists.
+private __gshared bool g_nativeNetUp = false;
+public bool nativeNetUp() @nogc nothrow { return g_nativeNetUp; }
+
 public void publishNetStatus(bool up, ubyte a, ubyte b, ubyte c, ubyte d, bool internet) @nogc nothrow {
+    g_nativeNetUp = up && (a | b | c | d) != 0;
     char[64] buf;
     uint n = 0;
     void putc(char ch) { if (n < buf.length) buf[n++] = ch; }
@@ -10770,6 +10806,11 @@ private extern(C) void inetUdpRx(int udpFd, const(ubyte)* data, size_t len,
     if (id < 0 || id >= cast(int)g_localSockets.length) return;
     auto sock = &g_localSockets[id];
     if (!sock.inUse || data is null) return;
+    if (g_inetUdpLogN < 32) {
+        ++g_inetUdpLogN;
+        klog("[inet] udp rx port "); klog_dec(sock.inetLocalPort); klog(" from port "); klog_dec(srcPort);
+        klog(" len="); klog_dec(len); klog("\n");
+    }
     if (len > INET_MAX_DGRAM) len = INET_MAX_DGRAM;
     if (socketBufferWritable(sock.rx) < INET_DGRAM_HDR + len) return;   // no room -> drop
 
@@ -10859,6 +10900,22 @@ private int inetSocketCreate(int type, int protocol) @nogc nothrow {
         return rfd;
     }
 
+    // SOCK_STREAM: TCP (network/tcp.d).  The LocalSocket is only the fd's handle -- the stream
+    // lives in the TCP connection, which has its own send/receive rings and window.
+    if (type == SOCK_STREAM) {
+        import network.tcp : tcpAlloc;
+        if (protocol != 0 && protocol != 6) return negErrno(EPROTONOSUPPORT);   // 6 = IPPROTO_TCP
+        const int sid = allocLocalSocket(AF_INET, SOCK_STREAM);
+        if (sid < 0) return negErrno(EMFILE);
+        const int conn = tcpAlloc();
+        if (conn < 0) { releaseLocalSocket(sid); return negErrno(ENOBUFS); }
+        g_localSockets[sid].inetTcp   = conn;
+        g_localSockets[sid].inetUdpFd = -1;
+        const int sfd = allocSocketFd(sid, O_RDWR);
+        if (sfd < 0) { releaseLocalSocket(sid); return negErrno(EMFILE); }
+        return sfd;
+    }
+
     if (type != SOCK_DGRAM) return negErrno(EPROTONOSUPPORT);
     if (protocol != 0 && protocol != 17) return negErrno(EPROTONOSUPPORT);  // 17 = IPPROTO_UDP
 
@@ -10884,6 +10941,13 @@ private int inetBind(LocalSocket* s, const(sockaddr)* addr, uint addrlen) @nogc 
     if (addr is null || addrlen < sockaddr_in.sizeof) return negErrno(EINVAL);
     auto sin = cast(const(sockaddr_in)*)addr;
     ushort port = cast(ushort)((sin.sin_port >> 8) | (sin.sin_port << 8));   // ntohs
+    if (s.inetTcp >= 0) {
+        import network.tcp : tcpBindPort;
+        const int r = tcpBindPort(s.inetTcp, port);
+        if (r < 0) return negErrno(-r);
+        s.inetLocalPort = cast(ushort)r;
+        return 0;
+    }
     if (port == 0) port = g_inetNextEphemeral++;
     // Same reasoning as inetConnect(): a raw socket has no UDP fd, so udpBind(-1, ...)
     // would index the UDP socket table with -1.  bind() on SOCK_RAW is a no-op.
@@ -10897,6 +10961,7 @@ private int inetBind(LocalSocket* s, const(sockaddr)* addr, uint addrlen) @nogc 
 private int inetConnect(LocalSocket* s, const(sockaddr)* addr, uint addrlen) @nogc nothrow {
     if (addr is null || addrlen < sockaddr_in.sizeof) return negErrno(EINVAL);
     auto sin = cast(const(sockaddr_in)*)addr;
+    { const int pol = netPolicyGate(sin.sin_addr); if (pol != 0) return pol; }
     s.inetPeerIP   = sin.sin_addr;                                          // keep network order
     s.inetPeerPort = cast(ushort)((sin.sin_port >> 8) | (sin.sin_port << 8));
     s.inetConnected = true;
@@ -10922,6 +10987,7 @@ private ssize_t inetSendTo(LocalSocket* s, const(void)* buf, size_t len,
     import network.stack : networkStackPoll;
     import network.types : MACAddress;
 
+    if (s.inetTcp >= 0) return tcpSockWrite(s, buf, len);
     if (buf is null || len == 0) return negErrno(EINVAL);
     // The send ceiling differs by socket type: a UDP datagram loses 8 bytes to its own
     // header, a raw ICMP message does not.  Using the UDP bound for both would reject
@@ -10939,6 +11005,7 @@ private ssize_t inetSendTo(LocalSocket* s, const(void)* buf, size_t len,
     } else {
         return negErrno(EDESTADDRREQ);
     }
+    { const int pol = netPolicyGate(dip); if (pol != 0) return pol; }
 
     // A raw socket has no UDP fd and no port, so skip the auto-bind entirely.
     if (s.inetLocalPort == 0 && !s.inetRawIcmp) {   // sendto on an unbound socket: auto-bind
@@ -10967,14 +11034,35 @@ private ssize_t inetSendTo(LocalSocket* s, const(void)* buf, size_t len,
         return cast(ssize_t)len;
     }
 
-    if (!udpSend(s.inetUdpFd, ip, dport, cast(const(ubyte)*)buf, len)) return negErrno(EHOSTUNREACH);
+    const bool sent = udpSend(s.inetUdpFd, ip, dport, cast(const(ubyte)*)buf, len);
+    if (g_inetUdpLogN < 16) {            // bounded: the first userland datagrams, for bring-up
+        ++g_inetUdpLogN;
+        klog("[inet] udp tx "); klog_dec(s.inetLocalPort); klog(" -> ");
+        klog_dec(ip.bytes[0]); klog("."); klog_dec(ip.bytes[1]); klog("."); klog_dec(ip.bytes[2]); klog(".");
+        klog_dec(ip.bytes[3]); klog(":"); klog_dec(dport); klog(" len="); klog_dec(len);
+        klog(sent ? " sent\n" : " SEND FAILED\n");
+    }
+    if (!sent) return negErrno(EHOSTUNREACH);
     return cast(ssize_t)len;
 }
+private __gshared uint g_inetUdpLogN = 0;
 
 // Pop exactly one datagram.  Returns EAGAIN when empty so a non-blocking caller behaves; the
 // kernel loop keeps pumping networkStackPoll(), so a poll()-then-recvfrom loop works.
 private ssize_t inetRecvFrom(LocalSocket* s, void* buf, size_t len,
                              sockaddr* src, uint* srclen) @nogc nothrow {
+    if (s.inetTcp >= 0) {
+        const ssize_t r = tcpSockRead(s, buf, len);
+        if (r >= 0 && src !is null && srclen !is null && *srclen >= sockaddr_in.sizeof) {
+            auto sin = cast(sockaddr_in*)src;
+            sin.sin_family = cast(ushort)AF_INET;
+            sin.sin_port   = cast(ushort)((s.inetPeerPort >> 8) | (s.inetPeerPort << 8));
+            sin.sin_addr   = s.inetPeerIP;
+            foreach (i; 0 .. 8) sin.sin_zero[i] = 0;
+            *srclen = cast(uint)sockaddr_in.sizeof;
+        }
+        return r;
+    }
     if (buf is null) return negErrno(EINVAL);
     if (socketBufferReadable(s.rx) < INET_DGRAM_HDR) return negErrno(EAGAIN);
 
@@ -11010,6 +11098,12 @@ private void inetClose(LocalSocket* s) @nogc nothrow {
         udpClose(s.inetUdpFd);
     }
     s.inetUdpFd = -1;
+    if (s.inetTcp >= 0) {
+        import network.tcp : tcpRelease;
+        tcpRelease(s.inetTcp);          // an open connection closes gracefully in the background
+        s.inetTcp = -1;
+    }
+    s.tcpConnectPending = false;
     s.inetLocalPort = 0;
     s.inetConnected = false;
     // Clear the raw flag so a recycled LocalSocket slot is not still fed by the ICMP tap.
@@ -11018,6 +11112,209 @@ private void inetClose(LocalSocket* s) @nogc nothrow {
     // per-socket to unregister.
     s.inetRawIcmp = false;
 }
+// recvmsg()/sendmsg() on AF_INET.  These went through the AF_UNIX stream path, which answers a
+// UDP socket with ENOTCONN -- and musl's DNS resolver reads its replies with recvmsg(), so every
+// getaddrinfo() failed with EAI_AGAIN although the reply had arrived (measured: "udp rx port 49152
+// from port 53 len=151", then "cannot resolve ... (getaddrinfo -3)").  UDP: one datagram,
+// scattered over the iovecs, the sender in msg_name.  TCP: a stream read/write per iovec.
+private __gshared ubyte[2048] g_inetMsgBuf;
+private ssize_t inetRecvMsg(LocalSocket* s, msghdr* msg) @nogc nothrow {
+    msg.msg_controllen = 0;
+    msg.msg_flags = 0;
+    if (s.inetTcp >= 0) {
+        ssize_t total = 0;
+        foreach (i; 0 .. msg.msg_iovlen) {
+            auto iov = &msg.msg_iov[i];
+            if (iov.iov_len == 0) continue;
+            const ssize_t r = tcpSockRead(s, iov.iov_base, iov.iov_len);
+            if (r < 0) return total > 0 ? total : r;
+            total += r;
+            if (r == 0 || cast(size_t)r < iov.iov_len) break;
+        }
+        return total;
+    }
+    uint nl = msg.msg_namelen;
+    const ssize_t got = inetRecvFrom(s, g_inetMsgBuf.ptr, g_inetMsgBuf.length,
+                                     cast(sockaddr*)msg.msg_name, msg.msg_name !is null ? &nl : null);
+    if (got < 0) return got;
+    if (msg.msg_name !is null) msg.msg_namelen = nl;
+    size_t off = 0;
+    foreach (i; 0 .. msg.msg_iovlen) {
+        auto iov = &msg.msg_iov[i];
+        size_t n = cast(size_t)got - off;
+        if (n > iov.iov_len) n = iov.iov_len;
+        auto dst = cast(ubyte*)iov.iov_base;
+        foreach (k; 0 .. n) dst[k] = g_inetMsgBuf[off + k];
+        off += n;
+        if (off >= cast(size_t)got) break;
+    }
+    if (off < cast(size_t)got) msg.msg_flags = 0x20;   // MSG_TRUNC: the datagram did not fit
+    return cast(ssize_t)off;
+}
+private ssize_t inetSendMsg(LocalSocket* s, msghdr* msg) @nogc nothrow {
+    if (s.inetTcp >= 0) {
+        ssize_t total = 0;
+        foreach (i; 0 .. msg.msg_iovlen) {
+            auto iov = &msg.msg_iov[i];
+            if (iov.iov_len == 0) continue;
+            const ssize_t r = tcpSockWrite(s, iov.iov_base, iov.iov_len);
+            if (r < 0) return total > 0 ? total : r;
+            total += r;
+            if (cast(size_t)r < iov.iov_len) break;
+        }
+        return total;
+    }
+    size_t len = 0;
+    foreach (i; 0 .. msg.msg_iovlen) {
+        auto iov = &msg.msg_iov[i];
+        if (len + iov.iov_len > g_inetMsgBuf.length) return negErrno(EMSGSIZE);
+        auto src = cast(const(ubyte)*)iov.iov_base;
+        foreach (k; 0 .. iov.iov_len) g_inetMsgBuf[len + k] = src[k];
+        len += iov.iov_len;
+    }
+    return inetSendTo(s, g_inetMsgBuf.ptr, len, cast(const(sockaddr)*)msg.msg_name);
+}
+
+// ── TCP sockets (network/tcp.d) ──────────────────────────────────────────────────────────────
+
+// NetPolicy for a CONFINED task's IP traffic to `dst` (network byte order).  The identity's
+// declared policy was never enforced on the data path -- a Tor- or VPN-policy domain could send
+// straight out through the in-kernel stack.  There is no in-kernel VPN or Tor transport to route
+// through, so those policies fail CLOSED here; LocalOnly reaches private/link-local networks only.
+// Unconfined tasks (the desktop, system services, the kernel's own DHCP/DNS) are not governed.
+private int netPolicyGate(uint dst) @nogc nothrow {
+    import core.identity : identityById, NetPolicy;
+    import core.domain : domainById;
+    const int tid = cast(int)g_current_task_id;
+    if (tid < 0 || tid >= MAX_TASKS) return 0;
+    const uint dom = g_tasks[tid].domainObjId;
+    if (dom == 0) return 0;
+    auto d = domainById(dom);
+    if (d is null || d.identityObjId == 0) return 0;
+    auto r = identityById(d.identityObjId);
+    if (r is null) return 0;
+    const ubyte a = cast(ubyte)(dst & 0xFF), b = cast(ubyte)((dst >> 8) & 0xFF);
+    switch (r.net) {
+        case NetPolicy.NAT, NetPolicy.Disposable, NetPolicy.None:
+            return 0;
+        case NetPolicy.LocalOnly: {
+            const bool priv = a == 10 || (a == 172 && (b & 0xF0) == 16) || (a == 192 && b == 168)
+                           || (a == 169 && b == 254) || a == 127;
+            return priv ? 0 : negErrno(EACCES);
+        }
+        default:                                   // VPN, Tor: no transport exists -> fail closed
+            return negErrno(EACCES);
+    }
+}
+
+// Make sure the next hop's MAC is cached before the stack needs it.  ipv4Send()'s ARP wait does
+// not pump the receive ring, so an unresolved next hop can never resolve inside it; resolve here
+// with a bounded pump (syscall context holds the BKL -- never spin unbounded).  Off-subnet
+// traffic goes to the gateway, so that is the address to resolve.
+private void inetResolveNextHop(uint dst) @nogc nothrow {
+    import network.ipv4 : getLocalIP, getNetmask, getGateway;
+    import network.arp : arpSendRequest, arpLookup;
+    import network.stack : networkStackPoll;
+    import network.types : MACAddress;
+    IPv4Address me, nm, gw;
+    getLocalIP(&me); getNetmask(&nm); getGateway(&gw);
+    const IPv4Address d = IPv4Address(dst);
+    const bool local = (d.addr & nm.addr) == (me.addr & nm.addr);
+    IPv4Address hop = local ? d : gw;
+    MACAddress mac;
+    if (arpLookup(hop, &mac)) return;
+    arpSendRequest(hop);
+    for (uint i = 0; i < 400_000u; ++i) {
+        networkStackPoll();
+        if (arpLookup(hop, &mac)) return;
+    }
+}
+
+private bool tcpSockConnected(LocalSocket* s) @nogc nothrow {
+    import network.tcp : tcpIsConnected;
+    return s.inetTcp >= 0 && tcpIsConnected(s.inetTcp);
+}
+
+private ssize_t tcpSockRead(LocalSocket* s, void* buf, size_t len) @nogc nothrow {
+    import network.tcp : tcpRead;
+    if (buf is null && len != 0) return negErrno(EFAULT);
+    const long r = tcpRead(s.inetTcp, cast(ubyte*)buf, len);
+    return r < 0 ? negErrno(cast(int)-r) : cast(ssize_t)r;
+}
+
+private ssize_t tcpSockWrite(LocalSocket* s, const(void)* buf, size_t len) @nogc nothrow {
+    import network.tcp : tcpWrite;
+    if (buf is null && len != 0) return negErrno(EFAULT);
+    const long r = tcpWrite(s.inetTcp, cast(const(ubyte)*)buf, len);
+    return r < 0 ? negErrno(cast(int)-r) : cast(ssize_t)r;
+}
+
+// connect() on a TCP socket.  Non-blocking: EINPROGRESS, then EALREADY / the outcome.  Blocking:
+// the first call sends the SYN and returns EAGAIN, the dispatcher parks the task, and the re-run
+// reports the outcome (0 / ECONNREFUSED / ETIMEDOUT) once the handshake is over.
+private int inetTcpConnect(LocalSocket* s, File* f, const(sockaddr)* addr, uint addrlen) @nogc nothrow {
+    import network.tcp : tcpIsConnecting, tcpIsConnected, tcpError, tcpConnectStart, tcpBindPort;
+    const bool nb = (f.flags & 0x800) != 0;
+    const int c = s.inetTcp;
+    if (s.tcpConnectPending) {
+        if (tcpIsConnecting(c)) return negErrno(nb ? EALREADY : EAGAIN);
+        s.tcpConnectPending = false;
+        const int e = tcpError(c, true);
+        if (e != 0) return negErrno(e);
+        return tcpIsConnected(c) ? 0 : negErrno(ECONNREFUSED);
+    }
+    if (tcpIsConnected(c)) return negErrno(EISCONN);
+    if (tcpIsConnecting(c)) return negErrno(EALREADY);
+    if (addr is null || addrlen < sockaddr_in.sizeof) return negErrno(EINVAL);
+    auto sin = cast(const(sockaddr_in)*)addr;
+    if (sin.sin_family != AF_INET) return negErrno(EAFNOSUPPORT);
+    { const int pol = netPolicyGate(sin.sin_addr); if (pol != 0) return pol; }
+    const ubyte first = cast(ubyte)(sin.sin_addr & 0xFF);
+    if (first == 127 || sin.sin_addr == 0) return negErrno(ECONNREFUSED);   // no loopback device
+    if (s.inetLocalPort == 0) {
+        const int p = tcpBindPort(c, 0);
+        if (p < 0) return negErrno(EADDRNOTAVAIL);
+        s.inetLocalPort = cast(ushort)p;
+    }
+    inetResolveNextHop(sin.sin_addr);
+    const int r = tcpConnectStart(c, IPv4Address(sin.sin_addr),
+                                  cast(ushort)((sin.sin_port >> 8) | (sin.sin_port << 8)));
+    if (r < 0) return negErrno(-r);
+    s.inetPeerIP   = sin.sin_addr;
+    s.inetPeerPort = cast(ushort)((sin.sin_port >> 8) | (sin.sin_port << 8));
+    s.tcpConnectPending = true;
+    return negErrno(nb ? EINPROGRESS : EAGAIN);
+}
+
+// accept()/accept4() on a listening TCP socket: a new fd for the next established connection.
+private int inetTcpAccept(LocalSocket* l, sockaddr* addr, uint* addrlen, int flags) @nogc nothrow {
+    import network.tcp : tcpAcceptPop, tcpIsListening, tcpPeer, tcpRelease;
+    if (!tcpIsListening(l.inetTcp)) return negErrno(EINVAL);
+    const int child = tcpAcceptPop(l.inetTcp);
+    if (child < 0) return negErrno(EAGAIN);
+    const int sid = allocLocalSocket(AF_INET, SOCK_STREAM);
+    if (sid < 0) { tcpRelease(child); return negErrno(EMFILE); }
+    auto cs = &g_localSockets[sid];
+    cs.inetTcp = child;
+    cs.inetUdpFd = -1;
+    cs.inetLocalPort = l.inetLocalPort;
+    IPv4Address pip; ushort pport;
+    tcpPeer(child, &pip, &pport);
+    cs.inetPeerIP = pip.addr;
+    cs.inetPeerPort = pport;
+    const int fd = allocSocketFd(sid, O_RDWR | ((flags & 0x800) ? 0x800 : 0));
+    if (fd < 0) { releaseLocalSocket(sid); return negErrno(EMFILE); }
+    if (addr !is null && addrlen !is null && *addrlen >= sockaddr_in.sizeof) {
+        auto sin = cast(sockaddr_in*)addr;
+        sin.sin_family = cast(ushort)AF_INET;
+        sin.sin_addr = pip.addr;
+        sin.sin_port = cast(ushort)((pport >> 8) | (pport << 8));
+        foreach (i; 0 .. 8) sin.sin_zero[i] = 0;
+        *addrlen = cast(uint)sockaddr_in.sizeof;
+    }
+    return publishActiveFdReturn(fd);
+}
+
 public int sys_socket(int domain, int type, int protocol) {
     initFdTable();
 
@@ -11054,6 +11351,7 @@ public int sys_socket(int domain, int type, int protocol) {
 
         const int ifd = inetSocketCreate(baseType, protocol);
         if (ifd < 0) return ifd;
+        if (type & 0x800 /*SOCK_NONBLOCK*/) g_fdTable[ifd].flags |= 0x800 /*O_NONBLOCK*/;
         return publishActiveFdReturn(ifd);
     }
 
@@ -11104,6 +11402,13 @@ public int sys_listen(int sockfd, int backlog) {
 
     auto sock = fileSocket(&g_fdTable[sockfd]);
     if (sock is null) return negErrno(ENOTSOCK);
+    if (inetIsInet(sock) && sock.inetTcp >= 0) {
+        import network.tcp : tcpListenOn, tcpLocalPort;
+        const int r = tcpListenOn(sock.inetTcp, backlog);
+        if (r < 0) return negErrno(-r);
+        sock.inetLocalPort = tcpLocalPort(sock.inetTcp);
+        return 0;
+    }
     if (sock.state != LocalSocketState.bound && sock.state != LocalSocketState.listener) return negErrno(EINVAL);
 
     size_t effectiveBacklog = backlog > 0 ? cast(size_t)backlog : 1;
@@ -11147,6 +11452,8 @@ public int sys_connect(int sockfd, const(sockaddr)* addr, uint addrlen) {
     if (addr is null) return negErrno(EFAULT);
     {   // AF_INET: UDP connect() just records the default destination; no handshake.
         auto insock = fileSocket(&g_fdTable[sockfd]);
+        if (inetIsInet(insock) && insock.inetTcp >= 0)
+            return inetTcpConnect(insock, &g_fdTable[sockfd], addr, addrlen);
         if (inetIsInet(insock)) return inetConnect(insock, addr, addrlen);
     }
     if (addr.sa_family != AF_UNIX) return negErrno(EAFNOSUPPORT);
@@ -11305,6 +11612,7 @@ public int sys_accept(int sockfd, sockaddr* addr, uint* addrlen) {
 
     auto listener = fileSocket(&g_fdTable[sockfd]);
     if (listener is null) return negErrno(ENOTSOCK);
+    if (inetIsInet(listener) && listener.inetTcp >= 0) return inetTcpAccept(listener, addr, addrlen, 0);
     if (listener.state != LocalSocketState.listener) return negErrno(EINVAL);
 
     const int acceptedId = pendingQueuePop(*listener);
@@ -11333,6 +11641,9 @@ public ssize_t sys_sendmsg(int sockfd, msghdr* msg, int flags) {
 
     File* f = &g_fdTable[sockfd];
     if (f.type != FileType.FD_SOCKET) return negErrno(ENOTSOCK);
+    {   auto insock = fileSocket(f);
+        if (inetIsInet(insock)) return inetSendMsg(insock, msg);
+    }
 
     // SCM_RIGHTS: copy any passed File descriptors into the peer's queue so the
     // peer's recvmsg can materialise them as new fds in its own table.
@@ -11421,6 +11732,9 @@ public ssize_t sys_recvmsg(int sockfd, msghdr* msg, int flags) {
 
     File* f = &g_fdTable[sockfd];
     if (f.type != FileType.FD_SOCKET) return negErrno(ENOTSOCK);
+    {   auto insock = fileSocket(f);
+        if (inetIsInet(insock)) return inetRecvMsg(insock, msg);
+    }
 
     ssize_t totalRead = 0;
     foreach (i; 0 .. msg.msg_iovlen) {
@@ -14283,9 +14597,32 @@ public long linux_sys_sendto_nr(ulong fd, ulong buf, ulong len, ulong fl, ulong 
     { return linux_sys_sendto(fd, buf, len, fl, da, dl); }
 public long linux_sys_recvfrom_nr(ulong fd, ulong buf, ulong len, ulong fl, ulong sa, ulong sl)
     { return linux_sys_recvfrom(fd, buf, len, fl, sa, sl); }
-public long linux_sys_accept4(ulong fd, ulong addr, ulong len, ulong fl)
-    { return linux_sys_accept(fd, addr, len); }
-public long linux_sys_shutdown(ulong fd, ulong how) { return sys_close(cast(int)fd); }
+public long linux_sys_accept4(ulong fd, ulong addr, ulong len, ulong fl) {
+    // accept4's SOCK_NONBLOCK matters for TCP: a non-blocking child must not park its reads.
+    const int ifd = cast(int)fd;
+    if (ifd >= 0 && ifd < 1024) {
+        initFdTable();
+        auto ls = fileSocket(&g_fdTable[ifd]);
+        if (inetIsInet(ls) && ls.inetTcp >= 0)
+            return inetTcpAccept(ls, cast(sockaddr*)addr, cast(uint*)len, cast(int)fl);
+    }
+    return linux_sys_accept(fd, addr, len);
+}
+public long linux_sys_shutdown(ulong fd, ulong how) {
+    // TCP: shutdown() half-closes the connection and KEEPS the descriptor -- an HTTP client that
+    // shuts down its write side still reads the response.  (Other sockets keep the old behaviour.)
+    const int ifd = cast(int)fd;
+    if (ifd >= 0 && ifd < 1024) {
+        initFdTable();
+        auto ss = fileSocket(&g_fdTable[ifd]);
+        if (inetIsInet(ss) && ss.inetTcp >= 0) {
+            import network.tcp : tcpShutdownWr;
+            if (how == 1 /*SHUT_WR*/ || how == 2 /*SHUT_RDWR*/) tcpShutdownWr(ss.inetTcp);
+            return 0;
+        }
+    }
+    return sys_close(cast(int)fd);
+}
 public long linux_sys_getsockopt(ulong fd, ulong lvl, ulong opt, ulong val, ulong len) {
     initFdTable();
     int ifd = cast(int)fd;
@@ -14311,10 +14648,15 @@ public long linux_sys_getsockopt(ulong fd, ulong lvl, ulong opt, ulong val, ulon
         case SO_TYPE:
             return copySockoptInt(val, len, sock.type);
         case SO_ERROR:
+            if (inetIsInet(sock) && sock.inetTcp >= 0) {
+                import network.tcp : tcpError;
+                return copySockoptInt(val, len, tcpError(sock.inetTcp, true));
+            }
             return copySockoptInt(val, len, 0);
         case SO_ACCEPTCONN:
             return copySockoptInt(val, len, sock.state == LocalSocketState.listener ? 1 : 0);
         case SO_PROTOCOL:
+            if (inetIsInet(sock)) return copySockoptInt(val, len, sock.inetTcp >= 0 ? 6 : 17);
             return copySockoptInt(val, len, 0);
         case SO_DOMAIN:
             return copySockoptInt(val, len, sock.domain);
@@ -14323,8 +14665,37 @@ public long linux_sys_getsockopt(ulong fd, ulong lvl, ulong opt, ulong val, ulon
     }
 }
 public long linux_sys_setsockopt(ulong fd, ulong lvl, ulong opt, ulong val, ulong len) { return 0; }
-public long linux_sys_getsockname(ulong fd, ulong addr, ulong len)  { return negErrno(ENOSYS); }
-public long linux_sys_getpeername(ulong fd, ulong addr, ulong len)  { return negErrno(ENOTCONN); }
+public long linux_sys_getsockname(ulong fd, ulong addr, ulong len)  { return inetSockName(fd, addr, len, false); }
+public long linux_sys_getpeername(ulong fd, ulong addr, ulong len)  { return inetSockName(fd, addr, len, true); }
+
+// getsockname/getpeername for AF_INET sockets (the only family that has addresses worth asking
+// for here; AF_UNIX keeps its old answers).
+private long inetSockName(ulong fd, ulong addr, ulong len, bool peer) {
+    import network.ipv4 : getLocalIP;
+    const int ifd = cast(int)fd;
+    if (ifd < 0 || ifd >= 1024) return negErrno(EBADF);
+    initFdTable();
+    auto s = fileSocket(&g_fdTable[ifd]);
+    if (!inetIsInet(s)) return peer ? negErrno(ENOTCONN) : negErrno(ENOSYS);
+    if (addr == 0 || len == 0) return negErrno(EFAULT);
+    auto lenp = cast(uint*)len;
+    if (*lenp < sockaddr_in.sizeof) return negErrno(EINVAL);
+    auto sin = cast(sockaddr_in*)addr;
+    sin.sin_family = cast(ushort)AF_INET;
+    foreach (i; 0 .. 8) sin.sin_zero[i] = 0;
+    if (peer) {
+        const bool connected = s.inetTcp >= 0 ? tcpSockConnected(s) : s.inetConnected;
+        if (!connected) return negErrno(ENOTCONN);
+        sin.sin_addr = s.inetPeerIP;
+        sin.sin_port = cast(ushort)((s.inetPeerPort >> 8) | (s.inetPeerPort << 8));
+    } else {
+        IPv4Address me; getLocalIP(&me);
+        sin.sin_addr = me.addr;
+        sin.sin_port = cast(ushort)((s.inetLocalPort >> 8) | (s.inetLocalPort << 8));
+    }
+    *lenp = cast(uint)sockaddr_in.sizeof;
+    return 0;
+}
 // --- socketpair: two connected AF_UNIX endpoints ---
 public long linux_sys_socketpair(ulong dom, ulong t, ulong p, ulong sv) {
     if (!sv) return negErrno(EFAULT);
@@ -14427,6 +14798,10 @@ private bool fdReadableImpl(int fd) @nogc nothrow {
         // that would supply the data (e.g. the forked embedded seatd server).
         auto sock = fileSocket(f);
         if (sock is null) return false;
+        if (sock.domain == AF_INET && sock.inetTcp >= 0) {
+            import network.tcp : tcpReadable;
+            return tcpReadable(sock.inetTcp);
+        }
         if (sock.state == LocalSocketState.listener)
             return sock.pendingHead != sock.pendingTail;   // a pending accept()
         return socketBufferReadable(sock.rx) > 0 || sock.peerClosed
@@ -14554,7 +14929,16 @@ private bool fdWritable(int fd) @nogc nothrow {
     auto f = &g_fdTable[fd];
     if (f.type == FileType.FD_CONSOLE)   return true;
     if (f.type == FileType.FD_PTY_MASTER || f.type == FileType.FD_PTY_SLAVE) return true;
-    if (f.type == FileType.FD_SOCKET)    return true;
+    if (f.type == FileType.FD_SOCKET) {
+        // TCP is writable only with room in its send ring -- or once a non-blocking connect() has
+        // an outcome to report, which is exactly the POLLOUT such a caller waits for.
+        auto ws = fileSocket(f);
+        if (ws !is null && ws.domain == AF_INET && ws.inetTcp >= 0) {
+            import network.tcp : tcpWritable;
+            return tcpWritable(ws.inetTcp);
+        }
+        return true;
+    }
     if (f.type == FileType.FD_PIPE_WRITE) {
         int pid = pipeIdFromFd(f);
         auto pp = getPipe(cast(size_t)pid);

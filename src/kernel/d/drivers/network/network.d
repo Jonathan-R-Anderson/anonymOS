@@ -203,6 +203,15 @@ export extern(C) int receiveEthFrame(ubyte* buffer, size_t maxLen) @nogc nothrow
 // Intel E1000 Driver
 // ============================================================================
 
+/// Is the link up?  (e1000: STATUS.LU.  VirtualBox holds an e1000's link DOWN for ~5 s after a
+/// reset -- its LinkUpDelay -- so a DHCP DISCOVER sent straight after init goes nowhere.)
+export extern(C) bool netLinkUp() @nogc nothrow {
+    if (!g_networkAvailable) return false;
+    if (g_netDevice.type == NetworkDeviceType.E1000)
+        return (readE1000Reg(&g_netDevice, E1000Reg.STATUS) & 2) != 0;
+    return true;
+}
+
 // E1000 Register Offsets
 private enum E1000Reg : uint {
     CTRL    = 0x0000,  // Device Control
@@ -305,20 +314,26 @@ private bool initE1000(NetworkDevice* dev) @nogc nothrow {
     }
     dev.memBase = readPCIBar(dev.pciDev, 0) + hhdm_offset;
 
-    // Reset device (RST bit clears itself and all other bits)
+    // Reset device (RST bit clears itself and all other bits).  Wait for the bit to actually
+    // clear rather than for a fixed spin: a write that lands while the MAC is still in reset is
+    // ignored, and on VirtualBox that silently dropped SLU below -- STATUS read 0x81 (link DOWN)
+    // and not one frame was ever received.
     uint ctrl = readE1000Reg(dev, E1000Reg.CTRL);
     writeE1000Reg(dev, E1000Reg.CTRL, ctrl | 0x04000000); // Set RST (bit 26)
-    
-    // Wait for reset to complete
-    for (uint i = 0; i < 1000000; i++) {
-        asm @nogc nothrow { nop; }
+    for (uint i = 0; i < 20_000_000; i++) {
+        if ((readE1000Reg(dev, E1000Reg.CTRL) & 0x04000000) == 0) break;
+        asm @nogc nothrow { rep; nop; }
     }
-    
-    // After reset, configure CTRL for link establishment
-    // Bit 5 (ASDE) = Auto-Speed Detection Enable
-    // Bit 6 (SLU) = Set Link Up
+    // ...and give the EEPROM auto-read that follows a reset time to reload RAL/RAH.
+    for (uint i = 0; i < 2_000_000; i++) asm @nogc nothrow { rep; nop; }
+
+    // After reset, configure CTRL for link establishment:
+    //   set   SLU (bit 6, Set Link Up) and ASDE (bit 5, Auto-Speed Detection)
+    //   clear LRST (bit 3, link reset), ILOS (bit 7, invert loss-of-signal), VME (bit 30) and
+    //         PHY_RST (bit 31) -- any of these left set keeps the link down.
     ctrl = readE1000Reg(dev, E1000Reg.CTRL);
     ctrl |= (1 << 6) | (1 << 5);
+    ctrl &= ~((1u << 3) | (1u << 7) | (1u << 30) | (1u << 31));
     writeE1000Reg(dev, E1000Reg.CTRL, ctrl);
 
     // Enable bus mastering AFTER the reset, not before.  Without PCI bus-master the device

@@ -260,7 +260,7 @@ struct E1000TxDesc {
 
 // Descriptor counts
 private enum NUM_RX_DESC = 32;
-private enum NUM_TX_DESC = 8;
+private enum NUM_TX_DESC = 32;   // 32 x 16 B = 512 B: still one page (TDLEN must be a 128 B multiple)
 private enum RX_BUFFER_SIZE = 2048;
 
 import memory.physmem : allocFrame, freeFrame;
@@ -468,15 +468,28 @@ private void writeE1000Reg(NetworkDevice* dev, uint offset, uint value) @nogc no
     }
 }
 
+__gshared ulong g_txRingFull;   // frames dropped because the TX ring stayed full
+
 private bool e1000Send(const(ubyte)* data, size_t len) @nogc nothrow {
     if (data is null || len == 0 || len > RX_BUFFER_SIZE) return false;
     
     // Get current TX descriptor
     E1000TxDesc* desc = &g_txDescriptors[g_txCurrent];
-    
-    // Check if descriptor is available (DD bit set)
-    if ((desc.status & 1) == 0) {
-        return false; // Descriptor not ready
+
+    // The ring may hold at most N-1 frames: the NIC reads TDH == TDT as EMPTY, so filling the last
+    // free slot wraps TDT onto TDH and the NIC silently ignores every queued frame -- their DD bits
+    // then never come back and every later send fails.  That killed transmission for good in the
+    // middle of a download (TDH == TDT == 1, the device had sent 129 frames of our ~190: the
+    // server kept resending old data because our ACKs never left).  So: the slot after this one
+    // must not be the NIC's head, and this one must be done.  Both clear within microseconds
+    // unless the ring is genuinely full, so wait a bounded moment before giving up on the frame.
+    const uint nextSlot = (g_txCurrent + 1) % NUM_TX_DESC;
+    for (uint spin = 0; ; ++spin) {
+        const bool free_ = (desc.status & 1) != 0
+                        && readE1000Reg(&g_netDevice, E1000Reg.TDH) != nextSlot;
+        if (free_) break;
+        if (spin >= 200_000) { ++g_txRingFull; return false; }
+        asm @nogc nothrow { rep; nop; }
     }
     
     // Copy data to TX buffer

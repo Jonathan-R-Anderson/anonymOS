@@ -270,13 +270,13 @@ struct app {
     int  n_startup;
     // Applications tab: indices into DMAPPS whose binary actually exists, so the list never
     // offers a launch that can only fail with "[exec] not found".
-    int  avail[16];
+    int  avail[24];
     int  n_avail;
     // appgate delegation: the /config/apps.json records (grants keyed by domain name), and which
     // app's domain checklist is currently open in the System Applications tab (-1 = none).
     struct gappgrant grants[MAX_GRANTS];
     int  n_grants;
-    unsigned app_overlay_mask[16];/* per-avail-index bitmask over domain indices: overlay-mode on for (app,domain) */
+    unsigned app_overlay_mask[24];/* per-avail-index bitmask over domain indices: overlay-mode on for (app,domain) */
     int  port_panel;
     // appgate (/config/appgate.json): the System domain's name and the desktop session domain's --
     // the one every launch from the shared desktop (app grid, keybinds, top bar) lands in.
@@ -559,7 +559,8 @@ static void pkg_row_rect(int idx, int *x, int *y, int *w, int *h) {   // Package
  * NOTE the trap: Terminal execs /hos-wifiterm which execve's /wl-term, whose class is epin-g4-term.
  * DMF_CLI: a command-line program -- it has no window (no Launch, no Overlay); it is delegated like
  * any app and run from a terminal in the domain. */
-enum { DMF_CLI = 1 };
+enum { DMF_CLI = 1, DMF_PKG = 2 };   /* DMF_PKG: an installed package (Software Center), "pkg:<name>" */
+static int g_appl_pitch = 30;
 struct dmapp { const char *label; const char *exec; const char *cls; int flags; };
 static const struct dmapp DMAPPS[] = {
     { "Software Center", "/wl-software",   "epinanonymos-software" , 0 },
@@ -580,8 +581,22 @@ static const struct dmapp DMAPPS[] = {
 enum { N_DMAPP = (int)(sizeof(DMAPPS)/sizeof(DMAPPS[0])) };
 static const char *dmapp_id(const struct dmapp *a) { return a->exec + 1; }   // exec basename == appId
 
+/* Installed packages (Software Center) as Applications rows: one per "pkg:<name>" record the kernel
+ * lists in /config/apps.json.  exec is "/pkg:<name>" so dmapp_id() yields the grant key the port
+ * verbs take; a package is delegated as a unit -- every command it installed. */
+enum { N_DYNAPP_MAX = 10 };
+static struct dmapp g_dynapps[N_DYNAPP_MAX];
+static char g_dyn_label[N_DYNAPP_MAX][64], g_dyn_exec[N_DYNAPP_MAX][72];
+static int  g_n_dynapps;
+static const struct dmapp *dm_app(int idx)
+{
+    if (idx < N_DMAPP) return &DMAPPS[idx];
+    idx -= N_DMAPP;
+    return (idx >= 0 && idx < g_n_dynapps) ? &g_dynapps[idx] : &DMAPPS[0];
+}
+
 static void appl_row_rect(int idx, int *x, int *y, int *w, int *h) {   // Applications Launch pills
-    *y = TAB_Y + 40 + idx * 30; *h = 26; *w = 92; *x = LABEL_X + 320;
+    *y = TAB_Y + 40 + idx * g_appl_pitch; *h = g_appl_pitch - 4; *w = 92; *x = LABEL_X + 320;
 }
 
 // Build the Applications list once: keep only entries whose binary is actually present and
@@ -652,6 +667,26 @@ static void load_apps_ports(struct app *app)
         q = idEnd;
     }
     free(json);
+    /* installed packages: rebuild their rows (the static ones stay where load_apps put them) */
+    {
+        int keep = 0;
+        for (int i = 0; i < app->n_avail; i++) if (app->avail[i] < N_DMAPP) app->avail[keep++] = app->avail[i];
+        app->n_avail = keep;
+        g_n_dynapps = 0;
+        for (int i = 0; i < app->n_grants && g_n_dynapps < N_DYNAPP_MAX; i++) {
+            const char *id = app->grants[i].id;
+            if (strncmp(id, "pkg:", 4) != 0) continue;
+            if (app->n_avail >= (int)(sizeof(app->avail)/sizeof(app->avail[0]))) break;
+            int k = g_n_dynapps++;
+            snprintf(g_dyn_label[k], sizeof g_dyn_label[k], "%s (package)", id + 4);
+            snprintf(g_dyn_exec[k], sizeof g_dyn_exec[k], "/%s", id);
+            g_dynapps[k].label = g_dyn_label[k];
+            g_dynapps[k].exec  = g_dyn_exec[k];
+            g_dynapps[k].cls   = "";
+            g_dynapps[k].flags = DMF_CLI | DMF_PKG;
+            app->avail[app->n_avail++] = N_DMAPP + k;
+        }
+    }
     int ndeleg = 0;
     for (int i = 0; i < app->n_grants; i++) ndeleg += app->grants[i].delegable;
     printf("DOMAINMGR: loaded %d application records from /config/apps.json (%d delegable)\n",
@@ -663,7 +698,7 @@ static void load_apps_ports(struct app *app)
 static const struct gappgrant *grant_for(const struct app *app, int ai)
 {
     if (ai < 0 || ai >= app->n_avail) return NULL;
-    const char *id = dmapp_id(&DMAPPS[app->avail[ai]]);
+    const char *id = dmapp_id(dm_app(app->avail[ai]));
     for (int i = 0; i < app->n_grants; i++)
         if (strcmp(app->grants[i].id, id) == 0) return &app->grants[i];
     return NULL;
@@ -818,7 +853,7 @@ static void write_overlay_lua(struct app *app) {
         for (int d = 0; d < app->n_doms; d++) {
             if (!(app->app_overlay_mask[i] & (1u << d))) continue;
             char cls[96];
-            snprintf(cls, sizeof cls, "%s@%s", DMAPPS[app->avail[i]].cls, app->doms[d].name);
+            snprintf(cls, sizeof cls, "%s@%s", dm_app(app->avail[i])->cls, app->doms[d].name);
             fprintf(f, "hl.window_rule({ match = { class = \"^(%s)$\" }, float = true })\n", cls);
             fprintf(f, "hl.window_rule({ match = { class = \"^(%s)$\" }, workspace = \"special:overlay\" })\n", cls);
         }
@@ -826,7 +861,7 @@ static void write_overlay_lua(struct app *app) {
 }
 /* Read overlay.lua back into app_overlay_mask so the pills show the persisted state. */
 static void load_apps_overlay(struct app *app) {
-    for (int i = 0; i < 16; i++) app->app_overlay_mask[i] = 0;
+    for (int i = 0; i < 24; i++) app->app_overlay_mask[i] = 0;
     FILE *f = fopen(OVERLAY_LUA, "r");
     if (!f) return;
     char line[256];
@@ -842,14 +877,14 @@ static void load_apps_overlay(struct app *app) {
         *at = 0;
         const char *base = q, *dom = at + 1;
         int ai = -1, di = -1;
-        for (int i = 0; i < app->n_avail; i++) if (!strcmp(DMAPPS[app->avail[i]].cls, base)) { ai = i; break; }
+        for (int i = 0; i < app->n_avail; i++) if (!strcmp(dm_app(app->avail[i])->cls, base)) { ai = i; break; }
         for (int d = 0; d < app->n_doms; d++)  if (!strcmp(app->doms[d].name, dom))          { di = d; break; }
         if (ai >= 0 && di >= 0) app->app_overlay_mask[ai] |= (1u << di);
     }
     fclose(f);
 }
 static void appl_ovl_rect(int idx, int *x, int *y, int *w, int *h) {   // per-app "Overlay: on/off" pill
-    *y = TAB_Y + 40 + idx * 30; *h = 26; *w = 100; *x = LABEL_X + 418;
+    *y = TAB_Y + 40 + idx * g_appl_pitch; *h = g_appl_pitch - 4; *w = 100; *x = LABEL_X + 418;
 }
 /* Toggle overlay mode for avail-index `ai` in the currently-selected domain (app->sel). */
 static void overlay_action(struct app *app, int ai) {
@@ -859,7 +894,7 @@ static void overlay_action(struct app *app, int ai) {
     if (want) app->app_overlay_mask[ai] |= (1u << d);
     else      app->app_overlay_mask[ai] &= ~(1u << d);
     char cls[96], cmd[256];
-    snprintf(cls, sizeof cls, "%s@%s", DMAPPS[app->avail[ai]].cls, app->doms[d].name);
+    snprintf(cls, sizeof cls, "%s@%s", dm_app(app->avail[ai])->cls, app->doms[d].name);
     if (want) {                                        /* register for future windows + move the open one */
         snprintf(cmd, sizeof cmd, "eval hl.window_rule({ match = { class = \"^(%s)$\" }, float = true })", cls); hypr_ipc(cmd);
         snprintf(cmd, sizeof cmd, "eval hl.window_rule({ match = { class = \"^(%s)$\" }, workspace = \"special:overlay\" })", cls); hypr_ipc(cmd);
@@ -873,7 +908,7 @@ static void overlay_action(struct app *app, int ai) {
 }
 
 static void appl_cfg_rect(int idx, int *x, int *y, int *w, int *h) {   // "Domains (n)" per-app config pill
-    *y = TAB_Y + 40 + idx * 30; *h = 26; *w = 100; *x = LABEL_X + 320 - 108;
+    *y = TAB_Y + 40 + idx * g_appl_pitch; *h = g_appl_pitch - 4; *w = 100; *x = LABEL_X + 320 - 108;
 }
 static void port_row_rect(int idx, int *x, int *y, int *w, int *h) {   // a domain checkbox row in the panel
     *y = TAB_Y + 74 + idx * 26; *h = 22; *w = 260; *x = LABEL_X + 30;
@@ -891,10 +926,12 @@ static int appl_listed(const struct app *app, int ai)
 // The rows the Applications tab shows, in screen order (rows[r] = avail index).  The draw pass and
 // the click pass both walk THIS list, so screen row r is the same application in both, and a
 // domain's tab has no blank rows where the apps it was not delegated used to be skipped.
-static int appl_rows(const struct app *app, int rows[16])
+/* row pitch (px): shrinks when installed packages lengthen the list (set by appl_rows) */
+static int appl_rows(const struct app *app, int rows[24])
 {
     int n = 0;
-    for (int i = 0; i < app->n_avail && n < 16; i++) if (appl_listed(app, i)) rows[n++] = i;
+    for (int i = 0; i < app->n_avail && n < 24; i++) if (appl_listed(app, i)) rows[n++] = i;
+    g_appl_pitch = n <= 14 ? 30 : (n <= 17 ? 26 : 22);
     return n;
 }
 
@@ -1546,7 +1583,7 @@ static void tab_applications(struct app *app, cairo_t *cr) {
     // Delegation checklist (System only): which domains may run one application.
     if (isSystem && app->port_panel >= 0 && app->port_panel < app->n_avail) {
         int pi = app->port_panel;
-        const struct dmapp *a = &DMAPPS[app->avail[pi]];
+        const struct dmapp *a = dm_app(app->avail[pi]);
         if (cr) {
             for (int di = 0, r = 0; di < app->n_doms; di++) {
                 if (!is_port_target(app, di)) continue;
@@ -1576,12 +1613,12 @@ static void tab_applications(struct app *app, cairo_t *cr) {
         return;
     }
 
-    int rows[16];
+    int rows[24];
     const int nrows = appl_rows(app, rows);
     if (cr) {
         for (int r = 0; r < nrows; r++) {
             const int i = rows[r];
-            const struct dmapp *a = &DMAPPS[app->avail[i]];
+            const struct dmapp *a = dm_app(app->avail[i]);
             int x,y,w,h;
             if (!(a->flags & DMF_CLI)) {                     // a CLI has no window: no Launch, no Overlay
                 appl_row_rect(r,&x,&y,&w,&h);
@@ -1603,12 +1640,14 @@ static void tab_applications(struct app *app, cairo_t *cr) {
             LABEL_X, TAB_Y+10, app->width-LABEL_X-PAD, 12, 0xff8b94a3u);
         for (int r = 0; r < nrows; r++) {
             const int i = rows[r];
-            const struct dmapp *a = &DMAPPS[app->avail[i]];
+            const struct dmapp *a = dm_app(app->avail[i]);
             int x,y,w,h; appl_row_rect(r,&x,&y,&w,&h);
             draw_text(app, a->label, LABEL_X, y+6, 190, 13, 0xfff2f5fau);
             if (a->flags & DMF_CLI) {
                 // Drawn where Launch and Overlay would be (a CLI has neither), clear of the Domains pill.
-                char hint[80]; snprintf(hint, sizeof(hint), "CLI - run '%s' in a terminal", a->exec + 1);
+                char hint[80];
+                if (a->flags & DMF_PKG) snprintf(hint, sizeof(hint), "installed - run its commands in a terminal");
+                else snprintf(hint, sizeof(hint), "CLI - run '%s' in a terminal", a->exec + 1);
                 draw_text(app, hint, x+8, y+6, 300, 12, 0xff8d97a6u);
             } else {
                 draw_text(app, "Launch", x+22, y+5, w-16, 12, 0xffe8edf5u);
@@ -2163,7 +2202,7 @@ static void handle_click(struct app *app)
         if (isSystem && app->port_panel >= 0 && app->port_panel < app->n_avail) {
             if (x>=LABEL_X && x<=LABEL_X+80 && y>=TAB_Y+42 && y<=TAB_Y+58) {     // < Back
                 app->port_panel = -1; redraw_commit(app, "port back"); return; }
-            const struct dmapp *a = &DMAPPS[app->avail[app->port_panel]];
+            const struct dmapp *a = dm_app(app->avail[app->port_panel]);
             for (int di = 0, r = 0; di < app->n_doms; di++) {
                 if (!is_port_target(app, di)) continue;
                 int bx,by,bw,bh; port_row_rect(r++,&bx,&by,&bw,&bh);
@@ -2174,11 +2213,11 @@ static void handle_click(struct app *app)
                     redraw_commit(app, "port toggle"); return; } }
             return;
         }
-        int rows[16];
+        int rows[24];
         const int nrows = appl_rows(app, rows);
         for (int r = 0; r < nrows; r++) {
             const int i = rows[r];
-            const struct dmapp *a = &DMAPPS[app->avail[i]];
+            const struct dmapp *a = dm_app(app->avail[i]);
             int bx,by,bw,bh;
             if (isSystem && app_delegable(app, i)) {  // "Domains (n)" pill opens the checklist
                 appl_cfg_rect(r,&bx,&by,&bw,&bh);

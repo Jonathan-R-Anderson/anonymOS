@@ -218,7 +218,8 @@ static unsigned long oct(const unsigned char *f, size_t n)
 /* Walk a decompressed ustar stream at tarpath.  For every regular-file entry whose path does NOT
  * begin with a dot (i.e. a DATA file, not the apk control members .PKGINFO, .SIGN.RSA, .pre-install
  * and friends), write it under stagedir mirroring its relative path and append that relative path
- * to manifest_fd.  Directory, symlink, and control entries are skipped (their data is consumed).
+ * to manifest_fd; a symlink is recorded as "@<path>\t<target>".  Directory and control entries are
+ * skipped (their data is consumed).
  * Returns the number of files written, or -1 on a read error. */
 static int ustar_extract_data(const char *tarpath, const char *stagedir, int manifest_fd)
 {
@@ -277,8 +278,21 @@ static int ustar_extract_data(const char *tarpath, const char *stagedir, int man
             } else {
                 plog("[pkg] untar: failed writing %s", dst);
             }
+        } else if (typeflag == '2' && is_data) {
+            /* A symlink -- how every shared library publishes its soname (libstdc++.so.6 ->
+             * libstdc++.so.6.0.32).  Dropping these left programs unable to load their libraries
+             * ("Error loading shared library libstdc++.so.6").  Recorded in the manifest as
+             * "@<path>\t<target>"; the kernel creates it (placement rules apply to the path). */
+            char target[101]; memcpy(target, hdr + 157, 100); target[100] = 0;
+            if (target[0] && !strchr(target, '\n') && !strchr(target, '\t')) {
+                char line[420];
+                int ln = snprintf(line, sizeof line, "@%s\t%s\n", rel, target);
+                if (ln > 0 && ln < (int)sizeof line) { ssize_t w = write(manifest_fd, line, (size_t)ln); (void)w; count++; }
+            }
+            unsigned long skip = padded;
+            while (skip > 0) { unsigned char t[512]; ssize_t g = read_full(in, t, skip < 512 ? skip : 512); if (g <= 0) break; skip -= (size_t)g; }
         } else {
-            /* directory / symlink / control member: consume its data + padding */
+            /* directory / hard link / control member: consume its data + padding */
             unsigned long skip = padded;
             while (skip > 0) { unsigned char t[512]; ssize_t g = read_full(in, t, skip < 512 ? skip : 512); if (g <= 0) break; skip -= (size_t)g; }
         }

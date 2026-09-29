@@ -6,7 +6,8 @@
  * compatibility layer (API version + the capabilities Cloud Hypervisor requires),
  * and shows whether virtualization is available IN THIS DOMAIN.  A "Launch Cloud
  * Hypervisor" button starts the packaged VMM (/cloud-hypervisor) confined into
- * this domain, via the Domain Manager's spawn control (/config/domain.action).
+ * this domain with a plain fork + execve (the kernel keeps it in this domain and runs it only
+ * if the domain was delegated "Virtual Machines").
  *
  * Listed in the System domain's Applications tab (see DMAPPS in wl-domain-manager.c)
  * and portable to other domains from that tab's per-app "Domains" checklist — so a
@@ -36,6 +37,8 @@
 #include <ft2build.h>
 #include FT_FREETYPE_H
 #include "xdg-shell-client-protocol.h"
+
+extern char **environ;
 
 #ifndef MFD_CLOEXEC
 #define MFD_CLOEXEC 0x0001U
@@ -86,7 +89,8 @@ struct app {
     int    kvm_errno;              // errno from the open (when !kvm_ok)
     int    kvm_api;                // KVM_GET_API_VERSION (-1 if unknown)
     int    cap_irqchip, cap_usermem, cap_irqrouting, cap_irqfd, cap_ioeventfd, cap_signalmsi;
-    char   status[160];            // last action / launch result
+    char   status[160];            // the virtualization probe's verdict (refreshed every few seconds)
+    char   launch[160];            // the last launch's result -- its own line, so a refresh keeps it
     int    hover_btn;              // 0=Launch button, 3=close, -1=none
 };
 
@@ -101,7 +105,11 @@ static void probe_kvm(struct app *a){
     a->cap_irqfd = a->cap_ioeventfd = a->cap_signalmsi = 0;
     int fd = open("/dev/kvm", O_RDWR);
     if (fd < 0){ a->kvm_errno = errno;
-        snprintf(a->status, sizeof a->status, "/dev/kvm not available in this domain (%s)", strerror(errno));
+        if (errno == EACCES)   /* the domain's device policy: Domain Manager > Permissions > Virtualization */
+            snprintf(a->status, sizeof a->status,
+                     "Virtualization is not enabled for this domain (Domain Manager > Permissions > Virtualization)");
+        else
+            snprintf(a->status, sizeof a->status, "/dev/kvm not available in this domain (%s)", strerror(errno));
         return; }
     a->kvm_ok = 1;
     a->kvm_api        = (int)ioctl(fd, KVM_GET_API_VERSION, 0);
@@ -115,32 +123,60 @@ static void probe_kvm(struct app *a){
     snprintf(a->status, sizeof a->status, "Virtualization available (KVM API v%d)", a->kvm_api);
 }
 
-/* Launch Cloud Hypervisor confined into THIS domain, via the kernel's spawn control:
- * "spawn self /cloud-hypervisor" on /config/domain.action runs it in the CALLER's own domain.
- * appgate: "self" is resolved by the kernel from this task's domain -- never from the EPIN_DOMAIN
- * environment variable, which anything that starts this program can set.  Only the Domain Manager
- * may spawn into a different domain.  The domain must have /dev/kvm (DEVCLASS_VIRT) for CH to do
- * anything -- that is what the probe above shows. */
+/* Start Cloud Hypervisor IN THIS DOMAIN: a plain fork + execve.  The kernel keeps an exec'd program
+ * in the caller's domain and runs it only if the domain was delegated "Virtual Machines" (Cloud
+ * Hypervisor is part of that application), so no domain-control endpoint is needed -- which matters,
+ * because a domain other than System cannot open /config at all.  For now it runs `--version` and
+ * shows the answer: proof the hypervisor starts here, until guest configuration lands in this app.
+ * The child's stdout comes back through a pipe (no close-on-exec in this kernel, so the read side
+ * simply waits for the child to exit, bounded by a poll timeout). */
 static void launch_ch(struct app *a){
     if (!a->kvm_ok){
-        snprintf(a->status, sizeof a->status, "Cannot launch: this domain has no /dev/kvm access");
+        if (a->kvm_errno == EACCES)
+            snprintf(a->launch, sizeof a->launch,
+                     "Cannot launch: enable Virtualization for this domain in the Domain Manager (Permissions)");
+        else
+            snprintf(a->launch, sizeof a->launch, "Cannot launch: this domain has no /dev/kvm");
         return; }
-    static const char cmd[] = "spawn self /cloud-hypervisor";
-    int fd = open("/config/domain.action", O_WRONLY);
-    if (fd < 0){
-        snprintf(a->status, sizeof a->status, "Launch failed: no domain control here (%s)", strerror(errno));
-        return; }
-    ssize_t w = write(fd, cmd, sizeof cmd - 1);
-    int e = (w < 0) ? errno : 0;
-    close(fd);
-    if (w == (ssize_t)(sizeof cmd - 1))
-        snprintf(a->status, sizeof a->status, "Launched Cloud Hypervisor in this domain");
-    else if (e == EACCES)
-        snprintf(a->status, sizeof a->status, "Launch refused: Virtual Machines is not delegated to this domain");
-    else if (e == EPERM)
-        snprintf(a->status, sizeof a->status, "Launch refused: not permitted from here");
-    else
-        snprintf(a->status, sizeof a->status, "Launch failed: %s", e ? strerror(e) : "could not write control");
+    int pfd[2];
+    if (pipe(pfd) < 0){ snprintf(a->launch, sizeof a->launch, "Launch failed: pipe (%s)", strerror(errno)); return; }
+    pid_t pid = fork();
+    if (pid < 0){ close(pfd[0]); close(pfd[1]);
+        snprintf(a->launch, sizeof a->launch, "Launch failed: fork (%s)", strerror(errno)); return; }
+    if (pid == 0){
+        dup2(pfd[1], 1); dup2(pfd[1], 2);
+        close(pfd[0]); close(pfd[1]);
+        for (int fd = 3; fd < 64; fd++) close(fd);           /* not our Wayland socket */
+        char *argv[] = { "/cloud-hypervisor", "--version", NULL };
+        execve(argv[0], argv, environ);
+        dprintf(1, "EXEC-ERRNO %d\n", errno);                 /* refused / missing: say why */
+        _exit(127);
+    }
+    close(pfd[1]);
+    char out[256]; size_t n = 0;
+    for (;;){
+        struct pollfd p = { .fd = pfd[0], .events = POLLIN, .revents = 0 };
+        if (poll(&p, 1, 3000) <= 0) break;                 /* bounded: never hang the UI */
+        ssize_t r = read(pfd[0], out + n, sizeof out - 1 - n);
+        if (r <= 0) break;
+        n += (size_t)r;
+        if (n >= sizeof out - 1) break;
+    }
+    out[n] = 0;
+    close(pfd[0]);
+    int st = 0; (void)waitpid(pid, &st, WNOHANG);
+    char *nl = strchr(out, '\n'); if (nl) *nl = 0;
+    int e = 0;
+    if (sscanf(out, "EXEC-ERRNO %d", &e) == 1){
+        if (e == EACCES)
+            snprintf(a->launch, sizeof a->launch, "Launch refused: Virtual Machines is not delegated to this domain");
+        else
+            snprintf(a->launch, sizeof a->launch, "Launch failed: %s", strerror(e));
+    } else if (out[0]){
+        snprintf(a->launch, sizeof a->launch, "Started in this domain: %s", out);
+    } else {
+        snprintf(a->launch, sizeof a->launch, "Cloud Hypervisor started (no output)");
+    }
 }
 
 static int load_file(const char *path, unsigned char **out, size_t *out_size){
@@ -256,12 +292,13 @@ static void draw(struct app *app){
         }
         y += ((int)(sizeof caps/sizeof caps[0])+1)/2 * 20 + 6;
     } else {
-        draw_text(app, "Grant this domain access with:", 16, y, 340, 12, DIM); y += 18;
-        draw_text(app, "  devon <domain> virt", 16, y, 340, 13, TXT); y += 22;
+        draw_text(app, "To allow virtual machines here:", 16, y, 420, 12, DIM); y += 18;
+        draw_text(app, "  Domain Manager > this domain > Permissions > Virtualization", 16, y, 520, 13, TXT); y += 22;
     }
 
-    /* --- status line (last action) --- */
+    /* --- status lines: the last launch's result (kept), then the probe's verdict (refreshed) --- */
     { int sy = app->height - BTN_MARGIN - BTN_H - 24;
+      if (app->launch[0]) draw_text(app, app->launch, 16, sy - 20, app->width-32, 13, TXT);
       draw_text(app, app->status, 16, sy, app->width-32, 12, DIM); }
 
     /* --- action button --- */
@@ -335,7 +372,7 @@ static void handle_click(struct app *app){
     /* Launch Cloud Hypervisor button */
     { int bx,by,bw,bh; btn_rect(app,0,&bx,&by,&bw,&bh);
       if (point_in(app->pointer_x, app->pointer_y, bx, by, bw, bh)){
-          launch_ch(app); probe_kvm(app); redraw_commit(app); return; } }
+          probe_kvm(app); launch_ch(app); redraw_commit(app); return; } }
 }
 
 static int hit_test_btn(struct app *app){
@@ -374,7 +411,7 @@ static void kb_key(void *d, struct wl_keyboard *k, uint32_t se, uint32_t t, uint
     if (state != 1) return;              /* press only */
     if (key==1){ log_line("VMM: esc"); exit(0); }                 /* Esc quits */
     if (key==19){ probe_kvm(a); redraw_commit(a); return; }        /* R = refresh KVM probe */
-    if (key==28 || key==57){ launch_ch(a); probe_kvm(a); redraw_commit(a); return; } /* Enter/Space = launch */
+    if (key==28 || key==57){ probe_kvm(a); launch_ch(a); redraw_commit(a); return; } /* Enter/Space = launch */
 }
 static void kb_modifiers(void *d, struct wl_keyboard *k, uint32_t se, uint32_t md, uint32_t ml, uint32_t lo, uint32_t g){ (void)d;(void)k;(void)se;(void)md;(void)ml;(void)lo;(void)g; }
 static void kb_repeat(void *d, struct wl_keyboard *k, int32_t r, int32_t delay){ (void)d;(void)k;(void)r;(void)delay; }

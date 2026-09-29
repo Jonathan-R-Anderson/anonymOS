@@ -42,6 +42,8 @@ FORMAT
                 u32 accent (0xRRGGBB, the badge colour)
   pkg    (28 B) u32 name, u32 ver, u32 desc, u32 license,
                 u32 sizeKb (download), u32 instKb (installed), u16 repoIdx, u16 category
+  trailer (after the string pool) "HOSSUM1\0", u32 count, u32 strOff[count]: each package's apk
+          control checksum ("Q1<base64 SHA-1>", APKINDEX C:), 0 = none
 """
 import gzip, io, os, re, struct, sys, tarfile, time, urllib.request, xml.etree.ElementTree as ET
 
@@ -127,6 +129,11 @@ def parse_apk(blob):
             "name": f.get("P", ""), "ver": f.get("V", ""), "desc": f.get("T", ""),
             "license": f.get("L", ""), "size": int(f.get("S", "0") or 0),
             "inst": int(f.get("I", "0") or 0), "section": "",
+            # "Q1<base64 SHA-1>" of the package's control segment: the anchor the in-OS fetcher
+            # verifies a downloaded .apk against (control SHA-1 == this; data SHA-256 == the
+            # control's .PKGINFO datahash).  Shipping it in the image means the mirror, the
+            # network and the mirror's own index are never trusted.
+            "sum": f.get("C", ""),
         }
 
 
@@ -370,7 +377,7 @@ def main():
         return off
 
     cat_offs = [s(c) for c in CATEGORIES]
-    repo_recs, pkg_recs = [], []
+    repo_recs, pkg_recs, sum_offs = [], [], []
     for ri, repo in enumerate(REPOS):
         pkgs, total = harvest(repo, limit, offline)
         if pkgs is None:
@@ -382,6 +389,7 @@ def main():
                                         min(p["size"] // 1024, 0xFFFFFFFF),
                                         min(p["inst"] // 1024, 0xFFFFFFFF),
                                         ri, categorize(p)))
+            sum_offs.append(s(p["sum"]) if p.get("sum") else 0)
         repo_recs.append(struct.pack("<IIIIIIIBBBBII",
                                      s(repo["name"]), s(repo["distro"]), s(repo["pkgmgr"]),
                                      s(repo["base"]), s(repo["arch"]),
@@ -405,6 +413,11 @@ def main():
         f.write(b"".join(repo_recs))
         f.write(b"".join(pkg_recs))
         f.write(bytes(strings))
+        # TRAILER (after the string pool, so readers of the v1 layout are unaffected):
+        #   "HOSSUM1\0", u32 count (== pkgCount), u32 strOff per package -- the package's apk
+        #   control checksum, 0 = none (non-apk repositories).
+        f.write(b"HOSSUM1\0" + struct.pack("<I", len(sum_offs)))
+        f.write(b"".join(struct.pack("<I", o) for o in sum_offs))
     print("[software-catalog] %s: %d packages from %d repositories, %.1f MiB" %
           (out, len(pkg_recs), len(repo_recs), os.path.getsize(out) / 1048576.0))
     if not pkg_recs:

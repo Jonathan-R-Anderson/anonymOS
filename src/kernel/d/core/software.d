@@ -122,10 +122,28 @@ public bool softwareControlWrite(const(char)* cmd, size_t len) {
         return false;
     }
 
-    // 3. Network is up: hand the fetch to the userspace helper, which speaks HTTP through the LKL
+    // 4. Network is up: hand the fetch to the userspace helper, which speaks HTTP through the LKL
     //    socket shim (the kernel has no HTTP client and should not grow one).  The helper writes
     //    its own progress into /run/pkg/<name>.log; the status here reports the hand-off honestly
     //    rather than claiming an install that has not finished.
+    // 3. Pin the package to this image's catalog: the version, the repository URL and -- the point --
+    //    the checksum the download must match all come from the catalog shipped in the image, never
+    //    from the request, the mirror or the mirror's index.  A package the catalog cannot pin cannot
+    //    be verified, so it is not installed.
+    char[64] pver = 0, psum = 0;
+    char[SW_ARG_MAX] pbase = 0;
+    {
+        import core.syscalls.posix : softwareCatalogPin;
+        if (!softwareCatalogPin(name.ptr, url.ptr, pver.ptr, pver.length, psum.ptr, psum.length,
+                                pbase.ptr, pbase.length)) {
+            swSet("refused ", name[0 .. nl],
+                  " cannot be verified: this image's catalog has no checksum for it, so a download could not be checked.");
+            return false;
+        }
+        klog("[software] pinned "); klog(name.ptr); klog(" "); klog(pver.ptr);
+        klog(" control="); klog(psum.ptr); klog("\n");
+    }
+
     {
         import core.kernel_main : softwareSpawnFetcher;
         import core.syscalls.posix : softwareCallerDomain;
@@ -137,7 +155,7 @@ public bool softwareControlWrite(const(char)* cmd, size_t len) {
         // files landed.
         const uint reqDom = softwareCallerDomain();
         const uint placeDom = (reqDom == domainSystemId()) ? 0 : reqDom;
-        if (softwareSpawnFetcher(mgr.ptr, name.ptr, url.ptr)) {
+        if (softwareSpawnFetcher(mgr.ptr, name.ptr, pbase.ptr, pver.ptr, psum.ptr)) {
             // Clear any stale markers from a previous install of the same package BEFORE arming the
             // poll, so softwarePoll() cannot fire on an old .done while this fetch is still running.
             swClearMarkers(name.ptr, nl);

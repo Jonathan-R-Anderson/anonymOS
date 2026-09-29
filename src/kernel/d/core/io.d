@@ -24,6 +24,7 @@ ubyte inb(ushort port) {
 // caps, never latches — serial.log keeps working for testing.  The byte is always in the klog ring
 // above (→ /run/klog → the Logs app + the USB stick), so a dropped serial copy loses nothing.
 __gshared bool g_serialDead      = false;
+__gshared uint g_serialProbe = 0;   // re-probe cadence while g_serialDead (see kchar)
 __gshared uint g_serialCapStreak = 0;
 // Serial is SYNCHRONOUS and runs with the BKL held, so every byte written after the desktop is up
 // is a stall the compositor and the installer feel.  Two switches keep the steady state quiet:
@@ -38,7 +39,16 @@ __gshared bool g_klogRingOnly = false;
 void kchar(char c) {
     klogRingPut(c);
     if (g_klogRingOnly) return;                      // ring-only scope (see above)
-    if (g_serialDead) return;                        // UART proven stuck/unread → never spin here again
+    if (g_serialDead) {                              // UART proven stuck/unread → never SPIN here again,
+        // but re-probe cheaply: one status read every 256 chars.  A UART that is merely congested
+        // (VirtualBox's file backend under a burst of compositor debug output) drains and is revived;
+        // a machine with no UART never shows an empty transmitter and stays dead at ~no cost.
+        // Without this a transient stall silenced serial for the rest of the boot.
+        if ((++g_serialProbe & 0xFF) != 0) return;
+        if ((inb(0x3F8 + 5) & 0x20) == 0) return;
+        g_serialDead = false;
+        g_serialCapStreak = 0;
+    }
     uint spin = 0;
     while ((inb(0x3F8 + 5) & 0x20) == 0) {
         if (++spin > 4096) {                         // THR never emptied → this char is lost to serial

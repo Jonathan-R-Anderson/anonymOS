@@ -351,6 +351,7 @@ public uint domainBuildNamespace(uint domObjId) {
     nsBind(ns, "/dev/tty\0".ptr,     root, RW);
     nsBind(ns, "/dev/shm\0".ptr,     root, RW);   // POSIX shm: rtfs keeps each domain's objects private
     nsBind(ns, "/dev/dri\0".ptr,     root, RW);
+    nsBind(ns, "/dev/kvm\0".ptr,     root, RW);   // VMs: usable only where Virtualization is enabled
     nsBind(ns, "/dev/urandom\0".ptr, root, RO);
     nsBind(ns, "/dev/random\0".ptr,  root, RO);
 
@@ -376,7 +377,6 @@ public uint domainBuildNamespace(uint domObjId) {
         nsBind(ns, "/display.conf\0".ptr,       root, RW);
         // appgate: System now RUNS things (the Domain Manager, Software Center, VMs) rather than only
         // being browsed, so the device nodes they write must be writable here too ("/" above is RO).
-        nsBind(ns, "/dev/kvm\0".ptr,            root, RW);   // still gated by DEVCLASS_VIRT
         // The runtime denies above do not apply to the administration domain.
         nsBind(ns, "/etc/shadow\0".ptr,         root, RO);
         nsBind(ns, "/etc/wpa_supplicant\0".ptr, root, RO);

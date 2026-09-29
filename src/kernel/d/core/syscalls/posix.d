@@ -7197,13 +7197,74 @@ public ulong softwareCatalogModule() @nogc nothrow {
     return size;
 }
 
-public void pkgFetchSetRequest(const(char)* pkgmgr, const(char)* name, const(char)* url) @nogc nothrow {
-    __gshared char[320] req;
+// Integrity: pin an apk package to this image's catalog.  The catalog was built on the build host
+// from Alpine's index and ships inside the (verified) image, so the version it lists, the control
+// checksum it carries (APKINDEX "C:", "Q1<base64 SHA-1>") and the repository URL are trusted --
+// unlike the mirror, the network and the mirror's own index, which the fetcher only speaks HTTP to.
+// Returns false when the package is not in an installable apk repository of the catalog, or the
+// catalog carries no checksum for it (an older catalog): then there is nothing to verify against.
+// `wantBase` (the repository the Software Center showed it under) picks among repositories.
+public bool softwareCatalogPin(const(char)* name, const(char)* wantBase,
+                               char* verOut, size_t verCap, char* sumOut, size_t sumCap,
+                               char* baseOut, size_t baseCap) @nogc nothrow {
+    if (name is null || name[0] == 0) return false;
+    ulong phys, size;
+    if (!findBootModule("/software-catalog.bin\0".ptr, phys, size) || phys == 0 || size < 52) return false;
+    auto b = cast(const(ubyte)*)phys_to_virt(phys);
+    static uint rd32(const(ubyte)* p) { return p[0] | (p[1] << 8) | (p[2] << 16) | (cast(uint)p[3] << 24); }
+    immutable string magic = "HOSSOFT1";
+    foreach (i; 0 .. 8) if (b[i] != magic[i]) return false;
+    const uint repoCount = rd32(b + 12), pkgCount = rd32(b + 16);
+    const uint repoOff = rd32(b + 20), pkgOff = rd32(b + 24), strOff = rd32(b + 28), strLen = rd32(b + 32);
+    if (cast(ulong)repoOff + 40UL * repoCount > size || cast(ulong)pkgOff + 28UL * pkgCount > size
+        || cast(ulong)strOff + strLen > size) return false;
+    const ulong t = cast(ulong)strOff + strLen;                       // the checksum trailer
+    immutable string tmag = "HOSSUM1\0";
+    if (t + 12 > size) return false;
+    foreach (i; 0 .. 8) if (b[t + i] != cast(ubyte)tmag[i]) return false;
+    if (rd32(b + t + 8) != pkgCount || t + 12 + 4UL * pkgCount > size) return false;
+    const(ubyte)* sums = b + t + 12;
+    const(char)* str(uint off) { return (off < strLen) ? cast(const(char)*)(b + strOff + off) : "".ptr; }
+    static bool eq(const(char)* a, const(char)* c) {
+        size_t i = 0; for (; a[i] != 0 && c[i] != 0; ++i) if (a[i] != c[i]) return false; return a[i] == c[i];
+    }
+    static void cpy(char* d, size_t cap, const(char)* s) {
+        size_t i = 0; for (; s[i] != 0 && i + 1 < cap; ++i) d[i] = s[i]; d[i] = 0;
+    }
+    int best = -1;
+    foreach (i; 0 .. pkgCount) {
+        const(ubyte)* rec = b + pkgOff + 28UL * i;
+        if (!eq(str(rd32(rec)), name)) continue;
+        const uint ri = rec[24] | (rec[25] << 8);
+        if (ri >= repoCount) continue;
+        const(ubyte)* rr = b + repoOff + 40UL * ri;
+        if (!eq(str(rd32(rr + 8)), "apk".ptr) || rr[28] == 0) continue;      // pkgmgr, installable
+        if (rd32(sums + 4UL * i) == 0) continue;                           // no checksum: unverifiable
+        if (best < 0) best = cast(int)i;
+        if (wantBase !is null && wantBase[0] != 0 && eq(str(rd32(rr + 12)), wantBase)) { best = cast(int)i; break; }
+    }
+    if (best < 0) return false;
+    const(ubyte)* rec = b + pkgOff + 28UL * cast(uint)best;
+    const(ubyte)* rr = b + repoOff + 40UL * (rec[24] | (rec[25] << 8));
+    cpy(verOut, verCap, str(rd32(rec + 4)));
+    cpy(sumOut, sumCap, str(rd32(sums + 4UL * cast(uint)best)));
+    cpy(baseOut, baseCap, str(rd32(rr + 12)));
+    return verOut[0] != 0 && sumOut[0] != 0 && baseOut[0] != 0;
+}
+
+// The request line: "<pkgmgr> <name> <baseurl> <version> <control-checksum>".  The last three come
+// from softwareCatalogPin -- the fetcher downloads exactly that version and refuses anything whose
+// hashes do not chain back to that checksum.
+public void pkgFetchSetRequest(const(char)* pkgmgr, const(char)* name, const(char)* url,
+                               const(char)* ver, const(char)* sum) @nogc nothrow {
+    __gshared char[480] req;
     uint n = 0;
     void put(const(char)* s) { if (s is null) return; for (uint i = 0; s[i] != 0 && n + 2 < req.length; ++i) req[n++] = s[i]; }
     put(pkgmgr); if (n + 1 < req.length) req[n++] = ' ';
     put(name);   if (n + 1 < req.length) req[n++] = ' ';
-    put(url);    if (n + 1 < req.length) req[n++] = '\n';
+    put(url);    if (n + 1 < req.length) req[n++] = ' ';
+    put(ver);    if (n + 1 < req.length) req[n++] = ' ';
+    put(sum);    if (n + 1 < req.length) req[n++] = '\n';
     // appgate: the Software Center now runs in the System domain, so this runs in a System-bound
     // task's context -- create the request as a SHARED node (domain 0), which is what the fetcher
     // (unconfined infrastructure) and every later reader expect, rather than a System-private one.
@@ -7277,6 +7338,74 @@ public int softwareApkTryComplete(const(char)* name, uint dom) @nogc nothrow {
     return rc;
 }
 
+// Integrity: may a package place a file at the relative path `rel`?  The fetcher verified the
+// package's bytes against the image's catalog, but a verified package is still somebody else's
+// file list, and the placement runs with the kernel's authority -- so it is limited to what a
+// package legitimately adds:
+//   - a clean relative path under the software trees (usr/, etc/, bin/, sbin/, lib/, opt/, var/lib/),
+//     with no "..", ".", "//" or control characters;
+//   - never the loader, its search-path file, shell start-up files, accounts, credentials, network
+//     secrets or the compositor's config -- files every program or the compositor would load;
+//   - never an existing file (no overwriting what the system or another package put there);
+//   - never a file named like a boot module (the loader searches /lib before the boot modules'
+//     /usr/lib, so libwayland-client.so.0 in lib/ would replace the system library for EVERY
+//     program, the Domain Manager included).
+// Returns null if allowed, else a short reason.
+private const(char)* softwarePlacementRefusal(const(ubyte)* rel, uint rlen) @nogc nothrow {
+    if (rlen == 0 || rlen > 400) return "bad length".ptr;
+    if (rel[0] == '/') return "absolute path".ptr;
+    foreach (i; 0 .. rlen) if (rel[i] < 0x20 || rel[i] >= 0x7F || rel[i] == '\\') return "control or non-ASCII character".ptr;
+    // components: no "", ".", ".."
+    uint cs = 0;
+    foreach (i; 0 .. rlen + 1) {
+        if (i < rlen && rel[i] != '/') continue;
+        const uint cl = i - cs;
+        if (cl == 0) return "empty path component".ptr;
+        if (cl == 1 && rel[cs] == '.') return "'.' component".ptr;
+        if (cl == 2 && rel[cs] == '.' && rel[cs + 1] == '.') return "'..' component".ptr;
+        cs = i + 1;
+    }
+    static bool pre(const(ubyte)* r, uint n, string p) {
+        if (n < p.length) return false;
+        foreach (i; 0 .. p.length) if (r[i] != p[i]) return false;
+        return true;
+    }
+    static immutable string[] ALLOWED = ["usr/", "etc/", "bin/", "sbin/", "lib/", "opt/", "var/lib/"];
+    bool ok = false;
+    foreach (a; ALLOWED) if (pre(rel, rlen, a)) { ok = true; break; }
+    if (!ok) return "outside the software trees".ptr;
+    static immutable string[] DENIED = [
+        "lib/ld-musl", "usr/lib/ld-musl", "etc/ld-musl",               // the dynamic loader + its path
+        "etc/profile", "etc/zsh", "etc/zprofile", "etc/zlogin", "etc/environment",   // shell start-up
+        "etc/passwd", "etc/shadow", "etc/group", "etc/sudoers", "etc/doas",          // accounts
+        "etc/ssh", "etc/dropbear", "etc/wpa_supplicant", "etc/NetworkManager",       // credentials
+        "etc/resolv.conf", "etc/hosts", "etc/nsswitch.conf",                         // name resolution
+        "etc/hypr", "etc/xdg/hypr",                                                  // the compositor
+        "etc/fonts/fonts.conf",                                                      // loaded by every app
+    ];
+    foreach (d; DENIED) if (pre(rel, rlen, d)) return "a protected system file".ptr;
+    // an existing node: never overwrite
+    char[600] abs = void;
+    abs[0] = '/';
+    foreach (i; 0 .. rlen) abs[1 + i] = cast(char)rel[i];
+    abs[1 + rlen] = 0;
+    { int par; const(char)* lf; size_t ll;
+      if (rtResolve(abs.ptr, par, lf, ll) >= 0) return "already exists".ptr; }
+    // a boot module's name anywhere: it would shadow the system copy
+    uint bs = 0;
+    foreach (i; 0 .. rlen) if (rel[i] == '/') bs = i + 1;
+    if (g_mboot_modules !is null && g_module_count > 0) {
+        auto records = cast(BootModuleRecord*)g_mboot_modules;
+        foreach (i; 0 .. cast(size_t)g_module_count) {
+            const(char)* mb = cstrLastComponent(records[i].name.ptr, records[i].name.length);
+            size_t k = 0;
+            while (bs + k < rlen && mb[k] != 0 && mb[k] == cast(char)rel[bs + k]) ++k;
+            if (bs + k == rlen && mb[k] == 0) return "would shadow a system module".ptr;
+        }
+    }
+    return null;
+}
+
 private int softwareApkInstallDoneInner(const(char)* name) @nogc nothrow {
     if (name is null || name[0] == 0) return -1;
 
@@ -7316,7 +7445,7 @@ private int softwareApkInstallDoneInner(const(char)* name) @nogc nothrow {
     int mi = rtResolve(manPath.ptr, par, lf, ll);
     if (mi < 0 || g_rt[mi].kind != RT_REG || g_rt[mi].data is null) return -1;
 
-    int placed = 0;
+    int placed = 0, refused = 0;
     const(ubyte)* md = g_rt[mi].data;
     uint msz = g_rt[mi].size;
     uint p = 0;
@@ -7336,6 +7465,19 @@ private int softwareApkInstallDoneInner(const(char)* name) @nogc nothrow {
 
         int si = rtResolve(src.ptr, par, lf, ll);
         if (si < 0 || g_rt[si].kind != RT_REG) continue;
+        {   const(char)* why = softwarePlacementRefusal(md + start, rlen);
+            if (why !is null) {
+                static __gshared uint g_swRefuseN = 0;
+                if (g_swRefuseN < 32) {
+                    ++g_swRefuseN;
+                    char[420] shown = void; uint k = 0;
+                    for (; k < rlen && k + 1 < shown.length; ++k) shown[k] = cast(char)md[start + k];
+                    shown[k] = 0;
+                    klog("[software] refused to place "); klog(shown.ptr); klog(": "); klog(why); klog("\n");
+                }
+                ++refused;
+                continue;
+            } }
         // rtAddFile takes a RELATIVE path (no leading '/'); the manifest paths are already relative.
         rtAddFile(cast(const(char)*)(md + start), rlen, g_rt[si].data, g_rt[si].size);
         ++placed;
@@ -7360,12 +7502,21 @@ public void softwareApkInstallSelfTest() @nogc nothrow {
 
     enum string CONTENT  = "#!/bin/sh\necho hos-apk-selftest\n";
     enum string STAGED   = "var/cache/apk/hosselftest.files/usr/bin/hosselftest";
+    // Integrity: a verified package still may not replace system files -- stage three it must NOT
+    // be able to place: a library named like a boot module (would shadow it for every program), a
+    // shell start-up file, and a path outside the software trees.
+    enum string EVIL1    = "var/cache/apk/hosselftest.files/lib/libwayland-client.so.0";
+    enum string EVIL2    = "var/cache/apk/hosselftest.files/etc/zshenv";
+    enum string EVIL3    = "var/cache/apk/hosselftest.files/home/user/planted";
     enum string MANP     = "var/cache/apk/hosselftest.manifest";
-    enum string MANBODY  = "usr/bin/hosselftest\n";
+    enum string MANBODY  = "usr/bin/hosselftest\nlib/libwayland-client.so.0\netc/zshenv\nhome/user/planted\n";
     enum string DONEP    = "run/pkg/hosselftest.done";
-    enum string DONEBODY = "apk hosselftest 1.0 /var/cache/apk/hosselftest.files /var/cache/apk/hosselftest.manifest 1\n";
+    enum string DONEBODY = "apk hosselftest 1.0 /var/cache/apk/hosselftest.files /var/cache/apk/hosselftest.manifest 4\n";
 
     rtAddFile(STAGED.ptr, STAGED.length, cast(const(ubyte)*)CONTENT.ptr,  cast(uint)CONTENT.length);
+    rtAddFile(EVIL1.ptr,  EVIL1.length,  cast(const(ubyte)*)CONTENT.ptr,  cast(uint)CONTENT.length);
+    rtAddFile(EVIL2.ptr,  EVIL2.length,  cast(const(ubyte)*)CONTENT.ptr,  cast(uint)CONTENT.length);
+    rtAddFile(EVIL3.ptr,  EVIL3.length,  cast(const(ubyte)*)CONTENT.ptr,  cast(uint)CONTENT.length);
     rtAddFile(MANP.ptr,   MANP.length,   cast(const(ubyte)*)MANBODY.ptr,  cast(uint)MANBODY.length);
     rtAddFile(DONEP.ptr,  DONEP.length,  cast(const(ubyte)*)DONEBODY.ptr, cast(uint)DONEBODY.length);
 
@@ -7375,9 +7526,25 @@ public void softwareApkInstallSelfTest() @nogc nothrow {
     int idx = rtResolve("/usr/bin/hosselftest\0".ptr, par, lf, ll);
     bool ok = (placed == 1) && (idx >= 0) && (g_rt[idx].kind == RT_REG) && (g_rt[idx].size == cast(uint)CONTENT.length);
     if (ok) foreach (k; 0 .. cast(uint)CONTENT.length) if (g_rt[idx].data[k] != cast(ubyte)CONTENT[k]) { ok = false; break; }
+    const bool refusedAll = rtResolve("/lib/libwayland-client.so.0\0".ptr, par, lf, ll) < 0
+                         && rtResolve("/etc/zshenv\0".ptr, par, lf, ll) < 0
+                         && rtResolve("/home/user/planted\0".ptr, par, lf, ll) < 0;
+    ok = ok && refusedAll;
 
-    klog(ok ? "[software] apk-install self-test PASS (synthetic pkg placed at /usr/bin/hosselftest)\n"
+    klog(ok ? "[software] apk-install self-test PASS (placed /usr/bin/hosselftest; refused a module shadow, a shell rc, a path outside the software trees)\n"
             : "[software] apk-install self-test FAIL\n");
+
+    // Integrity: the catalog can pin a real Alpine package (version + control checksum) and refuses
+    // a name it does not list -- the kernel half of the verified-download chain.
+    if (softwareCatalogModule() != 0) {
+        char[64] pv = 0, ps = 0; char[160] pb = 0;
+        const bool pinOk = softwareCatalogPin("busybox\0".ptr, null, pv.ptr, pv.length, ps.ptr, ps.length, pb.ptr, pb.length)
+                           && ps[0] == 'Q' && ps[1] == '1';
+        char[64] nv = 0, ns = 0; char[160] nb = 0;
+        const bool pinNo = !softwareCatalogPin("no-such-package-hos\0".ptr, null, nv.ptr, nv.length, ns.ptr, ns.length, nb.ptr, nb.length);
+        if (pinOk && pinNo) { klog("[software] catalog pin self-test PASS (busybox "); klog(pv.ptr); klog(" "); klog(ps.ptr); klog("; unknown refused)\n"); }
+        else klog("[software] catalog pin self-test FAIL\n");
+    }
 
     // Leave no trace: drop the placed file + the marker (the tiny staged tmp under /var/cache is harmless).
     linux_sys_unlink(cast(ulong)"/usr/bin/hosselftest\0".ptr);

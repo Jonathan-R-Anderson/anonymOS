@@ -18,9 +18,11 @@
  * the plain read/write syscalls too, for the same reason and to keep behaviour predictable.)
  *
  * Decompression is zlib (musl-static, from the gtk-stack sysroot).  No TLS: the LKL path has no TLS
- * stack, so the mirror is spoken to over plain HTTP.  Alpine's index/packages are signed; verifying
- * that signature before execution is future work and is called out in the log rather than skipped
- * silently.
+ * stack, so the mirror is spoken to over plain HTTP -- which is why nothing it sends is trusted.  The
+ * package is PINNED by the image's own catalog (the kernel puts the version and Alpine's control
+ * checksum, APKINDEX "C:", in the request): the downloaded .apk's control segment must SHA-1 to that
+ * checksum and its data segment must SHA-256 to the "datahash" the control segment carries, and only
+ * that verified data segment is unpacked.  A tampered or substituted package installs nothing.
  */
 #define _GNU_SOURCE
 
@@ -29,6 +31,7 @@
 #include <fcntl.h>
 #include <netdb.h>
 #include <stdarg.h>
+#include <stdint.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -201,45 +204,6 @@ static int split_url(const char *url, char *host, size_t hcap, int *port, char *
     return 0;
 }
 
-/* Inflate a gzip file (possibly several concatenated gzip members, as an .apk is) to outpath.
- * Returns 0 on success, -1 on error.  zlib's 15+32 window auto-detects the gzip header; on
- * Z_STREAM_END we reset and keep going so all concatenated members decompress into one stream. */
-static int gunzip_to_file(const char *inpath, const char *outpath)
-{
-    int in = open(inpath, O_RDONLY);
-    if (in < 0) { plog("[pkg] gunzip: cannot open %s (errno %d)", inpath, errno); return -1; }
-    int out = open(outpath, O_WRONLY | O_CREAT | O_TRUNC, 0644);
-    if (out < 0) { plog("[pkg] gunzip: cannot write %s (errno %d)", outpath, errno); close(in); return -1; }
-
-    z_stream zs;
-    memset(&zs, 0, sizeof zs);
-    if (inflateInit2(&zs, 15 + 32) != Z_OK) { close(in); close(out); return -1; }
-
-    unsigned char inbuf[16384], outbuf[16384];
-    int rc = 0;
-    for (;;) {
-        ssize_t n = read(in, inbuf, sizeof inbuf);
-        if (n < 0) { if (errno == EINTR) continue; rc = -1; break; }
-        if (n == 0) break;                             /* EOF */
-        zs.next_in = inbuf;
-        zs.avail_in = (uInt)n;
-        while (zs.avail_in > 0) {
-            zs.next_out = outbuf;
-            zs.avail_out = sizeof outbuf;
-            int r = inflate(&zs, Z_NO_FLUSH);
-            size_t have = sizeof outbuf - zs.avail_out;
-            if (have) { ssize_t w = write(out, outbuf, have); (void)w; }
-            if (r == Z_STREAM_END) { inflateReset(&zs); continue; } /* next concatenated member */
-            if (r != Z_OK) { plog("[pkg] gunzip: inflate error %d", r); rc = -1; break; }
-        }
-        if (rc) break;
-    }
-    inflateEnd(&zs);
-    close(in);
-    close(out);
-    return rc;
-}
-
 /* octal field parse (tar headers store sizes/modes as NUL/space-terminated octal ASCII). */
 static unsigned long oct(const unsigned char *f, size_t n)
 {
@@ -323,50 +287,268 @@ static int ustar_extract_data(const char *tarpath, const char *stagedir, int man
     return count;
 }
 
-/* Find the version of package `name` in a decompressed APKINDEX at indexpath.  APKINDEX is a set of
- * blank-line-separated records; within a record `P:` is the name and `V:` the version.  Copies the
- * version of the matching record into ver (NUL-terminated).  Returns 0 on success, -1 if not found. */
-static int apk_find_version(const char *indexpath, const char *name, char *ver, size_t vercap)
+/* ── integrity: SHA-1, SHA-256, base64 ────────────────────────────────────────────────────── *
+ * Small, dependency-free implementations (FIPS 180-4).  They hash the COMPRESSED bytes of each gzip
+ * stream of the .apk, which is what Alpine's index and .PKGINFO commit to. */
+typedef struct { uint32_t h[5]; uint64_t len; unsigned char buf[64]; size_t n; } sha1_ctx;
+typedef struct { uint32_t h[8]; uint64_t len; unsigned char buf[64]; size_t n; } sha256_ctx;
+#define ROL(x, n) (((x) << (n)) | ((x) >> (32 - (n))))
+#define ROR(x, n) (((x) >> (n)) | ((x) << (32 - (n))))
+static void sha1_block(sha1_ctx *c, const unsigned char *p)
 {
-    int fd = open(indexpath, O_RDONLY);
-    if (fd < 0) return -1;
-    /* Read the whole index into memory (APKINDEX for one repo is a few MB). */
-    size_t cap = 1 << 20, len = 0;
-    char *buf = malloc(cap);
-    if (!buf) { close(fd); return -1; }
-    for (;;) {
-        if (len + 65536 > cap) { cap *= 2; char *nb = realloc(buf, cap); if (!nb) { free(buf); close(fd); return -1; } buf = nb; }
-        ssize_t n = read(fd, buf + len, 65536);
-        if (n == 0) break;
-        if (n < 0) { if (errno == EINTR) continue; free(buf); close(fd); return -1; }
-        len += (size_t)n;
+    uint32_t w[80], a = c->h[0], b = c->h[1], cc = c->h[2], d = c->h[3], e = c->h[4];
+    for (int i = 0; i < 16; i++) w[i] = (uint32_t)p[4*i] << 24 | (uint32_t)p[4*i+1] << 16 | (uint32_t)p[4*i+2] << 8 | p[4*i+3];
+    for (int i = 16; i < 80; i++) w[i] = ROL(w[i-3] ^ w[i-8] ^ w[i-14] ^ w[i-16], 1);
+    for (int i = 0; i < 80; i++) {
+        uint32_t f, k;
+        if (i < 20)      { f = (b & cc) | (~b & d);            k = 0x5A827999; }
+        else if (i < 40) { f = b ^ cc ^ d;                     k = 0x6ED9EBA1; }
+        else if (i < 60) { f = (b & cc) | (b & d) | (cc & d);  k = 0x8F1BBCDC; }
+        else             { f = b ^ cc ^ d;                     k = 0xCA62C1D6; }
+        uint32_t t = ROL(a, 5) + f + e + k + w[i];
+        e = d; d = cc; cc = ROL(b, 30); b = a; a = t;
     }
-    close(fd);
+    c->h[0] += a; c->h[1] += b; c->h[2] += cc; c->h[3] += d; c->h[4] += e;
+}
+static void sha1_init(sha1_ctx *c)
+{
+    static const uint32_t iv[5] = { 0x67452301, 0xEFCDAB89, 0x98BADCFE, 0x10325476, 0xC3D2E1F0 };
+    memcpy(c->h, iv, sizeof iv); c->len = 0; c->n = 0;
+}
+static void sha1_update(sha1_ctx *c, const unsigned char *p, size_t n)
+{
+    c->len += n;
+    while (n) { size_t k = 64 - c->n; if (k > n) k = n; memcpy(c->buf + c->n, p, k); c->n += k; p += k; n -= k;
+                if (c->n == 64) { sha1_block(c, c->buf); c->n = 0; } }
+}
+static void sha1_final(sha1_ctx *c, unsigned char out[20])
+{
+    uint64_t bits = c->len * 8; unsigned char pad = 0x80; sha1_update(c, &pad, 1);
+    unsigned char z = 0; while (c->n != 56) sha1_update(c, &z, 1);
+    unsigned char lb[8]; for (int i = 0; i < 8; i++) lb[i] = (unsigned char)(bits >> (56 - 8*i));
+    sha1_update(c, lb, 8);
+    for (int i = 0; i < 5; i++) { out[4*i] = c->h[i] >> 24; out[4*i+1] = c->h[i] >> 16; out[4*i+2] = c->h[i] >> 8; out[4*i+3] = c->h[i]; }
+}
+static const uint32_t K256[64] = {
+    0x428a2f98,0x71374491,0xb5c0fbcf,0xe9b5dba5,0x3956c25b,0x59f111f1,0x923f82a4,0xab1c5ed5,
+    0xd807aa98,0x12835b01,0x243185be,0x550c7dc3,0x72be5d74,0x80deb1fe,0x9bdc06a7,0xc19bf174,
+    0xe49b69c1,0xefbe4786,0x0fc19dc6,0x240ca1cc,0x2de92c6f,0x4a7484aa,0x5cb0a9dc,0x76f988da,
+    0x983e5152,0xa831c66d,0xb00327c8,0xbf597fc7,0xc6e00bf3,0xd5a79147,0x06ca6351,0x14292967,
+    0x27b70a85,0x2e1b2138,0x4d2c6dfc,0x53380d13,0x650a7354,0x766a0abb,0x81c2c92e,0x92722c85,
+    0xa2bfe8a1,0xa81a664b,0xc24b8b70,0xc76c51a3,0xd192e819,0xd6990624,0xf40e3585,0x106aa070,
+    0x19a4c116,0x1e376c08,0x2748774c,0x34b0bcb5,0x391c0cb3,0x4ed8aa4a,0x5b9cca4f,0x682e6ff3,
+    0x748f82ee,0x78a5636f,0x84c87814,0x8cc70208,0x90befffa,0xa4506ceb,0xbef9a3f7,0xc67178f2 };
+static void sha256_block(sha256_ctx *c, const unsigned char *p)
+{
+    uint32_t w[64], s[8];
+    for (int i = 0; i < 16; i++) w[i] = (uint32_t)p[4*i] << 24 | (uint32_t)p[4*i+1] << 16 | (uint32_t)p[4*i+2] << 8 | p[4*i+3];
+    for (int i = 16; i < 64; i++) {
+        uint32_t s0 = ROR(w[i-15], 7) ^ ROR(w[i-15], 18) ^ (w[i-15] >> 3);
+        uint32_t s1 = ROR(w[i-2], 17) ^ ROR(w[i-2], 19) ^ (w[i-2] >> 10);
+        w[i] = w[i-16] + s0 + w[i-7] + s1;
+    }
+    memcpy(s, c->h, sizeof s);
+    for (int i = 0; i < 64; i++) {
+        uint32_t S1 = ROR(s[4], 6) ^ ROR(s[4], 11) ^ ROR(s[4], 25);
+        uint32_t ch = (s[4] & s[5]) ^ (~s[4] & s[6]);
+        uint32_t t1 = s[7] + S1 + ch + K256[i] + w[i];
+        uint32_t S0 = ROR(s[0], 2) ^ ROR(s[0], 13) ^ ROR(s[0], 22);
+        uint32_t mj = (s[0] & s[1]) ^ (s[0] & s[2]) ^ (s[1] & s[2]);
+        uint32_t t2 = S0 + mj;
+        s[7] = s[6]; s[6] = s[5]; s[5] = s[4]; s[4] = s[3] + t1; s[3] = s[2]; s[2] = s[1]; s[1] = s[0]; s[0] = t1 + t2;
+    }
+    for (int i = 0; i < 8; i++) c->h[i] += s[i];
+}
+static void sha256_init(sha256_ctx *c)
+{
+    static const uint32_t iv[8] = { 0x6a09e667,0xbb67ae85,0x3c6ef372,0xa54ff53a,0x510e527f,0x9b05688c,0x1f83d9ab,0x5be0cd19 };
+    memcpy(c->h, iv, sizeof iv); c->len = 0; c->n = 0;
+}
+static void sha256_update(sha256_ctx *c, const unsigned char *p, size_t n)
+{
+    c->len += n;
+    while (n) { size_t k = 64 - c->n; if (k > n) k = n; memcpy(c->buf + c->n, p, k); c->n += k; p += k; n -= k;
+                if (c->n == 64) { sha256_block(c, c->buf); c->n = 0; } }
+}
+static void sha256_final(sha256_ctx *c, unsigned char out[32])
+{
+    uint64_t bits = c->len * 8; unsigned char pad = 0x80; sha256_update(c, &pad, 1);
+    unsigned char z = 0; while (c->n != 56) sha256_update(c, &z, 1);
+    unsigned char lb[8]; for (int i = 0; i < 8; i++) lb[i] = (unsigned char)(bits >> (56 - 8*i));
+    sha256_update(c, lb, 8);
+    for (int i = 0; i < 8; i++) { out[4*i] = c->h[i] >> 24; out[4*i+1] = c->h[i] >> 16; out[4*i+2] = c->h[i] >> 8; out[4*i+3] = c->h[i]; }
+}
+static void b64_encode(const unsigned char *in, size_t n, char *out)
+{
+    static const char T[] = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/";
+    size_t o = 0;
+    for (size_t i = 0; i < n; i += 3) {
+        uint32_t v = (uint32_t)in[i] << 16 | (i + 1 < n ? (uint32_t)in[i+1] << 8 : 0) | (i + 2 < n ? in[i+2] : 0);
+        out[o++] = T[v >> 18 & 63]; out[o++] = T[v >> 12 & 63];
+        out[o++] = i + 1 < n ? T[v >> 6 & 63] : '=';
+        out[o++] = i + 2 < n ? T[v & 63] : '=';
+    }
+    out[o] = 0;
+}
 
-    int found = -1;
-    size_t namelen = strlen(name);
-    char curver[64] = "";
-    int match = 0;
-    size_t i = 0;
-    while (i < len) {
-        size_t j = i;
-        while (j < len && buf[j] != '\n') j++;
-        size_t linelen = j - i;
-        const char *line = buf + i;
-        if (linelen == 0) {                              /* record boundary */
-            if (match && curver[0]) { snprintf(ver, vercap, "%s", curver); found = 0; break; }
-            match = 0; curver[0] = 0;
-        } else if (linelen >= 2 && line[0] == 'P' && line[1] == ':') {
-            match = (linelen - 2 == namelen && !memcmp(line + 2, name, namelen));
-        } else if (linelen >= 2 && line[0] == 'V' && line[1] == ':') {
-            size_t vl = linelen - 2; if (vl >= sizeof curver) vl = sizeof curver - 1;
-            memcpy(curver, line + 2, vl); curver[vl] = 0;
+/* One gzip stream of the .apk: where it lies in the file, its hashes, and (for small streams, i.e.
+ * the control segment) its decompressed tar, so .PKGINFO can be read without a second pass. */
+#define APK_MAX_MEMBERS 8
+#define APK_KEEP_MAX    (256 * 1024)
+struct apk_member {
+    long start, end;
+    unsigned char sha1[20], sha256[32];
+    unsigned char *tar; size_t tarlen; int overflow;
+};
+
+/* Walk every gzip stream of the .apk at path, hashing each stream's compressed bytes.  zlib
+ * reports how far into the input each stream ended (avail_in on Z_STREAM_END), which is what
+ * makes the per-stream byte ranges exact. */
+static int apk_scan(const char *path, struct apk_member *m, int *nm)
+{
+    int fd = open(path, O_RDONLY);
+    if (fd < 0) return -1;
+    z_stream zs; memset(&zs, 0, sizeof zs);
+    if (inflateInit2(&zs, 15 + 16) != Z_OK) { close(fd); return -1; }
+    unsigned char in[16384], out[16384];
+    sha1_ctx s1; sha256_ctx s2;
+    int cur = 0, rc = 0; long off = 0;
+    *nm = 0;
+    memset(&m[0], 0, sizeof m[0]); m[0].start = 0; sha1_init(&s1); sha256_init(&s2);
+    for (;;) {
+        ssize_t n = read(fd, in, sizeof in);
+        if (n < 0) { if (errno == EINTR) continue; rc = -1; break; }
+        if (n == 0) break;
+        size_t pos = 0;
+        while (pos < (size_t)n) {
+            zs.next_in = in + pos; zs.avail_in = (uInt)((size_t)n - pos);
+            zs.next_out = out; zs.avail_out = sizeof out;
+            int r = inflate(&zs, Z_NO_FLUSH);
+            size_t used = ((size_t)n - pos) - zs.avail_in;
+            sha1_update(&s1, in + pos, used); sha256_update(&s2, in + pos, used);
+            size_t have = sizeof out - zs.avail_out;
+            struct apk_member *mm = &m[cur];
+            if (have && !mm->overflow) {
+                if (mm->tarlen + have > APK_KEEP_MAX) { free(mm->tar); mm->tar = NULL; mm->tarlen = 0; mm->overflow = 1; }
+                else { unsigned char *nb = realloc(mm->tar, mm->tarlen + have);
+                       if (!nb) { rc = -1; break; }
+                       mm->tar = nb; memcpy(mm->tar + mm->tarlen, out, have); mm->tarlen += have; }
+            }
+            pos += used;
+            if (r == Z_STREAM_END) {
+                mm->end = off + (long)pos;
+                sha1_final(&s1, mm->sha1); sha256_final(&s2, mm->sha256);
+                if (++cur >= APK_MAX_MEMBERS) { rc = -1; break; }
+                memset(&m[cur], 0, sizeof m[cur]); m[cur].start = mm->end;
+                sha1_init(&s1); sha256_init(&s2);
+                inflateReset(&zs);
+                continue;
+            }
+            if (r != Z_OK && r != Z_BUF_ERROR) { rc = -1; break; }
+            if (used == 0 && have == 0) break;            /* needs more input */
         }
-        i = j + 1;
+        if (rc) break;
+        off += n;
     }
-    if (found != 0 && match && curver[0]) { snprintf(ver, vercap, "%s", curver); found = 0; }
-    free(buf);
-    return found;
+    inflateEnd(&zs);
+    close(fd);
+    if (rc == 0 && m[cur].start != off) rc = -1;           /* trailing bytes that are not a whole stream */
+    *nm = cur;
+    return rc;
+}
+
+/* The value of "key = value" in .PKGINFO inside a decompressed control tar. */
+static int pkginfo_field(const unsigned char *tar, size_t len, const char *key, char *out, size_t cap)
+{
+    size_t p = 0;
+    while (p + 512 <= len) {
+        const unsigned char *h = tar + p;
+        if (h[0] == 0) break;
+        unsigned long sz = oct(h + 124, 12);
+        size_t body = p + 512;
+        if (!strncmp((const char *)h, ".PKGINFO", 100) && body + sz <= len) {
+            const char *t = (const char *)tar + body, *e = t + sz;
+            size_t kl = strlen(key);
+            while (t < e) {
+                const char *nl = memchr(t, '\n', (size_t)(e - t)); if (!nl) nl = e;
+                if ((size_t)(nl - t) > kl + 3 && !strncmp(t, key, kl) && !strncmp(t + kl, " = ", 3)) {
+                    size_t vl = (size_t)(nl - (t + kl + 3)); if (vl >= cap) vl = cap - 1;
+                    memcpy(out, t + kl + 3, vl); out[vl] = 0;
+                    return 0;
+                }
+                t = nl + 1;
+            }
+            return -1;
+        }
+        p = body + ((sz + 511) / 512) * 512;
+    }
+    return -1;
+}
+
+/* Verify the downloaded .apk against the catalog's control checksum ("Q1<base64 SHA-1>"): exactly
+ * one gzip stream must hash to it (the control segment); its .PKGINFO "datahash" must equal the
+ * SHA-256 of the NEXT stream (the data segment), which must be the last one.  On success returns
+ * the data segment's byte range -- the only bytes that will be unpacked. */
+static int apk_verify(const char *path, const char *q1sum, long *dstart, long *dend)
+{
+    struct apk_member m[APK_MAX_MEMBERS];
+    int nm = 0;
+    memset(m, 0, sizeof m);
+    int rc = -1;
+    if (apk_scan(path, m, &nm) != 0 || nm < 2) { plog("[pkg] VERIFY FAILED: not a well-formed .apk (%d streams)", nm); goto out; }
+    int ctrl = -1;
+    for (int i = 0; i < nm; i++) {
+        char b64[40], q1[48];
+        b64_encode(m[i].sha1, 20, b64);
+        snprintf(q1, sizeof q1, "Q1%s", b64);
+        if (!strcmp(q1, q1sum)) { if (ctrl >= 0) { ctrl = -2; break; } ctrl = i; }
+    }
+    if (ctrl < 0) { plog("[pkg] VERIFY FAILED: no control segment matches the catalog checksum %s", q1sum); goto out; }
+    if (ctrl + 1 != nm - 1) { plog("[pkg] VERIFY FAILED: the data segment is not the last stream"); goto out; }
+    char dh[80];
+    if (m[ctrl].overflow || !m[ctrl].tar || pkginfo_field(m[ctrl].tar, m[ctrl].tarlen, "datahash", dh, sizeof dh) != 0) {
+        plog("[pkg] VERIFY FAILED: the control segment has no .PKGINFO datahash"); goto out; }
+    char hex[65];
+    for (int i = 0; i < 32; i++) snprintf(hex + 2*i, 3, "%02x", m[ctrl + 1].sha256[i]);
+    if (strcmp(hex, dh) != 0) { plog("[pkg] VERIFY FAILED: data segment SHA-256 %s != datahash %s", hex, dh); goto out; }
+    *dstart = m[ctrl + 1].start; *dend = m[ctrl + 1].end;
+    plog("[pkg] verified: control segment matches the catalog (%s); data segment SHA-256 matches .PKGINFO", q1sum);
+    rc = 0;
+out:
+    for (int i = 0; i < APK_MAX_MEMBERS; i++) free(m[i].tar);
+    return rc;
+}
+
+/* Inflate ONLY bytes [start, end) of inpath (one verified gzip stream) to outpath. */
+static int gunzip_range_to_file(const char *inpath, long start, long end, const char *outpath)
+{
+    int in = open(inpath, O_RDONLY);
+    if (in < 0) return -1;
+    int out = open(outpath, O_WRONLY | O_CREAT | O_TRUNC, 0644);
+    if (out < 0) { close(in); return -1; }
+    if (lseek(in, start, SEEK_SET) != start) { close(in); close(out); return -1; }
+    z_stream zs; memset(&zs, 0, sizeof zs);
+    if (inflateInit2(&zs, 15 + 16) != Z_OK) { close(in); close(out); return -1; }
+    unsigned char inbuf[16384], outbuf[16384];
+    long left = end - start; int rc = -1;
+    while (left > 0) {
+        ssize_t n = read(in, inbuf, left < (long)sizeof inbuf ? (size_t)left : sizeof inbuf);
+        if (n <= 0) break;
+        left -= n;
+        zs.next_in = inbuf; zs.avail_in = (uInt)n;
+        int r = Z_OK;
+        while (zs.avail_in > 0 && r == Z_OK) {
+            zs.next_out = outbuf; zs.avail_out = sizeof outbuf;
+            r = inflate(&zs, Z_NO_FLUSH);
+            size_t have = sizeof outbuf - zs.avail_out;
+            if (have) { ssize_t w = write(out, outbuf, have); (void)w; }
+        }
+        if (r == Z_STREAM_END) { rc = 0; break; }
+        if (r != Z_OK && r != Z_BUF_ERROR) break;
+    }
+    inflateEnd(&zs);
+    close(in); close(out);
+    return rc;
 }
 
 int main(int argc, char **argv)
@@ -375,11 +557,13 @@ int main(int argc, char **argv)
     mkdir("/var/cache", 0755);
     mkdir(CACHE_DIR, 0755);
 
-    char pkgmgr[64] = "", name[128] = "", base[256] = "";
-    if (argc >= 4) {                       /* explicit arguments win (manual use / testing) */
+    char pkgmgr[64] = "", name[128] = "", base[256] = "", ver[64] = "", sum[64] = "";
+    if (argc >= 6) {                       /* explicit arguments win (manual use / testing) */
         snprintf(pkgmgr, sizeof pkgmgr, "%s", argv[1]);
         snprintf(name, sizeof name, "%s", argv[2]);
         snprintf(base, sizeof base, "%s", argv[3]);
+        snprintf(ver, sizeof ver, "%s", argv[4]);
+        snprintf(sum, sizeof sum, "%s", argv[5]);
     } else {
         int fd = open(REQUEST_PATH, O_RDONLY);
         if (fd < 0) {
@@ -391,7 +575,7 @@ int main(int argc, char **argv)
         close(fd);
         if (n <= 0) { fprintf(stderr, "hos-pkg-fetch: empty request\n"); return 2; }
         rbuf[n] = 0;
-        if (sscanf(rbuf, "%63s %127s %255s", pkgmgr, name, base) < 2) {
+        if (sscanf(rbuf, "%63s %127s %255s %63s %63s", pkgmgr, name, base, ver, sum) < 2) {
             fprintf(stderr, "hos-pkg-fetch: malformed request: %s\n", rbuf);
             return 2;
         }
@@ -419,50 +603,40 @@ int main(int argc, char **argv)
         return fail_exit(name);
     }
 
-    /* 1. Fetch the repository index, decompress it, and resolve the package's exact version. */
-    char idxurl[300], idxgz[256], idxtar[256];
-    snprintf(idxurl, sizeof idxurl, "%s/APKINDEX.tar.gz", path);
-    snprintf(idxgz,  sizeof idxgz,  CACHE_DIR "/%s.APKINDEX.tar.gz", name);
-    snprintf(idxtar, sizeof idxtar, CACHE_DIR "/%s.APKINDEX.tar", name);
-    size_t nidx = 0;
-    int status = http_get(host, port, idxurl, idxgz, &nidx);
-    if (status < 0) return fail_exit(name);
-    if (status != 200) { plog("[pkg] mirror answered HTTP %d for the index — nothing installed", status); return fail_exit(name); }
-    plog("[pkg] fetched %zu bytes of index; decompressing", nidx);
-    if (gunzip_to_file(idxgz, idxtar) != 0) { plog("[pkg] could not decompress the index"); return fail_exit(name); }
-
-    /* The APKINDEX file inside the tar is what carries P:/V:.  Extract the data members of the
-     * index tarball into a temp dir; the "APKINDEX" file lands there. */
-    char idxdir[256], idxfile[300];
-    snprintf(idxdir, sizeof idxdir, CACHE_DIR "/%s.idx", name);
-    mkdir(idxdir, 0755);
-    { int mf = open("/dev/null", O_WRONLY); if (mf < 0) mf = g_log;
-      ustar_extract_data(idxtar, idxdir, mf); if (mf != g_log && mf >= 0) close(mf); }
-    snprintf(idxfile, sizeof idxfile, "%s/APKINDEX", idxdir);
-
-    char ver[64] = "";
-    if (apk_find_version(idxfile, name, ver, sizeof ver) != 0 || !ver[0]) {
-        plog("[pkg] %s not found in the repository index (%s) — nothing installed", name, host);
+    /* 1. The kernel pinned the package to the image's catalog: the exact version and the checksum
+     *    its control segment must hash to.  The mirror's own index is NOT consulted -- it arrives
+     *    over plain HTTP and could name any version with any contents. */
+    if (!ver[0] || strncmp(sum, "Q1", 2) != 0) {
+        plog("[pkg] refusing: the request carries no catalog pin (version + checksum), so the download could not be verified");
         return fail_exit(name);
     }
-    plog("[pkg] resolved %s to version %s", name, ver);
+    plog("[pkg] pinned by the catalog: %s %s, control checksum %s", name, ver, sum);
 
     /* 2. Fetch the package's .apk (named <name>-<version>.apk under the repo base). */
     char apkurl[400], apkpath[300];
     snprintf(apkurl, sizeof apkurl, "%s/%s-%s.apk", path, name, ver);
     snprintf(apkpath, sizeof apkpath, CACHE_DIR "/%s-%s.apk", name, ver);
     size_t napk = 0;
-    status = http_get(host, port, apkurl, apkpath, &napk);
+    int status = http_get(host, port, apkurl, apkpath, &napk);
     if (status < 0) return fail_exit(name);
     if (status != 200) { plog("[pkg] mirror answered HTTP %d for %s-%s.apk — nothing installed", status, name, ver); return fail_exit(name); }
     plog("[pkg] fetched %zu bytes of %s-%s.apk", napk, name, ver);
 
-    /* 3. Decompress + unpack the .apk's data members into a staging tree, recording a manifest. */
+    /* 2b. Verify before anything is unpacked: the control segment against the catalog checksum, the
+     *     data segment against the SHA-256 the (now trusted) control segment commits to. */
+    long dstart = 0, dend = 0;
+    if (apk_verify(apkpath, sum, &dstart, &dend) != 0) {
+        plog("[pkg] %s-%s.apk does not match this image's catalog -- tampered or corrupt; nothing installed", name, ver);
+        unlink(apkpath);
+        return fail_exit(name);
+    }
+
+    /* 3. Decompress + unpack ONLY the verified data segment into a staging tree, recording a manifest. */
     char apktar[300], stagedir[256], manifestpath[256];
     snprintf(apktar,       sizeof apktar,       CACHE_DIR "/%s.pkg.tar", name);
     snprintf(stagedir,     sizeof stagedir,     CACHE_DIR "/%s.files", name);
     snprintf(manifestpath, sizeof manifestpath, CACHE_DIR "/%s.manifest", name);
-    if (gunzip_to_file(apkpath, apktar) != 0) { plog("[pkg] could not decompress %s-%s.apk", name, ver); return fail_exit(name); }
+    if (gunzip_range_to_file(apkpath, dstart, dend, apktar) != 0) { plog("[pkg] could not decompress %s-%s.apk", name, ver); return fail_exit(name); }
     mkdir(stagedir, 0755);
     int manifest = open(manifestpath, O_WRONLY | O_CREAT | O_TRUNC, 0644);
     if (manifest < 0) { plog("[pkg] cannot write manifest %s (errno %d)", manifestpath, errno); return fail_exit(name); }
@@ -485,6 +659,5 @@ int main(int argc, char **argv)
     }
     plog("[pkg] staged %d files for %s-%s; kernel will place them (cap-gated) — see /run/pkg/%s.done",
          nfiles, name, ver, name);
-    plog("[pkg] NOTE: signature verification of the .apk is not yet performed (future work)");
     return 0;
 }

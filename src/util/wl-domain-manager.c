@@ -490,10 +490,11 @@ static const char *LIFE_VERB [N_LIFE] = { "start","stop","pause","resume","snaps
 // there was no row here to click.  Both ends are wired now, so this row is a REAL per-domain
 // network on/off switch: with it cleared, that domain cannot open an AF_INET socket.
 // It is NOT the NAT/VPN/Tor NetPolicy vocabulary -- that remains unimplemented.
-#define N_DEV 7
-static const char    *DEV_LABEL[N_DEV] = { "Keyboard / Mouse","GPU","Camera","Microphone","Audio","USB","Network" };
-static const char    *DEV_CLASS[N_DEV] = { "input","gpu","camera","mic","audio","usb","net" };
-static const unsigned DEV_BIT  [N_DEV] = { 1u<<0, 1u<<1, 1u<<2, 1u<<3, 1u<<4, 1u<<5, 1u<<6 };
+#define N_DEV 8
+// "Virtualization" = DEVCLASS_VIRT (bit 8): /dev/kvm, i.e. whether the domain may run virtual machines.
+static const char    *DEV_LABEL[N_DEV] = { "Keyboard / Mouse","GPU","Camera","Microphone","Audio","USB","Network","Virtualization (VMs)" };
+static const char    *DEV_CLASS[N_DEV] = { "input","gpu","camera","mic","audio","usb","net","virt" };
+static const unsigned DEV_BIT  [N_DEV] = { 1u<<0, 1u<<1, 1u<<2, 1u<<3, 1u<<4, 1u<<5, 1u<<6, 1u<<8 };
 
 #define N_FSBTN 4
 static const char *FSBTN_LABEL[N_FSBTN] = { "+ Allow ro", "+ Allow rw", "+ Deny", "+ Mount" };
@@ -2095,7 +2096,7 @@ static void handle_click(struct app *app)
         if (y >= top && y < top + app->n_doms * ROW_H) {
             int r = (int)((y - top) / ROW_H);
             if (r >= 0 && r < app->n_doms && r != app->sel) {
-                app->sel = r; refresh_fs_view(app); redraw_commit(app, "select domain");
+                app->sel = r; app->port_panel = -1; refresh_fs_view(app); redraw_commit(app, "select domain");
             }
         }
         return;
@@ -2260,8 +2261,8 @@ static void kb_key(void *data, struct wl_keyboard *k, uint32_t serial, uint32_t 
         return;
     }
     // Up=103 Down=108 Left=105 Right=106 Enter=28 Esc=1.
-    if (key == 108 && app->sel < app->n_doms - 1) { app->sel++; refresh_fs_view(app); redraw_commit(app, "key"); }
-    else if (key == 103 && app->sel > 0)        { app->sel--; refresh_fs_view(app); redraw_commit(app, "key"); }
+    if (key == 108 && app->sel < app->n_doms - 1) { app->sel++; app->port_panel = -1; refresh_fs_view(app); redraw_commit(app, "key"); }
+    else if (key == 103 && app->sel > 0)        { app->sel--; app->port_panel = -1; refresh_fs_view(app); redraw_commit(app, "key"); }
     // Left/Right switch tabs, so every tab -- the Applications/delegation tab included -- is
     // reachable without a pointer.
     else if (key == 106 && app->tab < N_TABS - 1) { app->tab++; app->port_panel = -1; redraw_commit(app, "key tab"); }

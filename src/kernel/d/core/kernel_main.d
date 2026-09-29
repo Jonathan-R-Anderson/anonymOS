@@ -1735,9 +1735,10 @@ private extern(C) void appgateDomainGone(uint domObjId) {
 // The hook lives here because spawnWaylandProgram is this file's private launch choke point, and
 // the fetcher is an ordinary userspace client -- it just happens to be started by a control write
 // instead of by the desktop.  argv is passed through the same env/arg path the other helpers use.
-public bool softwareSpawnFetcher(const(char)* pkgmgr, const(char)* name, const(char)* url) {
+public bool softwareSpawnFetcher(const(char)* pkgmgr, const(char)* name, const(char)* url,
+                                 const(char)* ver, const(char)* sum) {
     import core.syscalls.posix : pkgFetchSetRequest;
-    pkgFetchSetRequest(pkgmgr, name, url);          // the helper reads it from /run/pkg/request
+    pkgFetchSetRequest(pkgmgr, name, url, ver, sum);   // the helper reads it from /run/pkg/request
     return spawnWaylandProgram("hos-pkg-fetch\0".ptr, "[pkg]\0".ptr);
 }
 

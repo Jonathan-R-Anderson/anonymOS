@@ -88,11 +88,13 @@ static immutable AppRegEntry[] g_appReg = [
     AppRegEntry("wl-chars",          "wl-chars",      APP, SES, DSE, null, DLG | DSK),
     AppRegEntry("wl-screenshot",     "wl-screenshot", APP, SES, DSE, null, DLG | DSK),
     AppRegEntry("kuml",              "kuml",          APP, SES, DNM, "Development", DLG | DSK),
-    // Administration apps: they drive /config (catalog, VM control, logs, every process), so they
-    // belong to System and are not delegable -- a delegated instance could not reach what it needs.
+    // Virtual Machines: System-hosted from the desktop, and delegable -- a domain granted it (plus
+    // Virtualization in its Permissions, i.e. DEVCLASS_VIRT for /dev/kvm) runs its own hypervisor.
+    AppRegEntry("wl-vmm",            "wl-vmm",        APP, SYH, DNO, null, DLG | DSK),
+    AppRegEntry("cloud-hypervisor",  "wl-vmm",        APP, SYH, DNO, null, DLG),
+    // Administration apps: they drive /config (catalog, logs, every process), so they belong to
+    // System and are not delegable -- a delegated instance could not reach what it needs.
     AppRegEntry("wl-software",       "wl-software",   APP, SYH, DNO, null, DSK),
-    AppRegEntry("wl-vmm",            "wl-vmm",        APP, SYH, DNO, null, DSK),
-    AppRegEntry("cloud-hypervisor",  "wl-vmm",        APP, SYH, DNO, null, 0),
     AppRegEntry("wl-sysmon",         "wl-sysmon",     APP, SYH, DNO, null, DSK),
     AppRegEntry("wl-logview",        "wl-logview",    APP, SYH, DNO, null, DSK),
 

@@ -48,6 +48,13 @@ forbid   [appgate] unclassified executable
 require  [appgate] place wl-layer-bar -> unconfined
 forbid   [appgate] DENY
 
+# ── Software Center integrity: a package is pinned to this image's catalog (version + Alpine's control
+#    checksum) and the kernel refuses to place files that would replace or shadow system files.
+require  [software] catalog pin self-test PASS
+forbid   [software] catalog pin self-test FAIL
+require  [software] apk-install self-test PASS
+forbid   [software] apk-install self-test FAIL
+
 # ── the app catalogue unpacked.  The launcher shows hardcoded fallbacks if this is missing,
 #    which looks fine on screen and is wrong.
 require  /apps.blob

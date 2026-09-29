@@ -1267,6 +1267,12 @@ private struct LocalSocket
     int ownerPid;
     uint ownerUid;
     uint ownerGid;
+    // The peer's credentials, kept when the peer closes (it is detached and its slot recycled), so
+    // SO_PEERCRED after the peer is gone still names the peer rather than the caller.
+    bool hasGonePeer;
+    int  gonePeerPid;
+    uint gonePeerUid;
+    uint gonePeerGid;
     char[108] path;
     size_t pathLength;
     int[localSocketPendingCapacity] pending;
@@ -1692,25 +1698,57 @@ private void closeLocalSocket(File* f)
         sock.passedTail = (sock.passedTail + 1) % scmRightsCapacity;
     }
 
+    // A listener takes the connections still queued on it down with it: each queued entry is the
+    // server-side socket connect() created, which no one can accept any more.
+    if (sock.state == LocalSocketState.listener)
+    {
+        while (!pendingQueueEmpty(*sock))
+        {
+            const int qid = sock.pending[sock.pendingHead];
+            sock.pending[sock.pendingHead] = -1;
+            sock.pendingHead = (sock.pendingHead + 1) % localSocketPendingCapacity;
+            auto q = localSocketById(qid);
+            if (q is null || !q.inUse) continue;
+            detachPeer(*q, qid);
+            releaseLocalSocket(qid);
+        }
+    }
+
     if (sock.state == LocalSocketState.listener || sock.state == LocalSocketState.bound || sock.state == LocalSocketState.created)
     {
         releaseLocalSocket(socketId);
         return;
     }
 
-    if (sock.peerId >= 0)
-    {
-        auto peer = localSocketById(sock.peerId);
-        if (peer !is null)
-        {
-            peer.peerClosed = true;
-        }
-    }
+    // A connected (or already hung-up) endpoint: hang up on the peer, then free this slot.
+    //
+    // This used to only mark the socket `closed` and keep the slot -- and nothing ever freed a
+    // closed slot, so EVERY connection leaked two of the 128 global LocalSockets (this end and the
+    // peer's).  Harmless while connections were long-lived Wayland clients; fatal once anything
+    // talked to a server per request: the top bar's once-a-second Hyprland IPC exhausted the table
+    // within two minutes, after which socket() failed with EMFILE system-wide -- no new window
+    // could even reach the compositor.  The peer is detached first (peerId = -1, peerClosed), so
+    // it reads EOF, writes get EPIPE, and nothing is left pointing at the recycled slot.
+    detachPeer(*sock, socketId);
+    releaseLocalSocket(socketId);
+}
 
-    sock.state = LocalSocketState.closed;
-    sock.peerClosed = true;
+// Hang up `sock` (slot `id`) on its peer: the peer sees EOF / EPIPE and remembers who it was.
+private void detachPeer(ref LocalSocket sock, int id)
+{
+    if (sock.peerId < 0) return;
+    auto peer = localSocketById(sock.peerId);
+    if (peer !is null && peer.inUse && peer.peerId == id)
+    {
+        peer.peerClosed   = true;
+        peer.peerId       = -1;
+        peer.hasGonePeer  = true;
+        peer.gonePeerPid  = sock.ownerPid;
+        peer.gonePeerUid  = sock.ownerUid;
+        peer.gonePeerGid  = sock.ownerGid;
+    }
     sock.peerId = -1;
-    sock.pathLength = 0;
+    sock.peerClosed = true;
 }
 
 private ssize_t localSocketRead(File* f, void* buffer, size_t length)
@@ -1798,6 +1836,10 @@ private long copySockoptUcred(ulong val, ulong len, LocalSocket* sock = null)
         cred.pid = peer.ownerPid;
         cred.uid = peer.ownerUid;
         cred.gid = peer.ownerGid;
+    } else if (sock !is null && sock.hasGonePeer) {
+        cred.pid = sock.gonePeerPid;
+        cred.uid = sock.gonePeerUid;
+        cred.gid = sock.gonePeerGid;
     } else {
         cred.pid = linuxPidForTask(cast(int)g_current_task_id);
         cred.uid = userCurrentUid();
@@ -3578,6 +3620,19 @@ private size_t procDynamicSynth(const(char)* path) {
         import network.types : IPv4Address;
         IPv4Address ip, gw, mask, dns;
         size_t rpos = 0;
+        // The LKL link's own lease first: programs' sockets go through the LKL, so its resolver is
+        // the one they can reach (on a two-NIC VM the native stack's lease is on another subnet).
+        // hos-udhcpc-script writes /run/wifi/dns on every bind.
+        {
+            int dpar; const(char)* dlf; size_t dll;
+            const int di = rtResolve("/run/wifi/dns\0".ptr, dpar, dlf, dll);
+            if (di >= 0 && g_rt[di].kind == RT_REG && g_rt[di].data !is null && g_rt[di].size > 0) {
+                pbStr(rpos, "# from the network link's DHCP lease\n".ptr);
+                foreach (k; 0 .. g_rt[di].size) if (rpos + 2 < g_procBuf.length) g_procBuf[rpos++] = cast(char)g_rt[di].data[k];
+                g_procBuf[rpos] = 0;
+                return rpos;
+            }
+        }
         if (dhcpGetConfig(&ip, &gw, &mask, &dns) &&
             !(dns.bytes[0] == 0 && dns.bytes[1] == 0 && dns.bytes[2] == 0 && dns.bytes[3] == 0)) {
             pbStr(rpos, "# from the DHCP lease\n".ptr);
@@ -3783,6 +3838,20 @@ private size_t procSynth(int pid, const(char)* sub, size_t subLen) {
         pbStr(pos, "\nPid:\t".ptr); pbNum(pos, pid);
         pbStr(pos, "\nPPid:\t".ptr); pbNum(pos, ppid);
         pbStr(pos, "\nVmRSS:\t1024 kB\nThreads:\t1\n".ptr);
+        // The owning domain and its identity colour -- the same colour the kernel draws as the
+        // window's border -- so the top bar's desktop miniatures can colour each window by domain.
+        // /proc is not bound into any domain namespace, so only unconfined chrome can read this.
+        {
+            import core.domain : domainById;
+            auto dr = domainById(g_tasks[tid].domainObjId);
+            pbStr(pos, "Domain:\t".ptr);
+            if (dr !is null && dr.nameLen > 0) {
+                foreach (k; 0 .. dr.nameLen)
+                    if (pos < g_procBuf.length - 1) g_procBuf[pos++] = dr.name[k];
+            } else pbStr(pos, "-".ptr);
+            pbStr(pos, "\nDomainColor:\t".ptr); pbHex32(pos, hosIdentityColor(cast(uint)pid));
+            pbStr(pos, "\n".ptr);
+        }
     } else return 0;
     return pos;
 }
@@ -7255,6 +7324,22 @@ public bool softwareCatalogPin(const(char)* name, const(char)* wantBase,
 // The request line: "<pkgmgr> <name> <baseurl> <version> <control-checksum>".  The last three come
 // from softwareCatalogPin -- the fetcher downloads exactly that version and refuses anything whose
 // hashes do not chain back to that checksum.
+// Networking: record which interface the LKL owns ("eth0" for a virtio-net card, "wlan0" for Wi-Fi)
+// so hos-udhcpc-launch runs DHCP on the right one.  A shared node: the launcher is unconfined infra.
+public void netPublishLklIface(const(char)* ifname) @nogc nothrow {
+    if (ifname is null) return;
+    uint n = 0; while (ifname[n] != 0 && n < 16) ++n;
+    __gshared char[24] buf;
+    foreach (i; 0 .. n) buf[i] = ifname[i];
+    buf[n] = '\n';
+    const int tid = cast(int)g_current_task_id;
+    const bool haveTid = (tid >= 0 && tid < MAX_TASKS);
+    const uint savedDom = haveTid ? g_tasks[tid].domainObjId : 0;
+    if (haveTid) g_tasks[tid].domainObjId = 0;
+    rtAddFile("run/net/lkl-iface\0".ptr, "run/net/lkl-iface".length, cast(const(ubyte)*)buf.ptr, n + 1);
+    if (haveTid) g_tasks[tid].domainObjId = savedDom;
+}
+
 public void pkgFetchSetRequest(const(char)* pkgmgr, const(char)* name, const(char)* url,
                                const(char)* ver, const(char)* sum) @nogc nothrow {
     __gshared char[480] req;

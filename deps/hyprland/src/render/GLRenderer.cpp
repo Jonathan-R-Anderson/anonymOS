@@ -1432,6 +1432,10 @@ void CHyprGLRenderer::endRender(const std::function<void()>& renderingDoneCallba
                     break;
                 if (!w || !w->m_isMapped)
                     continue;
+                // Only windows actually on screen: a window on another desktop (workspace) is not
+                // drawn, so a kernel border for it would frame empty wallpaper.
+                if (!w->m_workspace || !w->m_workspace->isVisible() || w->isHidden())
+                    continue;
                 auto P = w->m_realPosition->value();
                 auto S = w->m_realSize->value();
                 if (S.x <= 0 || S.y <= 0) { // animation not settled yet → fall back
@@ -1454,8 +1458,9 @@ void CHyprGLRenderer::endRender(const std::function<void()>& renderingDoneCallba
                 r.h     = static_cast<int32_t>(S.y);
                 r.pid   = static_cast<uint32_t>(w->getPID());
             }
-            if (wins.count > 0)
-                ioctl(hosFD, HOS_IOCTL_WINDOWS, &wins);
+            // Report an EMPTY set too: skipping it left the kernel drawing the borders of the last
+            // windows forever (the installer's border outlived the installer).
+            ioctl(hosFD, HOS_IOCTL_WINDOWS, &wins);
         }
     }
 

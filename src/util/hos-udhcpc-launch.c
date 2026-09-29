@@ -15,6 +15,8 @@
  * subsequently remains alive to renew the lease.
  */
 #include <unistd.h>
+#include <stdio.h>
+#include <fcntl.h>
 #include <string.h>
 #include <poll.h>
 
@@ -34,13 +36,32 @@ static void sleep_s(int s) {
     }
 }
 
-static char *const g_argv[] = { "/busybox-dyn", "udhcpc", "-i", "wlan0", "-f", "-s", "/udhcpc-script", 0 };
+static char g_iface[32] = "wlan0";
+static char *g_argv[] = { "/busybox-dyn", "udhcpc", "-i", g_iface, "-f", "-s", "/udhcpc-script", 0 };
 static char *const g_envp[] = { "LD_PRELOAD=/libnshim.so", "PATH=/", "HOME=/", "LD_LIBRARY_PATH=/", 0 };
+
+/* Which interface the LKL owns: the kernel writes it to /run/net/lkl-iface when it grants the LKL a
+ * NIC -- "eth0" for a virtio-net card (VirtualBox/QEMU), otherwise the Wi-Fi's "wlan0". */
+static void pick_iface(void)
+{
+    int fd = open("/run/net/lkl-iface", O_RDONLY);
+    if (fd < 0) return;
+    char b[32]; ssize_t n = read(fd, b, sizeof b - 1); close(fd);
+    if (n <= 0) return;
+    b[n] = 0;
+    for (ssize_t i = 0; i < n; i++) if (b[i] == '\n' || b[i] == ' ') { b[i] = 0; break; }
+    if (b[0]) snprintf(g_iface, sizeof g_iface, "%s", b);
+}
 
 int main(void)
 {
-    while (access("/sys/class/net/wlan0", F_OK) != 0) sleep_s(1);
-    logline("[udhcpc-launch] wlan0 exists; exec /busybox-dyn udhcpc -i wlan0 -f -s /udhcpc-script");
+    pick_iface();
+    char sysp[64];
+    snprintf(sysp, sizeof sysp, "/sys/class/net/%s", g_iface);
+    while (access(sysp, F_OK) != 0) sleep_s(1);
+    char m[160];
+    snprintf(m, sizeof m, "[udhcpc-launch] %s exists; exec /busybox-dyn udhcpc -i %s -f -s /udhcpc-script", g_iface, g_iface);
+    logline(m);
     execve("/busybox-dyn", g_argv, g_envp);
     logline("[udhcpc-launch] execve(/busybox-dyn) FAILED (missing module/interp?)");
     return 1;

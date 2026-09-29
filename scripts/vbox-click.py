@@ -30,11 +30,13 @@ def shot(name):
                    stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
     return Image.open(p).convert('RGB')
 
+BAR_H = 30   # the top bar: not searched (see below)
+
 def find_cursor(base, cur, tx, ty, r=140):
     """The cursor's hotspot near (tx, ty): the top-left-most pixel that changed between the homed
     screenshot and this one and is cursor-coloured (white fill / black outline)."""
     w, h = cur.size
-    x0, y0, x1, y1 = max(0, tx - r), max(30, ty - r), min(w, tx + r), min(h, ty + r)
+    x0, y0, x1, y1 = max(0, tx - r), max(BAR_H, ty - r), min(w, tx + r), min(h, ty + r)
     diff = ImageChops.difference(base.crop((x0, y0, x1, y1)), cur.crop((x0, y0, x1, y1))).convert('L')
     px = diff.load(); cp = cur.load()
     best = None
@@ -61,17 +63,23 @@ try:
     for _ in range(40): mouse.putMouseEvent(-60, -60, 0, 0, 0); time.sleep(0.03)   # home
     time.sleep(0.4)
     base = shot('_home.png')
-    move(TX, TY)
+    # The top bar is excluded from the cursor search (its clock and hover highlights change on
+    # their own), so a target on it is reached by homing in closed-loop on a point just below
+    # the bar, then stepping straight up.
+    AY = TY if TY >= BAR_H + 10 else BAR_H + 16
+    move(TX, AY)
     pos = None
     for it in range(6):
         time.sleep(0.4)
-        pos = find_cursor(base, shot('_at.png'), TX, TY)
+        pos = find_cursor(base, shot('_at.png'), TX, AY)
         if pos is None:
             print('cursor not found near target'); break
-        ex, ey = TX - pos[0], TY - pos[1]
+        ex, ey = TX - pos[0], AY - pos[1]
         if abs(ex) <= 4 and abs(ey) <= 4: break
         move(ex, ey, step=6, dt=0.06)
-    print('cursor', pos, 'target', (TX, TY))
+    if AY != TY and pos is not None:
+        move(0, TY - AY, step=4, dt=0.06)
+    print('cursor', pos, 'target', (TX, TY), '' if AY == TY else f'(aimed at y={AY}, then up)')
     if CLICK:
         mouse.putMouseEvent(0, 0, 0, 0, 1); time.sleep(0.15)
         mouse.putMouseEvent(0, 0, 0, 0, 0)

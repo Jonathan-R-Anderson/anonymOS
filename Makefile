@@ -1170,6 +1170,17 @@ stage-iso-tree: kernel.elf $(WLSOFTWARE_BIN) $(PKGFETCH_BIN) $(SOFTWARE_CATALOG)
 		printf '    module_path: boot():/NetworkManager\n    module_path: boot():/nmcli\n    module_path: boot():/libnm.so.0\n    module_path: boot():/libndp.so.0\n    module_path: boot():/hos-nm-launch\n    module_path: boot():/hos-nmcli-test\n    module_path: boot():/hos-wifi-agent\n    module_path: boot():/busybox-dyn\n    module_path: boot():/udhcpc-script\n    module_path: boot():/hos-udhcpc-launch\n    module_path: boot():/scp-test\n    module_path: boot():/hos-http-upload\n' >> cd/boot/limine/limine.conf; \
 		echo "Included M2b real NetworkManager daemon + nmcli + libnm.so.0 + libndp.so.0 + hos-nm-launch + hos-nmcli-test"; \
 	fi
+	@# The LKL DHCP chain (busybox-dyn udhcpc + the lease script + its launcher) does not depend on
+	@# NetworkManager: a virtio-net card granted to the LKL (VirtualBox/QEMU) needs it too, or programs
+	@# have no lease and the Software Center reports "no network".  Staged here unless the
+	@# NetworkManager block above already did.
+	@if [ ! -f cd/busybox-dyn ] && [ -f $(BUSYBOX_DYN_BIN) ]; then \
+		cp $(BUSYBOX_DYN_BIN) cd/busybox-dyn; \
+		cp $(UDHCPCSCRIPT_BIN) cd/udhcpc-script; \
+		cp $(UDHCPCLAUNCH_BIN) cd/hos-udhcpc-launch; \
+		printf '    module_path: boot():/busybox-dyn\n    module_path: boot():/udhcpc-script\n    module_path: boot():/hos-udhcpc-launch\n' >> cd/boot/limine/limine.conf; \
+		echo "Included the LKL DHCP chain (busybox-dyn udhcpc + udhcpc-script + hos-udhcpc-launch)"; \
+	fi
 	cp $(THREADTEST_BIN) cd/hos-thread-test
 	printf '    module_path: boot():/hos-thread-test\n' >> cd/boot/limine/limine.conf
 	@echo "Included hos-thread-test (diag: cross-thread wakeup)"

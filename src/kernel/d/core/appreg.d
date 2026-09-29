@@ -330,11 +330,21 @@ public AppDecision appgateDecide(uint callerDom, const(char)* parentImage, const
 
     // Launched from the shared desktop / infrastructure (domain 0).
     const uint home = (sess != 0) ? sess : sys;          // never 0 when a System domain exists
+    // A runtime helper started by unconfined SYSTEM infrastructure -- a service launcher, or a daemon
+    // it started (hos-udhcpc-launch -> busybox-dyn udhcpc -> udhcpc-script) -- is part of that
+    // service and stays unconfined with it.  Launched by the desktop chrome (a keybind, the bar) it is
+    // the user's, and lands in the session domain like before.  (Measured: DHCP placed in the
+    // session domain could not read /libnshim.so, so its AF_PACKET socket fell through to the
+    // native kernel -- "udhcpc: socket: Protocol not supported" -- and no lease ever came.)
+    const(AppRegEntry)* par = (parentImage !is null) ? appRegLookup(parentImage) : null;
+    const bool serviceParent = par !is null && (par.flags & AF_CHROME) == 0
+                               && (par.cls == AppCls.Infra || par.cls == AppCls.Runtime);
     switch (cls) {
         case AppCls.Infra:      d.target = 0;   break;
         case AppCls.SystemOnly: d.target = sys; break;
         case AppCls.App:        d.target = (reg.host == AppHost.System) ? sys : home; break;
-        default:                d.target = home; break;  // Runtime, Unregistered
+        case AppCls.Runtime:    d.target = serviceParent ? 0 : home; break;
+        default:                d.target = home; break;  // Unregistered
     }
     bool ok;
     if (d.target == 0 || (sys != 0 && d.target == sys)) ok = (cls != AppCls.Unregistered) || d.target == sys || sys == 0;
@@ -426,6 +436,10 @@ public uint appgateSelfTestCases(void function(const(char)* what) @nogc nothrow 
     expect("app grid may open quick settings (chrome)", r.verdict == AppVerdict.Allow && r.target == 0);
     r = appgateDecide(0, "wl-overview\0".ptr, dm, dm.appId.ptr, sys, sess, &stGranted);
     expect("app grid may open the Domain Manager (System)", r.verdict == AppVerdict.Allow && r.target == sys);
+    r = appgateDecide(0, "hos-netlaunch\0".ptr, bb, null, sys, sess, &stGranted);
+    expect("a service's runtime helper stays unconfined", r.verdict == AppVerdict.Allow && r.target == 0);
+    r = appgateDecide(0, "Hyprland\0".ptr, bb, null, sys, sess, &stGranted);
+    expect("a keybind's runtime program lands in the session", r.verdict == AppVerdict.Allow && r.target == sess);
     // Delegation keys.
     expect("DM is not delegable", !appRegIsDelegable("wl-domain-manager\0".ptr));
     expect("Software Center is not delegable", !appRegIsDelegable("wl-software\0".ptr));

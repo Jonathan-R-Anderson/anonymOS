@@ -307,6 +307,12 @@ public uint domainBuildNamespace(uint domObjId) {
     // cannot spoof its border colour or its label.  Bound as narrowly as possible -- the exact
     // socket path, not /run and not /run/user.
     nsBind(ns, "/run/user/1000/wayland-0\0".ptr, root, RW);
+    // ...and the name Hyprland really listens on.  libwayland takes the first free name, which is
+    // wayland-1 here (connect() aliases wayland-0 to it, see findUnixListener), and every program
+    // Hyprland launches inherits WAYLAND_DISPLAY=wayland-1 -- with only wayland-0 bound, a confined
+    // app launched from a keybind died at wl_display_connect (measured: wl-term and wl-sysmon
+    // exit(1) right after start).  Same compositor, same trust argument as above.
+    nsBind(ns, "/run/user/1000/wayland-1\0".ptr, root, RW);
 
     // The PTY pair, so a confined terminal can actually host a shell.  Verified the hard way:
     // the first successful confined spawn got as far as "G4TERM: open /dev/ptmx: No such file
@@ -336,6 +342,7 @@ public uint domainBuildNamespace(uint domObjId) {
     nsBind(ns, "/compat\0".ptr,    root, RO);
     nsBind(ns, "/system\0".ptr,    root, RO);   // the shell's function library (/system/shell/...)
     nsBind(ns, "/var/cache\0".ptr, root, RO);   // font caches
+    nsBind(ns, "/libnshim.so\0".ptr, root, RO); // the network shim (LD_PRELOAD) -- TCP/IP is the LKL's
     // ...minus the secrets that live in /etc (explicit deny overrides the shorter allow).
     nsBindDeny(ns, "/etc/shadow\0".ptr);
     nsBindDeny(ns, "/etc/wpa_supplicant\0".ptr);          // Wi-Fi keys

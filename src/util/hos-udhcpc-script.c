@@ -60,6 +60,29 @@ int main(int argc, char **argv)
      * both think there is no lease even though the link is fully up. */
     mkdir("/run", 0755);
     mkdir("/run/wifi", 0755);
+    /* The resolvers THIS lease offers: programs resolve names through this (the LKL) link, so the
+     * kernel's /etc/resolv.conf serves these ahead of the native stack's lease -- which on a
+     * two-NIC VM (VirtualBox NAT) is on a different subnet with a different DNS proxy. */
+    {
+        char *dns = getenv("dns");
+        if (dns && dns[0]) {
+            int d = open("/run/wifi/dns", O_CREAT | O_WRONLY | O_TRUNC, 0644);
+            if (d >= 0) {
+                char line[80];
+                const char *p = dns;
+                while (*p) {
+                    while (*p == ' ') p++;
+                    size_t n = 0; while (p[n] && p[n] != ' ') n++;
+                    if (n > 0 && n < 40) {
+                        int ln = snprintf(line, sizeof line, "nameserver %.*s\n", (int)n, p);
+                        (void)!write(d, line, (size_t)ln);
+                    }
+                    p += n;
+                }
+                close(d);
+            }
+        }
+    }
     int f = open("/run/wifi/dhcp-ok", O_CREAT | O_WRONLY | O_TRUNC, 0644);
     if (f >= 0) { (void)!write(f, ip, strlen(ip)); (void)!write(f, "\n", 1); close(f); }
     fprintf(stderr, "[udhcpc-script] %s: applied %s/%s gw '%s' on %s\n",

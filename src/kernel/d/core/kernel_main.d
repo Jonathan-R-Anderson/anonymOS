@@ -2345,7 +2345,11 @@ private void maybeSpawnLklTest() {
             if (d.vendorId != 0x1AF4) continue;
             if (((cast(uint)d.classCode << 8) | d.subClass) != 0x0200) continue;
             grantBdf[ngrant++] = (cast(uint)d.bus << 16) | (cast(uint)d.slot << 8) | d.func;
-            klog("[lkl] virtio-net granted for scp egress\n");
+            klog("[lkl] virtio-net granted: programs' TCP/IP runs over it (eth0)\n");
+            // DHCP must run on eth0, not the Wi-Fi's wlan0 (hos-udhcpc-launch reads this).  With
+            // no Wi-Fi granted in pass 0, this card is the LKL's only link.
+            { import core.syscalls.posix : netPublishLklIface;
+              if (ngrant == 1) netPublishLklIface("eth0\0".ptr); }   // no Wi-Fi/xHCI granted before it
         }
     }
     if (ngrant == 0) {

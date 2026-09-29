@@ -32,7 +32,9 @@ import core.overlay : overlayCreate, overlayDestroy, overlaySnapshot, overlayCom
                       overlayDiscard, overlayRestore;            // DOMAIN_MANAGER DM6.2
 import core.io : klog, klog_hex;
 import core.pkgrepo : pkgInstallByName, pkgRemoveByName, pkgApplyProfile;   // DOMAIN_MANAGER DM7/DM11
-import core.appport : appPortAdd, appPortRemove;   // Software Center cross-domain app porting
+import core.appport : appPortAdd, appPortRemove, appGrantsSeedDomain, appGrantsCloneDomain,
+                      appGrantsScrubDomain;   // appgate: the grant table the Domain Manager edits
+import core.appreg : appRegIsDelegable;       // appgate: which appIds may be delegated at all
 import core.install_config : installConfigDomains; // installer-chosen domain set (which domains exist)
 import core.template_bundle : templatePublish;                             // DOMAIN_MANAGER DM12: export verb
 
@@ -319,6 +321,39 @@ public uint domainBuildNamespace(uint domObjId) {
     // DM11: a non-native domain mounts its distro's Linux compat root at /linux (READ-only).
     if (d.distro != DISTRO_NATIVE) nsBind(ns, "/linux\0".ptr, root, RO);
 
+    // appgate: the read-only RUNTIME, so a program the Domain Manager delegates here can actually
+    // start.  Every application is a dynamic executable: the loader opens its libraries under /lib and
+    // /usr/lib and the apps read /usr/share (fonts, themes) and /etc -- none of which this default-deny
+    // view granted, so "delegated" meant "refused by the loader" (measured: dbus-daemon confined in the
+    // session domain died with "Error loading shared library libdbus-1.so.3").  Reads stay an allow
+    // LIST (these trees, not "/"): /home, /config, /objects, /run, /proc and every other domain's data
+    // remain unreachable.  Writes are unchanged: only Home and /tmp.
+    nsBind(ns, "/usr\0".ptr,       root, RO);
+    nsBind(ns, "/lib\0".ptr,       root, RO);
+    nsBind(ns, "/etc\0".ptr,       root, RO);
+    nsBind(ns, "/bin\0".ptr,       root, RO);
+    nsBind(ns, "/sbin\0".ptr,      root, RO);
+    nsBind(ns, "/compat\0".ptr,    root, RO);
+    nsBind(ns, "/system\0".ptr,    root, RO);   // the shell's function library (/system/shell/...)
+    nsBind(ns, "/var/cache\0".ptr, root, RO);   // font caches
+    // ...minus the secrets that live in /etc (explicit deny overrides the shorter allow).
+    nsBindDeny(ns, "/etc/shadow\0".ptr);
+    nsBindDeny(ns, "/etc/wpa_supplicant\0".ptr);          // Wi-Fi keys
+    nsBindDeny(ns, "/etc/NetworkManager\0".ptr);
+    nsBindDeny(ns, "/etc/ssh\0".ptr);                     // host keys
+    nsBindDeny(ns, "/etc/dropbear\0".ptr);
+    nsBindDeny(ns, "/etc/hypr\0".ptr);                    // the compositor's config: never a domain's to touch
+    // The device nodes every program writes to or reads from.  Brokered devices (/dev/dri) are still
+    // gated per domain by deviceClassGate; these binds only make the path resolvable.
+    nsBind(ns, "/dev/null\0".ptr,    root, RW);
+    nsBind(ns, "/dev/zero\0".ptr,    root, RW);
+    nsBind(ns, "/dev/full\0".ptr,    root, RW);
+    nsBind(ns, "/dev/tty\0".ptr,     root, RW);
+    nsBind(ns, "/dev/shm\0".ptr,     root, RW);   // POSIX shm: rtfs keeps each domain's objects private
+    nsBind(ns, "/dev/dri\0".ptr,     root, RW);
+    nsBind(ns, "/dev/urandom\0".ptr, root, RO);
+    nsBind(ns, "/dev/random\0".ptr,  root, RO);
+
     // System is the trusted administrative identity (TRUST_SYSTEM / CEIL_FULL).  Confining it to a
     // per-domain sandbox contradicts its role: the user runs System precisely to inspect and TWEAK
     // the system's configuration (the Hyprland/desktop config, /etc, the live domain control files).
@@ -339,6 +374,16 @@ public uint domainBuildNamespace(uint domObjId) {
         nsBind(ns, "/config\0".ptr,             root, RW);   // live domain/system control (domains.json, …)
         nsBind(ns, "/desktop.conf\0".ptr,       root, RW);   // desktop autostart/config
         nsBind(ns, "/display.conf\0".ptr,       root, RW);
+        // appgate: System now RUNS things (the Domain Manager, Software Center, VMs) rather than only
+        // being browsed, so the device nodes they write must be writable here too ("/" above is RO).
+        nsBind(ns, "/dev/kvm\0".ptr,            root, RW);   // still gated by DEVCLASS_VIRT
+        // The runtime denies above do not apply to the administration domain.
+        nsBind(ns, "/etc/shadow\0".ptr,         root, RO);
+        nsBind(ns, "/etc/wpa_supplicant\0".ptr, root, RO);
+        nsBind(ns, "/etc/NetworkManager\0".ptr, root, RO);
+        nsBind(ns, "/etc/ssh\0".ptr,            root, RO);
+        nsBind(ns, "/etc/dropbear\0".ptr,       root, RO);
+        nsBind(ns, "/etc/hypr\0".ptr,           root, RW);
     }
 
     d.nsObjId = ns;
@@ -499,9 +544,34 @@ private bool verbEq(const(char)* v, string lit) {
 // not reachable from here, and importing kernel_main would be a cycle -- it already imports us),
 // so kernel_main registers a hook at boot and this module just calls it.  Same pattern as the
 // ICMP raw tap in network/icmp.d.
-alias DomainSpawnFn = extern(C) bool function(uint domObjId, const(char)* prog) @nogc nothrow;
+// Returns 0 on success or a negative errno (-13 EACCES = the domain may not run that program).
+alias DomainSpawnFn = extern(C) long function(uint domObjId, const(char)* prog) @nogc nothrow;
 private __gshared DomainSpawnFn g_domainSpawnHook = null;
 public void domainSetSpawnHook(DomainSpawnFn fn) { g_domainSpawnHook = fn; }
+
+// appgate: how many live tasks are bound to a domain (kernel_main owns the task table and core.task
+// imports this module, so the count comes back through a hook).  A domain with running programs
+// cannot be deleted: its objId would be reused LIFO and those tasks' next exec would stick them
+// into whatever domain is created next.
+alias DomainBusyFn = extern(C) uint function(uint domObjId) @nogc nothrow;
+private __gshared DomainBusyFn g_domainBusyHook = null;
+public void domainSetBusyHook(DomainBusyFn fn) { g_domainBusyHook = fn; }
+// appgate: told when a domain is deleted, before its objId is released (rtfs tombstones its
+// private files so a later domain that reuses the objId cannot read them).
+alias DomainGoneFn = extern(C) void function(uint domObjId) @nogc nothrow;
+private __gshared DomainGoneFn g_domainGoneHook = null;
+public void domainSetGoneHook(DomainGoneFn fn) { g_domainGoneHook = fn; }
+
+// appgate: the System domain's objId (0 if there is none).  System owns the Domain Manager and is the
+// only domain that may run every program, so this is asked on every exec and every rtfs lookup by
+// an unconfined task -- cached.  Safe to cache: System can be neither deleted nor renamed (below),
+// so once resolved the objId stays valid.
+private __gshared uint g_sysDomCache = 0;
+public uint domainSystemId() {
+    if (g_sysDomCache != 0 && domainById(g_sysDomCache) !is null) return g_sysDomCache;
+    g_sysDomCache = domainByName("System\0".ptr);
+    return g_sysDomCache;
+}
 
 // DM13: the same hook trick for the per-task native->linux ratchet.  core.task imports THIS
 // module (domainBindTaskNs calls domainById), so we cannot import core.task back -- kernel_main
@@ -517,13 +587,48 @@ public void domainSetModeHook(DomainModeFn fn) { g_domainModeHook = fn; }
 alias DomainRebootFn = extern(C) bool function(int poweroff) @nogc nothrow;
 private __gshared DomainRebootFn g_domainRebootHook = null;
 public void domainSetRebootHook(DomainRebootFn fn) { g_domainRebootHook = fn; }
-public bool domainSpawnInto(uint domObjId, const(char)* prog) {
-    if (g_domainSpawnHook is null) { klog("[domain] spawn: no launcher registered\n"); return false; }
-    if (domObjId == 0 || prog is null || prog[0] == 0) return false;
+public long domainSpawnInto(uint domObjId, const(char)* prog) {
+    if (g_domainSpawnHook is null) { klog("[domain] spawn: no launcher registered\n"); return -22; }
+    if (domObjId == 0 || prog is null || prog[0] == 0) return -22;
+    auto d = domainById(domObjId);
+    if (d is null) return -2;
+    if (d.isTemplate) return -6;          // ENXIO: a template is a definition, nothing runs in it
     return g_domainSpawnHook(domObjId, prog);
 }
+// Kernel-context entry (boot proofs, internal callers): fully authorized.
 public bool domainControlWrite(const(char)* cmd, size_t len) {
-    if (cmd is null || len == 0) return false;
+    return domainControlWriteFrom(0, null, true, cmd, len) == 0;
+}
+
+// appgate: who may issue a domain-control verb.
+//
+// The Domain Manager is THE interface that delegates applications and edits domain policy, and the
+// System domain owns it -- so the verbs that change policy are accepted only from the Domain Manager
+// image running in the System domain.  Keying on the image and not merely on "a System task" matters:
+// other administration apps also run in System (Software Center, VMs, logs), and a parsing flaw in
+// any of them must not turn into the power to delegate apps or delete domains.  Domain-0 callers
+// (the compositor, the bar, the kernel's service launchers) are refused too: the compositor runs
+// arbitrary Lua from its IPC socket and config, so "unconfined" is not the same as "authorized".
+private enum : int { AUTH_ANY = 0, AUTH_POWER, AUTH_SPAWN, AUTH_DM }
+
+private bool domIsDmImage(const(char)* img) {
+    if (img is null) return false;
+    immutable string dm = "wl-domain-manager";
+    size_t i = 0;
+    for (; i < dm.length; ++i) if (img[i] != dm[i]) return false;
+    return img[i] == 0;
+}
+
+// Parse + authorize + execute one "verb name [arg]" command.
+//   callerDom    the writing task's domain (0 = unconfined)
+//   callerImage  the writing task's exec image (g_taskExecName), for the Domain Manager check
+//   kernelCtx    true for in-kernel callers (boot proofs): always authorized
+// Returns 0 on success, or a negative errno: -1 EPERM (not authorized), -2 ENOENT (unknown domain),
+// -6 ENXIO (template), -13 EACCES (the target domain may not run that program), -16 EBUSY (programs
+// still running in the domain), -22 EINVAL (malformed / failed).
+public long domainControlWriteFrom(uint callerDom, const(char)* callerImage, bool kernelCtx,
+                                   const(char)* cmd, size_t len) {
+    if (cmd is null || len == 0) return -22;
     char[160] buf = void;
     const size_t n = len < buf.length - 1 ? len : buf.length - 1;
     foreach (i; 0 .. n) buf[i] = cmd[i];
@@ -544,7 +649,39 @@ public bool domainControlWrite(const(char)* cmd, size_t len) {
         else               { if (vi < arg.length  - 1) arg [vi++] = c; }
         ++pos;
     }
-    const uint id = domainByName(name.ptr);
+
+    // ── authority ────────────────────────────────────────────────────────────────────────────
+    const uint sys = domainSystemId();
+    const bool selfName = verbEq(name.ptr, "self");
+    int need;
+    if      (verbEq(verb.ptr, "ping"))                              need = AUTH_ANY;
+    else if (verbEq(verb.ptr, "mode") && selfName)                  need = AUTH_ANY;
+    else if (verbEq(verb.ptr, "reboot") || verbEq(verb.ptr, "poweroff")) need = AUTH_POWER;
+    else if (verbEq(verb.ptr, "spawn"))                             need = AUTH_SPAWN;
+    else                                                            need = AUTH_DM;
+    const bool isDm = kernelCtx || (callerDom != 0 && callerDom == sys && domIsDmImage(callerImage));
+    // "spawn self <prog>" runs a program in the caller's OWN domain (e.g. the VM app starting its
+    // hypervisor).  A domain can never spawn into another domain; only the Domain Manager can.
+    const uint id = (selfName && need == AUTH_SPAWN) ? callerDom : domainByName(name.ptr);
+    bool authorized;
+    switch (need) {
+        case AUTH_ANY:   authorized = true; break;
+        case AUTH_POWER: authorized = kernelCtx || (callerDom != 0 && callerDom == sys); break;
+        case AUTH_SPAWN: authorized = isDm || (callerDom != 0 && id == callerDom); break;
+        default:         authorized = isDm; break;          // AUTH_DM
+    }
+    if (!authorized) {
+        static __gshared uint g_authDenyN = 0;
+        if (g_authDenyN < 24) {
+            ++g_authDenyN;
+            klog("[appgate] authority DENY '"); klog(verb.ptr); klog(" "); klog(name.ptr);
+            klog("' from "); klog(callerImage !is null ? callerImage : "?".ptr);
+            klog(" (domain "); klog_hex(callerDom); klog(")\n");
+        }
+        return -1;   // EPERM
+    }
+
+    long rc = 0;
     bool ok = false;
     if      (verbEq(verb.ptr, "ping"))     ok = true;                                      // path self-test, no side effect
     else if (verbEq(verb.ptr, "start"))    ok = (id != 0) && domainStart(id);
@@ -553,15 +690,28 @@ public bool domainControlWrite(const(char)* cmd, size_t len) {
     else if (verbEq(verb.ptr, "resume"))   ok = (id != 0) && domainResume(id);
     else if (verbEq(verb.ptr, "snapshot")) ok = (id != 0) && (domainSnapshot(id) != 0);
     else if (verbEq(verb.ptr, "commit"))   ok = (id != 0) && (domainCommit(id)   != 0);
-    else if (verbEq(verb.ptr, "clone"))    ok = (id != 0) && (arg[0] != 0) && (domainClone(id, arg.ptr) != 0);
+    else if (verbEq(verb.ptr, "clone")) {
+        const uint nid = (id != 0 && arg[0] != 0) ? domainClone(id, arg.ptr) : 0;
+        ok = nid != 0;
+        if (ok) appGrantsCloneDomain(id, nid);         // a clone can run what its source could
+    }
     // DM7: package manager verbs — "install <domain> <pkg>" / "uninstall <domain> <pkg>"
     else if (verbEq(verb.ptr, "install"))   ok = (name[0] != 0) && (arg[0] != 0) && (pkgInstallByName(name.ptr, arg.ptr) == 0);
     else if (verbEq(verb.ptr, "uninstall")) ok = (name[0] != 0) && (arg[0] != 0) && (pkgRemoveByName(name.ptr, arg.ptr) == 0);
-    // Software Center cross-domain distribution — "port <domain> <app>" / "unport <domain> <app>":
-    // grant/revoke <domain> the right to run its OWN isolated instance of <app> (confined into that
-    // domain).  System (admin) is always allowed; other domains get an app only once it is ported.
-    else if (verbEq(verb.ptr, "port"))      ok = (name[0] != 0) && (arg[0] != 0) && (appPortAdd(arg.ptr, name.ptr) == 0);
-    else if (verbEq(verb.ptr, "unport"))    ok = (name[0] != 0) && (arg[0] != 0) && (appPortRemove(arg.ptr, name.ptr) == 0);
+    // Delegation — "port <domain> <app>" / "unport <domain> <app>": grant/revoke <domain> the right to
+    // run its OWN isolated instance of <app> (confined into that domain).  System can always run
+    // everything, so it is never a target; only delegable applications can be ported.
+    else if (verbEq(verb.ptr, "port")) {
+        auto td = domainById(id);
+        if (id == 0)                                      rc = -2;
+        else if (id == sys || td.isTemplate)              rc = -22;
+        else if (arg[0] == 0 || !appRegIsDelegable(arg.ptr)) rc = -22;
+        else ok = (appPortAdd(arg.ptr, name.ptr) == 0);
+    }
+    else if (verbEq(verb.ptr, "unport")) {
+        if (id == 0) rc = -2;
+        else ok = (arg[0] != 0) && (appPortRemove(arg.ptr, name.ptr) == 0);
+    }
     // DM10.7: peripheral device toggles — "devon/devoff <domain> <gpu|audio|camera|mic|usb|input>"
     else if (verbEq(verb.ptr, "devon"))     ok = (id != 0) && domainSetDevice(id, domainDeviceClassByName(arg.ptr), true);
     else if (verbEq(verb.ptr, "devoff"))    ok = (id != 0) && domainSetDevice(id, domainDeviceClassByName(arg.ptr), false);
@@ -569,7 +719,12 @@ public bool domainControlWrite(const(char)* cmd, size_t len) {
     else if (verbEq(verb.ptr, "fsro"))      ok = (id != 0) && domainFsBindAllow(id, arg.ptr, false);
     else if (verbEq(verb.ptr, "fsrw"))      ok = (id != 0) && domainFsBindAllow(id, arg.ptr, true);
     else if (verbEq(verb.ptr, "fsdeny"))    ok = (id != 0) && domainFsBindDeny(id, arg.ptr);
-    else if (verbEq(verb.ptr, "delete"))    ok = (id != 0) && domainDelete(id);   // DM10.7: GUI Delete button (domainDelete forgets any persisted entry)
+    else if (verbEq(verb.ptr, "delete")) {  // DM10.7: GUI Delete button (domainDelete forgets any persisted entry)
+        if (id == 0)                                                   rc = -2;
+        else if (id == sys)                                            rc = -1;    // System owns the DM
+        else if (g_domainBusyHook !is null && g_domainBusyHook(id) != 0) rc = -16; // programs still running
+        else ok = domainDelete(id);
+    }
     // Power: "reboot System" / "poweroff System" — only the System domain may power the machine
     // (mirrors the DEVCLASS_POWER authority on the syscall path).  Never returns on success.
     else if (verbEq(verb.ptr, "reboot") || verbEq(verb.ptr, "poweroff"))
@@ -583,31 +738,46 @@ public bool domainControlWrite(const(char)* cmd, size_t len) {
     // GUI toolbar: from-scratch Create + instantiate-from-template (Import)
     // DM3: "spawn <domain> <program>" — run a program confined to the domain.  This is the only
     // verb that produces a task actually carrying domainObjId, so it is what makes every other
-    // policy verb (fsro/fsrw/fsdeny, devon/devoff) take effect on a live process.
-    else if (verbEq(verb.ptr, "spawn"))     ok = (id != 0) && (arg[0] != 0) && domainSpawnInto(id, arg.ptr);
+    // policy verb (fsro/fsrw/fsdeny, devon/devoff) take effect on a live process.  appgate: the
+    // program runs only if the domain may run it (EACCES otherwise).
+    else if (verbEq(verb.ptr, "spawn")) {
+        if (id == 0)          rc = -2;
+        else if (arg[0] == 0) rc = -22;
+        else { rc = domainSpawnInto(id, arg.ptr); ok = (rc == 0); }
+    }
     // DM13: "mode self <native|linux>" ratchets the CALLING task (linux -> native is refused,
     // and the mode is inherited by every child).  "mode <domain> <native|linux>" sets what
     // future `spawn`s into that domain start as, which is the domain's distro axis:
     // DISTRO_NATIVE is the native personality, anything else is a Linux one.
     else if (verbEq(verb.ptr, "mode")) {
         const bool wantLinux = verbEq(arg.ptr, "linux");
-        if (verbEq(name.ptr, "self"))
+        if (selfName)
             ok = (g_domainModeHook !is null) && g_domainModeHook(wantLinux ? 1 : 0);
         else
             ok = (id != 0) && domainSetDistro(id, wantLinux ? DISTRO_BUSYBOX : DISTRO_NATIVE);
     }
     else if (verbEq(verb.ptr, "create")) {
-        ok = (name[0] != 0) && (domainCreate(name.ptr, identityByName(arg.ptr), 0) != 0);
+        const uint nid = (name[0] != 0) ? domainCreate(name.ptr, identityByName(arg.ptr), 0) : 0;
+        ok = nid != 0;
         // Persist the new domain's definition so a domain created from the GUI survives reboot
         // (DM5 rehydrate).  Best-effort: if the store is unavailable it just stays session-only.
         if (ok) objstoreInstallDomain(name[0 .. domCstrLen(name.ptr)],
                                       arg[0 .. domCstrLen(arg.ptr)], "", PERSIST_EPHEMERAL);
+        if (ok) appGrantsSeedDomain(nid);
     }
     else if (verbEq(verb.ptr, "fromtpl"))   { const uint tp = domainByName(arg.ptr);
-                                              ok = (name[0] != 0) && (tp != 0) && (domainCreate(name.ptr, domainById(tp).identityObjId, tp) != 0); }
-    else { klog("[domain] control: unknown verb '"); klog(verb.ptr); klog("'\n"); return false; }
+                                              const uint nid = ((name[0] != 0) && (tp != 0))
+                                                  ? domainCreate(name.ptr, domainById(tp).identityObjId, tp) : 0;
+                                              ok = nid != 0;
+                                              if (ok) appGrantsSeedDomain(nid); }
+    else { klog("[domain] control: unknown verb '"); klog(verb.ptr); klog("'\n"); return -22; }
+    if (ok) rc = 0;
+    else if (rc == 0) rc = (id == 0 && name[0] != 0 && !selfName && need != AUTH_ANY
+                            && !verbEq(verb.ptr, "create") && !verbEq(verb.ptr, "fromtpl")
+                            && !verbEq(verb.ptr, "install") && !verbEq(verb.ptr, "uninstall")
+                            && !verbEq(verb.ptr, "profile")) ? -2 : -22;
     klog("[domain] control: "); klog(verb.ptr); klog(" "); klog(name.ptr); klog(ok ? " -> OK\n" : " -> FAIL\n");
-    return ok;
+    return rc;
 }
 
 // DM10.3 boot proof: drive a domain through its lifecycle purely via parsed control strings —
@@ -720,8 +890,8 @@ public void domainNsProof() {
     // (1) the domain's own home — allowed, with WRITE
     const uint t1 = nsResolveCheck(ns, "/Domains/Development/Home/notes\0".ptr, rest, rights, denied);
     ok = ok && (t1 != 0) && ((rights & CAP_RIGHT_WRITE) != 0) && !denied;
-    // (2) an unbound path — deny-by-default (no "/" mount)
-    const uint t2 = nsResolveCheck(ns, "/etc/passwd\0".ptr, rest, rights, denied);
+    // (2) an unbound path — deny-by-default (no "/" mount): the user's base home is not a domain's
+    const uint t2 = nsResolveCheck(ns, "/home/user/.ssh/id_rsa\0".ptr, rest, rights, denied);
     ok = ok && (t2 == 0) && !denied;
     // (3) /Shared — allowed read-only (READ, not WRITE)
     const uint t3 = nsResolveCheck(ns, "/Shared/readme\0".ptr, rest, rights, denied);
@@ -732,7 +902,16 @@ public void domainNsProof() {
     // (5) /System — denied
     const uint t5 = nsResolveCheck(ns, "/System/Kernel\0".ptr, rest, rights, denied);
     ok = ok && (t5 == 0) && denied;
-    if (ok) klog("[domain] ns proof PASS: Development restricted view (home rw, /Shared ro, Private+/System+unbound denied)\n");
+    // (6) appgate: the read-only runtime -- libraries readable, never writable
+    const uint t6 = nsResolveCheck(ns, "/usr/lib/libc.so\0".ptr, rest, rights, denied);
+    ok = ok && (t6 != 0) && ((rights & CAP_RIGHT_READ) != 0) && ((rights & CAP_RIGHT_WRITE) == 0) && !denied;
+    // (7) ...but /etc's secrets stay closed
+    const uint t7 = nsResolveCheck(ns, "/etc/shadow\0".ptr, rest, rights, denied);
+    ok = ok && (t7 == 0) && denied;
+    // (8) /dev/null is writable (shells redirect to it)
+    const uint t8 = nsResolveCheck(ns, "/dev/null\0".ptr, rest, rights, denied);
+    ok = ok && (t8 != 0) && ((rights & CAP_RIGHT_WRITE) != 0) && !denied;
+    if (ok) klog("[domain] ns proof PASS: Development restricted view (home rw, /Shared ro, runtime ro, Private+/System+secrets+unbound denied)\n");
     else    klog("[domain] ns proof FAIL: behaviour\n");
 }
 
@@ -830,6 +1009,9 @@ public bool domainRename(uint domObjId, const(char)* newName) {
     if (g_domFrozen) return false;
     auto d = domainById(domObjId);
     if (d is null || d.isTemplate) return false;   // DM6: templates are immutable
+    // appgate: System's authority is keyed on its identity -- it cannot be renamed away (nor can
+    // another domain take its name, which domainByName below already refuses while it exists).
+    if (domObjId == domainSystemId()) return false;
     const int nl = domCstrLen(newName);
     if (nl == 0 || nl >= DOM_NAME_MAX) return false;
     if (domainByName(newName) != 0) return false;     // unique name
@@ -842,6 +1024,16 @@ public bool domainDelete(uint domObjId) {
     if (g_domFrozen) return false;
     auto d = domainById(domObjId);
     if (d is null) return false;
+    // appgate: the System domain owns the Domain Manager; deleting it (and re-creating a domain with
+    // the same name) would hand its authority to whatever took the name.  Never allowed.
+    if (domObjId == domainSystemId()) {
+        klog("[appgate] refusing to delete the System domain\n");
+        return false;
+    }
+    // appgate: forget what the domain was delegated, and tombstone its private files, before the
+    // objId goes back to the allocator (objIds are reused LIFO).
+    appGrantsScrubDomain(domObjId);
+    if (g_domainGoneHook !is null) g_domainGoneHook(domObjId);
     // DM5: forget any persisted definition first, so a domain deleted at runtime does not reappear
     // on the next boot via domainRehydrateFromDisk.  No-op for a seed/manifest/clone domain that was
     // never persisted.  Done here (not just in the GUI verb) so every delete path stays consistent.

@@ -15,9 +15,17 @@
 //
 // Window decorations are the compositor's job; this client only paints its content
 // surface (Cairo shapes in one pass, antialiased FreeType text in a second pass).
+//
+// appgate (2026-09-28): the Domain Manager runs in the System domain and is THE interface that
+// delegates applications to other domains.  The kernel accepts the policy verbs on
+// /config/domain.action (port/unport, create/delete, devon, fsrw, ...) only from this image running
+// in System, and refuses to exec an application inside a domain it has not been delegated to.  A
+// refused command fails the write() with an errno; the status line above the footer turns that
+// into a sentence, so a refusal is never silent.
 #define _GNU_SOURCE
 
 #include <errno.h>
+#include <stdarg.h>
 #include <dirent.h>
 #include <sys/socket.h>
 #include <sys/un.h>
@@ -56,6 +64,7 @@ enum {
     LIST_W         = 240,     // left domain list width
     ROW_H          = 40,      // list row height
     FOOTER_H       = 30,
+    STATUS_H       = 26,      // appgate: the control-write status line, directly above the footer
     PAD            = 20,
 };
 
@@ -96,12 +105,18 @@ enum { SH_LINUX, SH_WINDOWS, SH_NATIVE, SH_N };
 static const char *SHELL_LBL[] = {"Linux (zsh)","Windows (n/a)","Native (zsh+LFE)"};
 static const char *SHELL_ENV[] = {"linux","windows","native"};
 
-// R1: which terminal *emulator* "Launch Terminal" runs - the C wl-term (default) or the Rust
-// hos-term (ratty-cpu).  Both host the chosen Shell (EPIN_SHELL); this picks the emulator, not the
-// shell.  (Replaces the SUPER+R keybind: the terminal is selected here, per the domain.)
-enum { TERM_WL, TERM_HOS, TERM_GL, TERM_N };
-static const char *TERM_LBL[] = {"Default (wl-term)", "Rust (hos-term)", "GL (gl-term)"};
-static const char *TERM_BIN[] = {"/wl-term", "/hos-term", "/gl-term"};
+// R1: which terminal *emulator* "Run Shell" (and Enter) runs.  All of them host the chosen Shell
+// (EPIN_SHELL); this picks the emulator, not the shell.  (Replaces the SUPER+R keybind: the
+// terminal is selected here, per the domain.)
+//
+// appgate: the default is the SAME image the Applications tab's Terminal row launches,
+// /hos-wifiterm (wl-term with a light zsh, software rendered), not /gl-term, which needs a GPU and
+// fails on a software-rendered desktop -- so Run Shell and Launch Terminal behave alike.  The other
+// emulators stay selectable per domain (Overview tab); the kernel treats all four as the one
+// delegated application "hos-wifiterm".
+enum { TERM_DEFAULT, TERM_WL, TERM_HOS, TERM_GL, TERM_N };
+static const char *TERM_LBL[] = {"Default (hos-wifiterm)", "wl-term", "Rust (hos-term)", "GL (gl-term)"};
+static const char *TERM_BIN[] = {"/hos-wifiterm", "/wl-term", "/hos-term", "/gl-term"};
 
 struct domain {
     const char *name;
@@ -188,6 +203,22 @@ struct gsyssvc { char name[40]; char state[12]; unsigned rights, ver; };
 #define MAX_STARTUP 24
 struct gstartup { char cmd[96]; int live; };   // live = an `autostart-live` (install-media only) entry
 
+// appgate: one application's delegation record, parsed from /config/apps.json (rendered by the
+// kernel from its grant table): every registry application plus the objstore apps ("store:<name>").
+// The domains it may run in are kept by NAME, never by list index -- creating or deleting a domain
+// shifts every index after it, and a mask over indices then showed one domain's grants under
+// another domain's name.
+#define MAX_GRANTS 48
+struct gappgrant {
+    char id[72];               // registry appId ("wl-files", "hos-wifiterm", "store:<name>")
+    int  delegable;            // "delegable" (absent -> 1): may it be delegated out of System at all
+    int  host_system;          // "host" == "system" (absent -> "session"): where a desktop launch lands
+    int  n_doms;
+    char doms[MAX_DOMS][32];   // the domains it has been delegated to
+};
+
+enum { ST_IDLE = 0, ST_OK, ST_ERR };           // status-line kinds
+
 struct app {
     struct wl_display *display;
     struct wl_registry *registry;
@@ -241,15 +272,56 @@ struct app {
     // offers a launch that can only fail with "[exec] not found".
     int  avail[16];
     int  n_avail;
-    // Software Center cross-domain porting: per-app bitmask over domain indices (bit d = domain
-    // doms[d] may run this app), loaded from /config/apps.json; and which app's domain checklist is
-    // currently open in the System Applications tab (-1 = none).
-    unsigned app_port_mask[16];   /* per-avail-index bitmask over domain indices; sized like avail[] */
+    // appgate delegation: the /config/apps.json records (grants keyed by domain name), and which
+    // app's domain checklist is currently open in the System Applications tab (-1 = none).
+    struct gappgrant grants[MAX_GRANTS];
+    int  n_grants;
     unsigned app_overlay_mask[16];/* per-avail-index bitmask over domain indices: overlay-mode on for (app,domain) */
     int  port_panel;
+    // appgate (/config/appgate.json): the System domain's name and the desktop session domain's --
+    // the one every launch from the shared desktop (app grid, keybinds, top bar) lands in.
+    char sys_name[32];
+    char session_name[32];
+    int  no_config;               // /config/domains.json unreadable: this DM is not running in System
+    char status[200];             // the outcome of the last control write (status line)
+    int  status_kind;             // ST_IDLE / ST_OK / ST_ERR
 };
 
 static void log_line(const char *s) { fputs(s, stdout); fputc('\n', stdout); fflush(stdout); }
+
+// appgate: set the status line (and mirror it to the serial log, which is how a remote debug
+// session sees what the user saw).
+static void set_status(struct app *app, int kind, const char *fmt, ...) __attribute__((format(printf, 3, 4)));
+static void set_status(struct app *app, int kind, const char *fmt, ...)
+{
+    va_list ap;
+    va_start(ap, fmt);
+    vsnprintf(app->status, sizeof(app->status), fmt, ap);
+    va_end(ap);
+    app->status_kind = kind;
+    printf("DOMAINMGR: status: %s\n", app->status); fflush(stdout);
+}
+
+// Domain predicates.  System is recognised by the name the kernel reports (/config/appgate.json,
+// default "System"); a template is a definition -- nothing runs in it and nothing is delegated to it.
+static int is_system_dom(const struct app *app, int di)
+{
+    return di >= 0 && di < app->n_doms && strcmp(app->doms[di].name, app->sys_name) == 0;
+}
+static int is_template_dom(const struct app *app, int di)
+{
+    return di >= 0 && di < app->n_doms && strcmp(app->doms[di].type, "template") == 0;
+}
+static int is_session_dom(const struct app *app, int di)
+{
+    return di >= 0 && di < app->n_doms && app->session_name[0] && strcmp(app->doms[di].name, app->session_name) == 0;
+}
+// A domain the delegation checklist offers: every domain except System (the source, which runs
+// everything already) and templates.
+static int is_port_target(const struct app *app, int di)
+{
+    return di >= 0 && di < app->n_doms && !is_system_dom(app, di) && !is_template_dom(app, di);
+}
 
 static int create_memfd(const char *name) { return (int)syscall(SYS_memfd_create, name, MFD_CLOEXEC); }
 
@@ -353,6 +425,21 @@ static void draw_text(struct app *app, const char *text, int x, int y, int max_w
     }
 }
 
+// Pixel advance of `text` at size px (for placing a badge after a name).
+static int text_width(struct app *app, const char *text, int px)
+{
+    if (!app->font_ready || !text) return 0;
+    if (FT_Set_Pixel_Sizes(app->face, 0, (FT_UInt)px) != 0) return 0;
+    int w = 0;
+    for (const unsigned char *p = (const unsigned char *)text; *p; ++p) {
+        unsigned char ch = *p;
+        if (ch < 0x20 || ch >= 0x7f) ch = '?';
+        if (FT_Load_Char(app->face, (FT_ULong)ch, FT_LOAD_DEFAULT) != 0) continue;
+        w += (int)(app->face->glyph->advance.x >> 6);
+    }
+    return w;
+}
+
 // --- control model --------------------------------------------------------
 
 static const char *CTL_LABEL[7] = {
@@ -422,8 +509,10 @@ static void toolbar_btn_rect(int idx, int *x, int *y, int *w, int *h) {
 static void tab_rect(int idx, int *x, int *y, int *w, int *h) {
     *y = BODY_Y + DOMHDR_H; *h = TABBAR_H; *x = RP_X + idx * TAB_W; *w = TAB_W;
 }
+// Bottom of the content area: the status line and the footer sit below it.
+static int content_bottom(const struct app *app) { return app->height - FOOTER_H - STATUS_H; }
 static void delete_btn_rect(struct app *app, int *x, int *y, int *w, int *h) {
-    *x = PAD; *w = LIST_W - 2 * PAD; *h = 26; *y = app->height - FOOTER_H - 32;
+    *x = PAD; *w = LIST_W - 2 * PAD; *h = 26; *y = content_bottom(app) - 32;
 }
 static void life_btn_rect(int idx, int *x, int *y, int *w, int *h) {
     *y = TAB_Y + 196; *h = 30; *w = 92; *x = LABEL_X + idx * (92 + 6);
@@ -456,31 +545,39 @@ static void pkg_row_rect(int idx, int *x, int *y, int *w, int *h) {   // Package
 // listed one app and said "(planned)".  Neither was a launcher, so there was no way to open a
 // terminal inside a domain from this GUI at all -- which is the whole point of the domain.
 //
-// There is no shared app registry in the tree: the desktop's own grid hardcodes this list in
-// wl-overview.c, so this mirrors it.  Rows are filtered by access(X_OK) at load time, which
-// also keeps dead entries (e.g. /gl-term, which has never been built) off the list instead of
-// offering a launch that can only fail.
+// The rows mirror the delegable applications of the kernel's registry (core/appreg.d): the exec
+// BASENAME of every row is its registry appId, which is the key the port/unport verbs and
+// /config/apps.json use -- keep them identical (the Terminal is /hos-wifiterm, not /wl-term).
+// Rows are filtered by access(X_OK) at load time, which also keeps dead entries off the list
+// instead of offering a launch that can only fail.  Whether a row may be delegated at all comes
+// from apps.json ("delegable"), not from this table: the admin apps (Software Center, Virtual
+// Machines, System Monitor, Logs) are System-only.
 /* `cls` is the app's BASE Wayland app_id (what it passes to set_app_id) — NOT the exec path.
  * The per-domain "Overlay" toggle builds window rules matching "<cls>@<domain>", and the apps
  * domain-qualify their app_id to that form via epin_domain_appid() (src/util/epin-appid.h).
- * NOTE the trap: Terminal execs /hos-wifiterm which execve's /wl-term, whose class is epin-g4-term. */
-struct dmapp { const char *label; const char *exec; const char *cls; };
+ * NOTE the trap: Terminal execs /hos-wifiterm which execve's /wl-term, whose class is epin-g4-term.
+ * DMF_CLI: a command-line program -- it has no window (no Launch, no Overlay); it is delegated like
+ * any app and run from a terminal in the domain. */
+enum { DMF_CLI = 1 };
+struct dmapp { const char *label; const char *exec; const char *cls; int flags; };
 static const struct dmapp DMAPPS[] = {
-    { "Software Center", "/wl-software",   "epinanonymos-software" },
-    { "Virtual Machines","/wl-vmm",        "epin-vmm"        },
-    { "Terminal",       "/hos-wifiterm",  "epin-g4-term"    },
-    { "Files",          "/wl-files",      "epin-files"      },
-    { "Text Editor",    "/wl-editor",     "epin-editor"     },
-    { "Calculator",     "/wl-calc",       "epin-calc"       },
-    { "System Monitor", "/wl-sysmon",     "epin-sysmon"     },
-    { "Image Viewer",   "/wl-imgview",    "epin-imgview"    },
-    { "Clocks",         "/wl-clocks",     "epin-clocks"     },
-    { "Calendar",       "/wl-calendar",   "epin-calendar"   },
-    { "Characters",     "/wl-chars",      "epin-chars"      },
-    { "Screenshot",     "/wl-screenshot", "epin-screenshot" },
-    { "Logs",           "/wl-logview",    "epin-logview"    },
+    { "Software Center", "/wl-software",   "epinanonymos-software" , 0 },
+    { "Virtual Machines","/wl-vmm",        "epin-vmm"        , 0 },
+    { "Terminal",       "/hos-wifiterm",  "epin-g4-term"    , 0 },
+    { "Files",          "/wl-files",      "epin-files"      , 0 },
+    { "Text Editor",    "/wl-editor",     "epin-editor"     , 0 },
+    { "Calculator",     "/wl-calc",       "epin-calc"       , 0 },
+    { "System Monitor", "/wl-sysmon",     "epin-sysmon"     , 0 },
+    { "Image Viewer",   "/wl-imgview",    "epin-imgview"    , 0 },
+    { "Clocks",         "/wl-clocks",     "epin-clocks"     , 0 },
+    { "Calendar",       "/wl-calendar",   "epin-calendar"   , 0 },
+    { "Characters",     "/wl-chars",      "epin-chars"      , 0 },
+    { "Screenshot",     "/wl-screenshot", "epin-screenshot" , 0 },
+    { "Logs",           "/wl-logview",    "epin-logview"    , 0 },
+    { "kUML (CLI)",     "/kuml",          "kuml",           DMF_CLI },
 };
 enum { N_DMAPP = (int)(sizeof(DMAPPS)/sizeof(DMAPPS[0])) };
+static const char *dmapp_id(const struct dmapp *a) { return a->exec + 1; }   // exec basename == appId
 
 static void appl_row_rect(int idx, int *x, int *y, int *w, int *h) {   // Applications Launch pills
     *y = TAB_Y + 40 + idx * 30; *h = 26; *w = 92; *x = LABEL_X + 320;
@@ -500,56 +597,163 @@ static void load_apps(struct app *app)
 }
 
 static int j_field(const char *p, const char *end, const char *key, char *out, int cap);  // defined below
+static void reload_state(struct app *app, const char *select);                      // defined below
 
-// Software Center porting: load /config/apps.json into app_port_mask[] (per-avail-index bitmask over
-// domain indices). Format: [ { "id":"wl-software", "domains":["Personal","Work"] }, ... ].
+// The next `"key":` at or after p -- a KEY, not the same text appearing as a value (a domain
+// named "id" inside a "domains" list must not be taken for the start of the next record).
+static const char *json_key(const char *p, const char *key)
+{
+    char pat[40]; snprintf(pat, sizeof(pat), "\"%s\"", key);
+    for (const char *k = p ? strstr(p, pat) : NULL; k; k = strstr(k + 1, pat)) {
+        const char *c = k + strlen(pat);
+        while (*c == ' ' || *c == '\t' || *c == '\n' || *c == '\r') c++;
+        if (*c == ':') return k;
+    }
+    return NULL;
+}
+
+// appgate: load /config/apps.json -- the kernel's delegation table:
+//   [ { "id": "hos-wifiterm", "delegable": true, "host": "session", "domains": ["Personal"] }, ... ]
+// "delegable" absent -> true and "host" absent -> "session" (the format before appgate had only
+// id + domains).  Called from load_domains(), so the grants are re-read every time the domain list
+// is, and a checklist never shows grants that belonged to a domain which has since gone.
 static void load_apps_ports(struct app *app)
 {
-    for (int i = 0; i < 16; i++) app->app_port_mask[i] = 0;
+    app->n_grants = 0;
     unsigned char *buf; size_t sz;
     if (load_file("/config/apps.json", &buf, &sz) < 0 || sz == 0) return;
     char *json = malloc(sz + 1);
     if (!json) { free(buf); return; }
     memcpy(json, buf, sz); json[sz] = 0; free(buf);
-    for (const char *q = json; ; ) {
-        const char *idk = strstr(q, "\"id\"");
+    for (const char *q = json; app->n_grants < MAX_GRANTS; ) {
+        const char *idk = json_key(q, "id");
         if (!idk) break;
-        const char *idEnd = strstr(idk + 4, "\"id\"");        // next record
-        if (!idEnd) idEnd = json + strlen(json);
-        char id[48]; j_field(idk, idEnd, "id", id, sizeof(id));
-        int ai = -1;
-        for (int k = 0; k < app->n_avail; k++)
-            if (strcmp(DMAPPS[app->avail[k]].exec + 1, id) == 0) { ai = k; break; }  // exec+1 strips '/'
-        if (ai >= 0) {
-            const char *dl = strstr(idk, "\"domains\"");
-            const char *br = (dl && dl < idEnd) ? strchr(dl, '[') : NULL;
-            const char *bre = br ? strchr(br, ']') : NULL;
-            for (const char *s = br; s && bre && s < bre; ) {
-                const char *q1 = strchr(s + 1, '"'); if (!q1 || q1 >= bre) break;
-                const char *q2 = strchr(q1 + 1, '"'); if (!q2 || q2 > bre) break;
-                char dn[32]; int L = (int)(q2 - q1 - 1); if (L > 31) L = 31;
-                memcpy(dn, q1 + 1, L); dn[L] = 0;
-                for (int di = 0; di < app->n_doms && di < 32; di++)
-                    if (strcmp(app->doms[di].name, dn) == 0) { app->app_port_mask[ai] |= (1u << di); break; }
-                s = q2 + 1;
-            }
+        const char *idEnd = json_key(idk + 4, "id");          // next record
+        if (!idEnd) idEnd = json + sz;
+        struct gappgrant *g = &app->grants[app->n_grants];
+        memset(g, 0, sizeof(*g));
+        j_field(idk, idEnd, "id", g->id, sizeof(g->id));
+        char v[16];
+        g->delegable   = !(j_field(idk, idEnd, "delegable", v, sizeof(v)) && strcmp(v, "false") == 0);
+        g->host_system =   j_field(idk, idEnd, "host", v, sizeof(v)) && strcmp(v, "system") == 0;
+        const char *dl  = json_key(idk, "domains");
+        const char *br  = (dl && dl < idEnd) ? strchr(dl, '[') : NULL;
+        const char *bre = (br && br < idEnd) ? strchr(br, ']') : NULL;
+        for (const char *s = br; s && bre && s < bre && g->n_doms < MAX_DOMS; ) {
+            const char *q1 = strchr(s + 1, '"'); if (!q1 || q1 >= bre) break;
+            const char *q2 = strchr(q1 + 1, '"'); if (!q2 || q2 > bre) break;
+            int L = (int)(q2 - q1 - 1); if (L > 31) L = 31;
+            memcpy(g->doms[g->n_doms], q1 + 1, L); g->doms[g->n_doms][L] = 0;
+            g->n_doms++;
+            s = q2 + 1;
         }
+        if (g->id[0]) app->n_grants++;
         q = idEnd;
     }
     free(json);
+    int ndeleg = 0;
+    for (int i = 0; i < app->n_grants; i++) ndeleg += app->grants[i].delegable;
+    printf("DOMAINMGR: loaded %d application records from /config/apps.json (%d delegable)\n",
+           app->n_grants, ndeleg); fflush(stdout);
 }
 
-// Send "verb <domain> <appid>" to /config/domain.action for the PORT checklist - targets the CHOSEN
-// domain (not app->sel), unlike domain_action_arg. verb = "port" | "unport".
-static void port_action(struct app *app, const char *verb, const char *domainName, const char *appid)
+// Grant lookups for Applications-tab row `ai` (an index into avail[]).  An app the kernel did not
+// list is treated as delegable-but-granted-nowhere, like a record with no "delegable" key.
+static const struct gappgrant *grant_for(const struct app *app, int ai)
 {
-    char cmd[160];
-    int len = snprintf(cmd, sizeof(cmd), "%s %s %s", verb, domainName, appid);
+    if (ai < 0 || ai >= app->n_avail) return NULL;
+    const char *id = dmapp_id(&DMAPPS[app->avail[ai]]);
+    for (int i = 0; i < app->n_grants; i++)
+        if (strcmp(app->grants[i].id, id) == 0) return &app->grants[i];
+    return NULL;
+}
+static int app_delegable(const struct app *app, int ai)
+{
+    const struct gappgrant *g = grant_for(app, ai);
+    return g ? g->delegable : 1;
+}
+static int app_granted(const struct app *app, int ai, int di)   // by domain NAME
+{
+    const struct gappgrant *g = grant_for(app, ai);
+    if (!g || di < 0 || di >= app->n_doms) return 0;
+    for (int k = 0; k < g->n_doms; k++)
+        if (strcmp(g->doms[k], app->doms[di].name) == 0) return 1;
+    return 0;
+}
+static int app_grant_count(const struct app *app, int ai)       // over the domains the checklist lists
+{
+    int n = 0;
+    for (int di = 0; di < app->n_doms; di++) n += is_port_target(app, di) && app_granted(app, ai, di);
+    return n;
+}
+
+// ── appgate: control writes ────────────────────────────────────────────────────────────────
+// Every command goes to the kernel's control endpoint, /config/domain.action.  The kernel refuses
+// a command by failing the write() with an errno (EPERM: not the Domain Manager in System; EACCES:
+// the domain may not run that program; EBUSY: programs still running; ENOENT: no such domain;
+// ENXIO: a template; EINVAL: anything else), so the result is known without re-reading state.
+// Returns 0 on success, the write()'s errno when the kernel refused the command, or -errno when
+// the endpoint could not even be opened (this DM is not in a domain that can reach /config).
+static int ctl_write(const char *cmd)
+{
     int fd = open("/config/domain.action", O_WRONLY);
-    if (fd < 0) return;
-    ssize_t w = write(fd, cmd, len); close(fd);
-    printf("DOMAINMGR: port action '%s' -> %zd\n", cmd, w); fflush(stdout);
-    load_apps_ports(app);
+    if (fd < 0) {
+        int e = errno ? errno : EIO;
+        printf("DOMAINMGR: action '%s' open FAILED (%s)\n", cmd, strerror(e)); fflush(stdout);
+        return -e;
+    }
+    ssize_t w = write(fd, cmd, strlen(cmd));
+    int e = (w < 0) ? (errno ? errno : EIO) : 0;
+    close(fd);
+    printf("DOMAINMGR: action '%s' -> %s\n", cmd, e ? strerror(e) : "ok"); fflush(stdout);
+    return e;
+}
+
+// Turn a ctl_write() result into the status line.  `what` names the application a spawn/port was
+// about (NULL otherwise), `dom` the domain the command targeted, `okmsg` the success sentence.
+static void report_ctl(struct app *app, int err, const char *verb, const char *what, const char *dom,
+                       const char *okmsg)
+{
+    if (err == 0) { set_status(app, ST_OK, "%s", okmsg); return; }
+    if (err < 0) {
+        set_status(app, ST_ERR, "Domain control unavailable (%s) - the Domain Manager must run in the %s domain",
+                   strerror(-err), app->sys_name);
+        return;
+    }
+    switch (err) {
+    case EACCES:
+        set_status(app, ST_ERR, "%s is not delegated to %s - enable it under %s > Applications > Domains",
+                   what ? what : "That application", dom, app->sys_name);
+        break;
+    case EPERM:
+        set_status(app, ST_ERR, "Not permitted - only the Domain Manager in the %s domain can do that", app->sys_name);
+        break;
+    case EBUSY:  set_status(app, ST_ERR, "%s still has running programs - close them first", dom); break;
+    case ENXIO:  set_status(app, ST_ERR, "%s is a template - nothing runs in it", dom); break;
+    case ENOENT:
+        // For a spawn the kernel's image lookup reports ENOENT too; the rows are filtered by
+        // access(X_OK), so it is almost always the domain, but say both rather than mislead.
+        if (what && strcmp(verb, "spawn") == 0)
+            set_status(app, ST_ERR, "No such domain (or %s is not installed)", what);
+        else
+            set_status(app, ST_ERR, "No such domain");
+        break;
+    default:     set_status(app, ST_ERR, "Request failed (%s)", verb); break;
+    }
+}
+
+// Send "verb <domain> <appid>" to /config/domain.action for the delegation checklist - targets the
+// CHOSEN domain (not app->sel), unlike domain_action_arg.  verb = "port" | "unport".
+static void port_action(struct app *app, const char *verb, const char *domainName, const char *appid,
+                        const char *label)
+{
+    char cmd[160], ok[160];
+    snprintf(cmd, sizeof(cmd), "%s %s %s", verb, domainName, appid);
+    int e = ctl_write(cmd);
+    if (strcmp(verb, "port") == 0) snprintf(ok, sizeof(ok), "Delegated %s to %s", label, domainName);
+    else                           snprintf(ok, sizeof(ok), "Revoked %s from %s", label, domainName);
+    report_ctl(app, e, verb, label, domainName, ok);
+    reload_state(app, NULL);   // re-read domains + grants together (a refusal may mean they moved)
 }
 
 /* ---- Per-domain "Overlay mode" (2026-09-27) --------------------------------------------------
@@ -674,6 +878,25 @@ static void port_row_rect(int idx, int *x, int *y, int *w, int *h) {   // a doma
     *y = TAB_Y + 74 + idx * 26; *h = 22; *w = 260; *x = LABEL_X + 30;
 }
 
+// Is Applications-tab row `ai` listed for the selected domain?  System lists every application (it
+// runs them all); a template lists nothing (nothing runs in it); any other domain lists exactly
+// what has been delegated to it -- and never a System-only application.
+static int appl_listed(const struct app *app, int ai)
+{
+    if (is_system_dom(app, app->sel))   return 1;
+    if (is_template_dom(app, app->sel)) return 0;
+    return app_delegable(app, ai) && app_granted(app, ai, app->sel);
+}
+// The rows the Applications tab shows, in screen order (rows[r] = avail index).  The draw pass and
+// the click pass both walk THIS list, so screen row r is the same application in both, and a
+// domain's tab has no blank rows where the apps it was not delegated used to be skipped.
+static int appl_rows(const struct app *app, int rows[16])
+{
+    int n = 0;
+    for (int i = 0; i < app->n_avail && n < 16; i++) if (appl_listed(app, i)) rows[n++] = i;
+    return n;
+}
+
 static void export_btn_rect(int *x, int *y, int *w, int *h) {   // DM12 Appearance-tab Export button
     *x = LABEL_X; *y = TAB_Y + 100; *w = 240; *h = 28;
 }
@@ -714,8 +937,15 @@ static int j_field(const char *p, const char *end, const char *key, char *out, i
     return 1;
 }
 
-static void load_domains_fallback(struct app *app)
+// RENDERING PLACEHOLDER ONLY -- never presented as a domain list.
+// /config/domains.json is readable from the System domain (and by the desktop chrome), so when it
+// cannot be read this Domain Manager is running somewhere it can manage nothing: the kernel would
+// refuse every control write.  The built-in table is loaded only so the drawing code always has a
+// domain to index; draw_manager() shows "The Domain Manager must run in the System domain" in
+// place of the list and the tabs while app->no_config is set, and handle_click() acts on nothing.
+static void load_domains_fallback(struct app *app, int unreadable)
 {
+    app->no_config = unreadable ? 1 : 2;
     app->n_doms = N_DOMAINS;
     for (int i = 0; i < N_DOMAINS; i++) {
         struct gdomain *g = &app->doms[i];
@@ -724,20 +954,40 @@ static void load_domains_fallback(struct app *app)
         g->color = DOMAINS[i].color;
         snprintf(g->identity, sizeof(g->identity), "%s", DOMAINS[i].name);
         snprintf(g->type, sizeof(g->type), "domain");
-        snprintf(g->state, sizeof(g->state), "Defined");
+        snprintf(g->state, sizeof(g->state), "offline");      // placeholder: not a live domain
         snprintf(g->persist, sizeof(g->persist), "ephemeral");
     }
-    printf("DOMAINMGR: /config/domains.json unavailable -- using %d built-in domains\n", app->n_doms);
+    printf("DOMAINMGR: /config/domains.json %s -- not managing anything (built-in list is a rendering placeholder only)\n",
+           unreadable ? "unreadable: not running in the System domain" : "lists no domains");
     fflush(stdout);
 }
 
-static void load_domains(struct app *app)
+// appgate: /config/appgate.json names the System domain and the desktop's session domain.
+static void load_appgate_names(struct app *app)
+{
+    snprintf(app->sys_name, sizeof(app->sys_name), "System");
+    app->session_name[0] = 0;
+    unsigned char *buf; size_t sz;
+    if (load_file("/config/appgate.json", &buf, &sz) < 0 || sz == 0) return;
+    char *json = malloc(sz + 1);
+    if (!json) { free(buf); return; }
+    memcpy(json, buf, sz); json[sz] = 0; free(buf);
+    char v[32];
+    const char *k = json_key(json, "system");
+    if (k && j_field(k, json + sz, "system", v, sizeof(v)) && v[0]) snprintf(app->sys_name, sizeof(app->sys_name), "%s", v);
+    k = json_key(json, "session");
+    if (k && j_field(k, json + sz, "session", v, sizeof(v))) snprintf(app->session_name, sizeof(app->session_name), "%s", v);
+    free(json);
+}
+
+// Parse /config/domains.json into doms[].  Returns the number loaded, or -1 if it is unreadable.
+static int parse_domains(struct app *app)
 {
     unsigned char *buf; size_t sz;
     app->n_doms = 0;
-    if (load_file("/config/domains.json", &buf, &sz) < 0 || sz == 0) { load_domains_fallback(app); return; }
+    if (load_file("/config/domains.json", &buf, &sz) < 0 || sz == 0) return -1;
     char *json = malloc(sz + 1);
-    if (!json) { free(buf); load_domains_fallback(app); return; }
+    if (!json) { free(buf); return -1; }
     memcpy(json, buf, sz); json[sz] = 0; free(buf);
 
     const char *p = json;
@@ -765,10 +1015,25 @@ static void load_domains(struct app *app)
         p = objEnd;
     }
     free(json);
-    if (app->n_doms == 0) { load_domains_fallback(app); return; }
+    if (app->n_doms == 0) return 0;
     printf("DOMAINMGR: loaded %d domains from /config/domains.json (declarative):", app->n_doms);
     for (int i = 0; i < app->n_doms; i++) printf(" %s[%s dev=0x%x distro=%s]", app->doms[i].name, app->doms[i].type, app->doms[i].devices, app->doms[i].distro);
     printf("\n"); fflush(stdout);
+    return app->n_doms;
+}
+
+// Load the domain list AND everything keyed by it.  appgate: the delegation grants
+// (/config/apps.json) and the overlay pills are re-derived here, by domain name, every single time
+// the list is -- after a create or a delete every index past it shifts, and state kept per index
+// would otherwise be shown under a different domain.
+static void load_domains(struct app *app)
+{
+    app->no_config = 0;
+    int n = parse_domains(app);
+    if (n <= 0) load_domains_fallback(app, n < 0);
+    load_appgate_names(app);   // System + desktop-session names   (/config/appgate.json)
+    load_apps_ports(app);      // delegation grants, by name        (/config/apps.json)
+    load_apps_overlay(app);    // per-(app, domain) overlay pills   (overlay.lua)
 }
 
 // DM10.7: load the software repository (/config/packages.json) - the catalog into pkgs[] and the
@@ -985,42 +1250,50 @@ static void refresh_fs_view(struct app *app)
            app->doms[app->sel].name, n, binds); fflush(stdout);
 }
 
+// appgate: re-read everything keyed by the domain list, keeping the selection on the same domain
+// NAME -- a create or a delete shifts every index after it.  `select` (non-NULL) picks a domain by
+// name instead, e.g. the one a create or clone just made.
+static void reload_state(struct app *app, const char *select)
+{
+    char keep[32] = "";
+    if (app->sel >= 0 && app->sel < app->n_doms) snprintf(keep, sizeof(keep), "%s", app->doms[app->sel].name);
+    load_domains(app);                       // also re-reads the grants (apps.json) and overlay pills
+    load_packages(app);
+    load_templates(app);
+    const char *want = select ? select : keep;
+    app->sel = 0;
+    for (int i = 0; i < app->n_doms; i++)
+        if (strcmp(app->doms[i].name, want) == 0) { app->sel = i; break; }
+    refresh_fs_view(app);
+}
+
 // DM10.3: send a "verb name" lifecycle command to the kernel control endpoint
 // (/config/domain.action), then re-read the declarative state so the GUI reflects the result.
 static void domain_action(struct app *app, const char *verb)
 {
     if (app->sel < 0 || app->sel >= app->n_doms) return;
-    char cmd[80];
-    int len = snprintf(cmd, sizeof(cmd), "%s %s", verb, app->doms[app->sel].name);
-    int fd = open("/config/domain.action", O_WRONLY);
-    if (fd < 0) { printf("DOMAINMGR: action '%s' open FAILED\n", cmd); fflush(stdout); return; }
-    ssize_t w = write(fd, cmd, len);
-    close(fd);
-    printf("DOMAINMGR: action '%s' -> wrote %zd\n", cmd, w); fflush(stdout);
-    int keep = app->sel;
-    load_domains(app);                       // re-read state (the kernel may have changed it)
-    if (keep < app->n_doms) app->sel = keep;
-    refresh_fs_view(app);
+    char cmd[80], dom[32], ok[96];
+    snprintf(dom, sizeof(dom), "%s", app->doms[app->sel].name);
+    snprintf(cmd, sizeof(cmd), "%s %s", verb, dom);
+    const int e = ctl_write(cmd);
+    if (strcmp(verb, "delete") == 0) snprintf(ok, sizeof(ok), "Deleted %s", dom);
+    else                             snprintf(ok, sizeof(ok), "%s: %s done", dom, verb);
+    report_ctl(app, e, verb, NULL, dom, ok);
+    reload_state(app, NULL);
 }
 
 // DM10.5: commit the Clone dialog - write "clone <src> <newname>" to the control endpoint, then
-// re-read so the new domain appears in the list.
+// re-read so the new domain appears in the list (and is selected).
 static void domain_action_clone(struct app *app)
 {
     if (app->sel < 0 || app->sel >= app->n_doms || app->editlen == 0) return;
-    char cmd[96];
-    int len = snprintf(cmd, sizeof(cmd), "clone %s %s", app->doms[app->sel].name, app->editbuf);
-    int fd = open("/config/domain.action", O_WRONLY);
-    if (fd < 0) { printf("DOMAINMGR: clone open FAILED\n"); fflush(stdout); return; }
-    ssize_t w = write(fd, cmd, len);
-    close(fd);
-    printf("DOMAINMGR: action '%s' -> wrote %zd\n", cmd, w); fflush(stdout);
-    load_domains(app);                       // the clone is a NEW domain - re-read the full list
-    load_packages(app);                      // domain indices shifted → re-read installs
-    // select the freshly-created clone if present
-    for (int i = 0; i < app->n_doms; i++)
-        if (strcmp(app->doms[i].name, app->editbuf) == 0) { app->sel = i; break; }
-    refresh_fs_view(app);
+    char cmd[96], ok[96], src[32];
+    snprintf(src, sizeof(src), "%s", app->doms[app->sel].name);
+    snprintf(cmd, sizeof(cmd), "clone %s %s", src, app->editbuf);
+    const int e = ctl_write(cmd);
+    snprintf(ok, sizeof(ok), "Cloned %s as %s", src, app->editbuf);
+    report_ctl(app, e, "clone", NULL, src, ok);
+    reload_state(app, e == 0 ? app->editbuf : NULL);
 }
 
 // DM10.7: send a 3-token "verb <domain> <arg>" command (devon/devoff, install/uninstall,
@@ -1028,19 +1301,13 @@ static void domain_action_clone(struct app *app)
 static void domain_action_arg(struct app *app, const char *verb, const char *arg)
 {
     if (app->sel < 0 || app->sel >= app->n_doms) return;
-    char cmd[160];
-    int len = snprintf(cmd, sizeof(cmd), "%s %s %s", verb, app->doms[app->sel].name, arg);
-    int fd = open("/config/domain.action", O_WRONLY);
-    if (fd < 0) { printf("DOMAINMGR: action open FAILED\n"); fflush(stdout); return; }
-    ssize_t w = write(fd, cmd, len);
-    close(fd);
-    printf("DOMAINMGR: action '%s' -> wrote %zd\n", cmd, w); fflush(stdout);
-    int keep = app->sel;
-    load_domains(app);
-    load_packages(app);
-    load_templates(app);
-    if (keep < app->n_doms) app->sel = keep;
-    refresh_fs_view(app);
+    char cmd[160], ok[160], dom[32];
+    snprintf(dom, sizeof(dom), "%s", app->doms[app->sel].name);
+    snprintf(cmd, sizeof(cmd), "%s %s %s", verb, dom, arg);
+    const int e = ctl_write(cmd);
+    snprintf(ok, sizeof(ok), "%s: %s %s", dom, verb, arg);
+    report_ctl(app, e, verb, NULL, dom, ok);
+    reload_state(app, NULL);
 }
 
 // Toolbar New (from-scratch Create) / Import (instantiate from the selected as a template).  The
@@ -1048,43 +1315,42 @@ static void domain_action_arg(struct app *app, const char *verb, const char *arg
 static void domain_create_new(struct app *app, int from_template)
 {
     if (app->editlen == 0 || app->sel < 0 || app->sel >= app->n_doms) return;
-    char cmd[160];
+    char cmd[160], ok[96];
     if (from_template) snprintf(cmd, sizeof(cmd), "fromtpl %s %s", app->editbuf, app->doms[app->sel].name);
     else               snprintf(cmd, sizeof(cmd), "create %s %s",  app->editbuf, app->doms[app->sel].identity);
-    int fd = open("/config/domain.action", O_WRONLY);
-    if (fd < 0) { printf("DOMAINMGR: create open FAILED\n"); fflush(stdout); return; }
-    ssize_t w = write(fd, cmd, strlen(cmd));
-    close(fd);
-    printf("DOMAINMGR: action '%s' -> wrote %zd\n", cmd, w); fflush(stdout);
-    load_domains(app); load_packages(app); load_templates(app);
-    for (int i = 0; i < app->n_doms; i++)
-        if (strcmp(app->doms[i].name, app->editbuf) == 0) { app->sel = i; break; }
-    refresh_fs_view(app);
+    const int e = ctl_write(cmd);
+    snprintf(ok, sizeof(ok), "Created %s - delegate its applications under %s > Applications",
+             app->editbuf, app->sys_name);
+    report_ctl(app, e, from_template ? "fromtpl" : "create", NULL, app->editbuf, ok);
+    reload_state(app, e == 0 ? app->editbuf : NULL);
 }
 
 // DM10.3: one-shot self-test that proves the control-write path end-to-end (open -> write ->
 // kernel domainControlWrite) without a side effect - "ping" is a no-op verb.
 static void domain_ctl_selftest(struct app *app)
 {
-    int fd = open("/config/domain.action", O_WRONLY);
-    if (fd < 0) { printf("DOMAINMGR: control-write path UNAVAILABLE (open failed)\n"); fflush(stdout); return; }
     const char *name = app->n_doms > 0 ? app->doms[0].name : "System";
-    char cmd[64]; int len = snprintf(cmd, sizeof(cmd), "ping %s", name);
-    ssize_t w = write(fd, cmd, len);
-    close(fd);
-    printf("DOMAINMGR: control-write path self-test ('%s') wrote %zd\n", cmd, w); fflush(stdout);
+    char cmd[64]; snprintf(cmd, sizeof(cmd), "ping %s", name);
+    const int e = ctl_write(cmd);
+    printf("DOMAINMGR: control-write path self-test ('%s') %s\n", cmd,
+           e == 0 ? "ok" : e < 0 ? "UNAVAILABLE (open failed)" : strerror(e));
+    fflush(stdout);
 }
 
 static void redraw_commit(struct app *app, const char *marker);   // defined below
 
 // DM10.6: FNV-1a hash of /config/domains.json - cheap change-detection for live updates.
+// appgate: /config/apps.json is folded in, so a delegation made by any actor refreshes the checklist.
 static unsigned domains_hash(void)
 {
-    unsigned char *buf; size_t sz;
-    if (load_file("/config/domains.json", &buf, &sz) < 0) return 0;
+    static const char *files[] = { "/config/domains.json", "/config/apps.json" };
     unsigned h = 2166136261u;
-    for (size_t i = 0; i < sz; i++) { h ^= buf[i]; h *= 16777619u; }
-    free(buf);
+    for (int f = 0; f < 2; f++) {
+        unsigned char *buf; size_t sz;
+        if (load_file(files[f], &buf, &sz) < 0) continue;
+        for (size_t i = 0; i < sz; i++) { h ^= buf[i]; h *= 16777619u; }
+        free(buf);
+    }
     return h;
 }
 
@@ -1097,12 +1363,7 @@ static void live_refresh(struct app *app)
     unsigned h = domains_hash();
     if (h == app->last_hash) return;
     app->last_hash = h;
-    int keep = app->sel;
-    load_domains(app);
-    load_packages(app);
-    load_templates(app);
-    if (keep < app->n_doms) app->sel = keep;
-    refresh_fs_view(app);
+    reload_state(app, NULL);
     redraw_commit(app, "live update");
     printf("DOMAINMGR: live update - /config/domains.json changed (now %d domains)\n", app->n_doms);
     fflush(stdout);
@@ -1269,80 +1530,105 @@ static void tab_permissions(struct app *app, cairo_t *cr) {
     }
 }
 
-// Applications installed for this domain.  Clicking Launch spawns the program CONFINED into
-// the selected domain (kernel `spawn` verb), so it runs under that domain's namespace, device
-// mask and network policy -- not merely with a colour and some environment variables.
+// Applications for this domain.  Clicking Launch spawns the program CONFINED into the selected
+// domain (kernel `spawn` verb), so it runs under that domain's namespace, device mask and network
+// policy -- not merely with a colour and some environment variables.
 //
-// This replaces the old "Startup" tab, which drew three static strings (one hardcoded
-// "Terminal (gl-term)" and a "(planned)" note) and could not launch anything.
+// appgate: this tab IS the delegation interface.  In System it lists every application: a delegable
+// one carries a "Domains (n)" pill that opens the checklist of domains allowed to run it, an
+// administration app says "System only".  Any other domain lists exactly what it has been delegated
+// -- the kernel refuses to run anything else there, by any route.
 static void tab_applications(struct app *app, cairo_t *cr) {
     struct gdomain *sd = &app->doms[app->sel];
-    int isSystem = (strcmp(sd->name, "System") == 0);
+    const int isSystem = is_system_dom(app, app->sel);
 
-    // Port checklist panel (System only): choose which domains get their own copy of one app.
+    // Delegation checklist (System only): which domains may run one application.
     if (isSystem && app->port_panel >= 0 && app->port_panel < app->n_avail) {
         int pi = app->port_panel;
         const struct dmapp *a = &DMAPPS[app->avail[pi]];
         if (cr) {
             for (int di = 0, r = 0; di < app->n_doms; di++) {
-                if (strcmp(app->doms[di].name, "System") == 0) continue;     // System is the source
+                if (!is_port_target(app, di)) continue;
                 int x,y,w,h; port_row_rect(r++,&x,&y,&w,&h);
                 cairo_set_source_rgb(cr, 0.16, 0.19, 0.24); rounded_rect(cr,x,y,w,h,5); cairo_fill(cr);
-                if (app->app_port_mask[pi] & (1u << di)) {
+                if (app_granted(app, pi, di)) {
                     cairo_argb(cr, app->doms[di].color); rounded_rect(cr,x+5,y+4,14,14,3); cairo_fill(cr);
                 }
             }
         } else {
-            char hd[176];
-            snprintf(hd,sizeof(hd),"Copy '%s' to domains - a checked domain gets its own instance; uncheck to remove it", a->label);
+            char hd[200];
+            snprintf(hd,sizeof(hd),"Delegate '%s' - a checked domain may run its own instance; unchecking revokes it (running copies keep running)", a->label);
             draw_text(app, hd, LABEL_X, TAB_Y+10, app->width-LABEL_X-PAD, 12, 0xff8b94a3u);
             draw_text(app, "< Back", LABEL_X, TAB_Y+42, 80, 13, 0xffe8edf5u);
-            for (int di = 0, r = 0; di < app->n_doms; di++) {
-                if (strcmp(app->doms[di].name, "System") == 0) continue;
+            int r = 0;
+            for (int di = 0; di < app->n_doms; di++) {
+                if (!is_port_target(app, di)) continue;
                 int x,y,w,h; port_row_rect(r++,&x,&y,&w,&h);
-                draw_text(app, (app->app_port_mask[pi] & (1u<<di)) ? "on" : "  ", x+4, y+4, 24, 13, 0xff2ec46eu);
-                draw_text(app, app->doms[di].name, x+40, y+4, 200, 13, 0xfff2f5fau);
+                draw_text(app, app_granted(app, pi, di) ? "on" : "  ", x+4, y+4, 24, 13, 0xff2ec46eu);
+                char nm[48];
+                snprintf(nm, sizeof(nm), "%s%s", app->doms[di].name, is_session_dom(app, di) ? "  (desktop)" : "");
+                draw_text(app, nm, x+40, y+4, 200, 13, 0xfff2f5fau);
             }
+            if (r == 0)
+                draw_text(app, "(no other domains - create one first)", LABEL_X+10, TAB_Y+78, 420, 13, 0xff8d97a6u);
         }
         return;
     }
 
-    // App list: all apps (+ a per-app "Domains" pill) for System; only ported apps for others.
+    int rows[16];
+    const int nrows = appl_rows(app, rows);
     if (cr) {
-        for (int i = 0; i < app->n_avail; i++) {
-            if (!isSystem && !(app->app_port_mask[i] & (1u << app->sel))) continue;
-            int x,y,w,h; appl_row_rect(i,&x,&y,&w,&h);
-            cairo_argb(cr, sd->color); rounded_rect(cr,x,y,w,h,6); cairo_fill(cr);
-            if (isSystem) { appl_cfg_rect(i,&x,&y,&w,&h);
+        for (int r = 0; r < nrows; r++) {
+            const int i = rows[r];
+            const struct dmapp *a = &DMAPPS[app->avail[i]];
+            int x,y,w,h;
+            if (!(a->flags & DMF_CLI)) {                     // a CLI has no window: no Launch, no Overlay
+                appl_row_rect(r,&x,&y,&w,&h);
+                cairo_argb(cr, sd->color); rounded_rect(cr,x,y,w,h,6); cairo_fill(cr);
+                int ox,oy,ow,oh; appl_ovl_rect(r,&ox,&oy,&ow,&oh);   // per-domain "Overlay" pill
+                int on = (app->app_overlay_mask[i] & (1u << app->sel)) != 0;
+                if (on) cairo_set_source_rgb(cr, 0.18, 0.30, 0.22); else cairo_set_source_rgb(cr, 0.20, 0.24, 0.30);
+                rounded_rect(cr,ox,oy,ow,oh,6); cairo_fill(cr);
+            }
+            if (isSystem && app_delegable(app, i)) { appl_cfg_rect(r,&x,&y,&w,&h);
                 cairo_set_source_rgb(cr, 0.20, 0.24, 0.30); rounded_rect(cr,x,y,w,h,6); cairo_fill(cr); }
-            { int ox,oy,ow,oh; appl_ovl_rect(i,&ox,&oy,&ow,&oh);   // per-domain "Overlay" pill
-              int on = (app->app_overlay_mask[i] & (1u << app->sel)) != 0;
-              if (on) cairo_set_source_rgb(cr, 0.18, 0.30, 0.22); else cairo_set_source_rgb(cr, 0.20, 0.24, 0.30);
-              rounded_rect(cr,ox,oy,ow,oh,6); cairo_fill(cr); }
         }
     } else {
         draw_text(app, isSystem
-            ? "Applications - Domains copies to other domains; Overlay floats it on the SUPER+SPACE plane; Launch runs it"
-            : "Applications in this domain - Overlay floats it on the SUPER+SPACE plane; Launch runs it confined",
+            ? "Applications - Domains delegates an app to other domains; Launch runs it here in System"
+            : is_template_dom(app, app->sel)
+            ? "A template is a definition - nothing runs in it; delegate to the domains made from it"
+            : "Applications delegated to this domain (from System > Applications) - Launch runs one confined here",
             LABEL_X, TAB_Y+10, app->width-LABEL_X-PAD, 12, 0xff8b94a3u);
-        int shown = 0;
-        for (int i = 0; i < app->n_avail; i++) {
-            if (!isSystem && !(app->app_port_mask[i] & (1u << app->sel))) continue;
-            shown++;
-            int x,y,w,h; appl_row_rect(i,&x,&y,&w,&h);
+        for (int r = 0; r < nrows; r++) {
+            const int i = rows[r];
             const struct dmapp *a = &DMAPPS[app->avail[i]];
+            int x,y,w,h; appl_row_rect(r,&x,&y,&w,&h);
             draw_text(app, a->label, LABEL_X, y+6, 190, 13, 0xfff2f5fau);
-            draw_text(app, "Launch", x+22, y+5, w-16, 12, 0xffe8edf5u);
-            if (isSystem) { char pl[24]; snprintf(pl,sizeof(pl),"Domains (%d)", __builtin_popcount(app->app_port_mask[i]));
-                appl_cfg_rect(i,&x,&y,&w,&h); draw_text(app, pl, x+8, y+5, w-10, 12, 0xffe8edf5u); }
-            { int ox,oy,ow,oh; appl_ovl_rect(i,&ox,&oy,&ow,&oh);
-              int on = (app->app_overlay_mask[i] & (1u << app->sel)) != 0;
-              draw_text(app, on ? "Overlay: on" : "Overlay: off", ox+8, oy+5, ow-10, 12, on ? 0xffbfe8c8u : 0xffcfd6e0u); }
+            if (a->flags & DMF_CLI) {
+                // Drawn where Launch and Overlay would be (a CLI has neither), clear of the Domains pill.
+                char hint[80]; snprintf(hint, sizeof(hint), "CLI - run '%s' in a terminal", a->exec + 1);
+                draw_text(app, hint, x+8, y+6, 300, 12, 0xff8d97a6u);
+            } else {
+                draw_text(app, "Launch", x+22, y+5, w-16, 12, 0xffe8edf5u);
+                int ox,oy,ow,oh; appl_ovl_rect(r,&ox,&oy,&ow,&oh);
+                int on = (app->app_overlay_mask[i] & (1u << app->sel)) != 0;
+                draw_text(app, on ? "Overlay: on" : "Overlay: off", ox+8, oy+5, ow-10, 12, on ? 0xffbfe8c8u : 0xffcfd6e0u);
+            }
+            if (isSystem) {
+                appl_cfg_rect(r,&x,&y,&w,&h);
+                if (app_delegable(app, i)) {
+                    char pl[24]; snprintf(pl,sizeof(pl),"Domains (%d)", app_grant_count(app, i));
+                    draw_text(app, pl, x+8, y+5, w-10, 12, 0xffe8edf5u);
+                } else {
+                    draw_text(app, "System only", x+8, y+5, w-10, 12, 0xff8d97a6u);
+                }
+            }
         }
-        if (shown == 0)
+        if (nrows == 0 && !is_template_dom(app, app->sel))
             draw_text(app, isSystem ? "(no application binaries found on this system)"
-                                    : "(no applications ported to this domain yet)",
-                      LABEL_X+10, TAB_Y+44, 420, 13, 0xff8d97a6u);
+                                    : "(nothing delegated to this domain yet - use System > Applications > Domains)",
+                      LABEL_X+10, TAB_Y+44, 520, 13, 0xff8d97a6u);
     }
 }
 
@@ -1520,7 +1806,9 @@ static void draw_manager(struct app *app)
         if (run||pau) cairo_fill(cr); else { cairo_set_line_width(cr,1.5); cairo_stroke(cr); }
     }
     { int x,y,w,h; delete_btn_rect(app,&x,&y,&w,&h);
-      cairo_set_source_rgb(cr, 0.30,0.18,0.18); rounded_rect(cr,x,y,w,h,6); cairo_fill(cr); }
+      if (is_system_dom(app, app->sel)) cairo_set_source_rgb(cr, 0.20,0.21,0.24);   // System: never deletable
+      else                              cairo_set_source_rgb(cr, 0.30,0.18,0.18);
+      rounded_rect(cr,x,y,w,h,6); cairo_fill(cr); }
 
     // Right pane: domain header (color swatch + status dot) + tab bar.
     cairo_argb(cr, sd->color); rounded_rect(cr, LABEL_X, BODY_Y+11, 14, 14, 4); cairo_fill(cr);
@@ -1533,6 +1821,13 @@ static void draw_manager(struct app *app)
             cairo_argb(cr, sd->color); cairo_rectangle(cr,x,y+h-3,w,3); cairo_fill(cr); } }
 
     draw_tab(app, cr);   // active tab graphics
+
+    // appgate: the status line -- the outcome of the last control write (green ok / red refused).
+    if (app->status_kind != ST_IDLE) {
+        if (app->status_kind == ST_OK) cairo_set_source_rgb(cr, 0.10, 0.20, 0.14);
+        else                           cairo_set_source_rgb(cr, 0.26, 0.11, 0.11);
+        cairo_rectangle(cr, 0, app->height - FOOTER_H - STATUS_H, app->width, STATUS_H); cairo_fill(cr);
+    }
 
     // Status bar.
     cairo_set_source_rgb(cr, 0.086, 0.102, 0.125);
@@ -1559,9 +1854,16 @@ static void draw_manager(struct app *app)
         draw_text(app, TOOL_LABEL[i], x+8, y+7, w-12, 12, 0xffd6deeau); }
     for (int i = 0; i < app->n_doms; i++) { struct gdomain *d = &app->doms[i];
         int ry = BODY_Y + 4 + i * ROW_H; uint32_t nc = 0xff000000u | (d->color & 0xffffff);
-        draw_text(app, d->name, PAD+26, ry + (ROW_H-13)/2, 150, 13, nc); }
+        draw_text(app, d->name, PAD+26, ry + (ROW_H-13)/2, 150, 13, nc);
+        // appgate: the session domain is where every launch from the desktop (app grid, keybinds,
+        // top bar) runs -- worth knowing before you revoke an app from it.
+        if (is_session_dom(app, i)) {
+            const int tw = text_width(app, d->name, 13);
+            draw_text(app, "desktop", PAD+26+tw+8, ry + (ROW_H-11)/2, 70, 11, 0xff8d97a6u);
+        } }
     { int x,y,w,h; delete_btn_rect(app,&x,&y,&w,&h);
-      draw_text(app, "Delete domain", x+14, y+7, w-16, 12, 0xffe0a8a8u); }
+      if (is_system_dom(app, app->sel)) draw_text(app, "System stays", x+14, y+7, w-16, 12, 0xff6b7482u);
+      else                              draw_text(app, "Delete domain", x+14, y+7, w-16, 12, 0xffe0a8a8u); }
 
     // Domain header + tabs.
     draw_text(app, sd->name, LABEL_X+22, BODY_Y+11, 300, 16, 0xfff0f3f8u);
@@ -1571,6 +1873,16 @@ static void draw_manager(struct app *app)
         draw_text(app, TAB_LABEL[i], x+10, y+9, w-12, 13, (i==app->tab)?0xfff2f5fau:0xff8d97a6u); }
 
     draw_tab(app, NULL);   // active tab text
+
+    if (app->status_kind != ST_IDLE)
+        draw_text(app, app->status, PAD, app->height - FOOTER_H - STATUS_H + 7, app->width - 2*PAD, 12,
+                  app->status_kind == ST_OK ? 0xffa8e6bcu : 0xfff0b0b0u);
+    if (app->no_config) {
+        // Not running where it can manage anything: say so instead of showing a list that is not live.
+        draw_text(app, app->no_config == 1
+                  ? "The Domain Manager must run in the System domain - open it from the desktop (SUPER+SHIFT+D)"
+                  : "The kernel reports no domains", LABEL_X, TAB_Y + 90, app->width - LABEL_X - PAD, 14, 0xfff0b0b0u);
+    }
 
     { char foot[256];
       snprintf(foot, sizeof(foot), "%s  -  identity %s  -  %s  -  devices 0x%X  -  %d packages in repo",
@@ -1672,36 +1984,35 @@ static int resize_buffer(struct app *app, int width, int height)
 //
 // The kernel seeds WAYLAND_DISPLAY for every task it execs (exports.d), and the domain
 // namespace binds the compositor socket, so a confined GUI program still gets a window.
-static void launch_in_domain(struct app *app, const char *exe)
+static void launch_in_domain(struct app *app, const char *exe, const char *label)
 {
     if (app->sel < 0 || app->sel >= app->n_doms) return;
+    char dom[32];
+    snprintf(dom, sizeof(dom), "%s", app->doms[app->sel].name);
+    if (is_template_dom(app, app->sel)) {
+        set_status(app, ST_ERR, "%s is a template - nothing runs in it", dom);
+        return;
+    }
 
-    // TERM_BIN lists three emulators but only /wl-term and /hos-term are actually staged into
-    // the image -- /gl-term has never been built, and it is the default for some domains, so
-    // clicking Run Shell produced "[exec] not found: /gl-term" and a failed spawn.  Fall back
-    // to a terminal that exists rather than handing the kernel a path that cannot resolve.
+    // A terminal emulator that is not staged in this image falls back to one that is, rather than
+    // handing the kernel a path that cannot resolve.  (All of them are the one delegated
+    // application "Terminal", so the fallback never changes what the domain is allowed to run.)
     if (access(exe, X_OK) != 0) {
-        const char *alt = (access("/wl-term", X_OK) == 0) ? "/wl-term"
-                        : (access("/hos-term", X_OK) == 0) ? "/hos-term" : NULL;
-        if (!alt) { log_line("Run Shell: no terminal binary available"); return; }
+        const char *alt = (access("/hos-wifiterm", X_OK) == 0) ? "/hos-wifiterm"
+                        : (access("/wl-term", X_OK) == 0)      ? "/wl-term"
+                        : (access("/hos-term", X_OK) == 0)     ? "/hos-term" : NULL;
+        if (!alt) { set_status(app, ST_ERR, "No terminal is installed in this image"); return; }
         printf("DOMAINMGR: %s missing -> using %s\n", exe, alt); fflush(stdout);
         exe = alt;
     }
 
-    char cmd[160];
-    int len = snprintf(cmd, sizeof(cmd), "spawn %s %s", app->doms[app->sel].name, exe);
-    int fd = open("/config/domain.action", O_WRONLY);
-    if (fd < 0) {
-        log_line("Run Shell: /config/domain.action unavailable");
-        printf("DOMAINMGR: spawn open FAILED\n"); fflush(stdout);
-        return;
-    }
-    ssize_t w = write(fd, cmd, len);
-    close(fd);
-    char m[128];
-    snprintf(m, sizeof(m), "spawn %s confined in '%s' (%zd)", exe, app->doms[app->sel].name, w);
-    log_line(m);
-    printf("DOMAINMGR: %s\n", m); fflush(stdout);
+    // appgate: the kernel runs the program only if this domain has been delegated it; a refusal
+    // comes back as EACCES and is reported, never silently dropped.
+    char cmd[160], ok[128];
+    snprintf(cmd, sizeof(cmd), "spawn %s %s", dom, exe);
+    const int e = ctl_write(cmd);
+    snprintf(ok, sizeof(ok), "Launched %s in %s", label, dom);
+    report_ctl(app, e, "spawn", label, dom, ok);
 }
 
 static void launch_app(struct app *app, const char *exe)
@@ -1742,6 +2053,10 @@ static void handle_click(struct app *app)
 {
     double x = app->pointer_x, y = app->pointer_y;
     if (app->editing) return;                       // the dialog is modal (keyboard-driven)
+    if (app->no_config) {                           // appgate: not in System -- nothing here is live
+        set_status(app, ST_ERR, "The Domain Manager must run in the %s domain", app->sys_name);
+        redraw_commit(app, "no config"); return;
+    }
 
     // Toolbar verbs (+New / Clone / Import / Marketplace).
     if (y >= HEADER_H && y < BODY_Y) {
@@ -1758,7 +2073,7 @@ static void handle_click(struct app *app)
                 } else if (i == 4) {                 // Logs → scrollable diagnostic log viewer
                     launch_app(app, "/wl-logview");  // read /run/nm.log etc. (unconfined: it reads /run)
                 } else if (i == 5) {                 // Run Shell → a terminal CONFINED in this domain
-                    launch_in_domain(app, TERM_BIN[app->cfg[app->sel].term]);
+                    launch_in_domain(app, TERM_BIN[app->cfg[app->sel].term], "Terminal");
                 }
                 redraw_commit(app, "toolbar");
                 return;                              // Marketplace: out of scope (P2P needs a network stack)
@@ -1770,7 +2085,12 @@ static void handle_click(struct app *app)
     // Left pane: Delete + domain selection.
     if (x < RP_X) {
         int dx,dy,dw,dh; delete_btn_rect(app,&dx,&dy,&dw,&dh);
-        if (x>=dx && x<=dx+dw && y>=dy && y<=dy+dh) { domain_action(app, "delete"); redraw_commit(app,"delete"); return; }
+        if (x>=dx && x<=dx+dw && y>=dy && y<=dy+dh) {
+            if (is_system_dom(app, app->sel))
+                set_status(app, ST_ERR, "The %s domain cannot be deleted - it owns the Domain Manager", app->sys_name);
+            else
+                domain_action(app, "delete");
+            redraw_commit(app,"delete"); return; }
         int top = BODY_Y + 4;
         if (y >= top && y < top + app->n_doms * ROW_H) {
             int r = (int)((y - top) / ROW_H);
@@ -1836,35 +2156,40 @@ static void handle_click(struct app *app)
             if (y>=by-4 && y<=by+bh+4 && x>=LABEL_X) {
                 int on = (app->doms[app->sel].devices & DEV_BIT[i]) != 0;
                 domain_action_arg(app, on ? "devoff" : "devon", DEV_CLASS[i]); return; } }
-    } else if (app->tab == 5) {                     // Applications: Launch + cross-domain porting
-        int isSystem = (strcmp(app->doms[app->sel].name, "System") == 0);
-        // Checklist panel open (System): toggle a domain's copy, or Back.
+    } else if (app->tab == 5) {                     // Applications: Launch + delegation
+        const int isSystem = is_system_dom(app, app->sel);
+        // Checklist panel open (System): delegate to / revoke from a domain, or Back.
         if (isSystem && app->port_panel >= 0 && app->port_panel < app->n_avail) {
             if (x>=LABEL_X && x<=LABEL_X+80 && y>=TAB_Y+42 && y<=TAB_Y+58) {     // < Back
                 app->port_panel = -1; redraw_commit(app, "port back"); return; }
-            const char *appid = DMAPPS[app->avail[app->port_panel]].exec + 1;
+            const struct dmapp *a = &DMAPPS[app->avail[app->port_panel]];
             for (int di = 0, r = 0; di < app->n_doms; di++) {
-                if (strcmp(app->doms[di].name, "System") == 0) continue;
+                if (!is_port_target(app, di)) continue;
                 int bx,by,bw,bh; port_row_rect(r++,&bx,&by,&bw,&bh);
                 if (x>=bx && x<=bx+bw && y>=by && y<=by+bh) {
-                    int on = (app->app_port_mask[app->port_panel] & (1u << di)) != 0;
-                    port_action(app, on ? "unport" : "port", app->doms[di].name, appid);
+                    char dom[32]; snprintf(dom, sizeof(dom), "%s", app->doms[di].name);
+                    const int on = app_granted(app, app->port_panel, di);
+                    port_action(app, on ? "unport" : "port", dom, dmapp_id(a), a->label);
                     redraw_commit(app, "port toggle"); return; } }
             return;
         }
-        for (int i = 0; i < app->n_avail; i++) {
-            if (!isSystem && !(app->app_port_mask[i] & (1u << app->sel))) continue;  // hidden: not ported here
+        int rows[16];
+        const int nrows = appl_rows(app, rows);
+        for (int r = 0; r < nrows; r++) {
+            const int i = rows[r];
+            const struct dmapp *a = &DMAPPS[app->avail[i]];
             int bx,by,bw,bh;
-            if (isSystem) {                          // "Domains (n)" pill opens the checklist
-                appl_cfg_rect(i,&bx,&by,&bw,&bh);
+            if (isSystem && app_delegable(app, i)) {  // "Domains (n)" pill opens the checklist
+                appl_cfg_rect(r,&bx,&by,&bw,&bh);
                 if (x>=bx && x<=bx+bw && y>=by && y<=by+bh) {
                     app->port_panel = i; redraw_commit(app, "port open"); return; } }
-            appl_ovl_rect(i,&bx,&by,&bw,&bh);        // "Overlay: on/off" pill toggles overlay mode for (app, this domain)
+            if (a->flags & DMF_CLI) continue;        // a CLI has no Launch / Overlay
+            appl_ovl_rect(r,&bx,&by,&bw,&bh);        // "Overlay: on/off" pill toggles overlay mode for (app, this domain)
             if (x>=bx && x<=bx+bw && y>=by && y<=by+bh) {
                 overlay_action(app, i); redraw_commit(app, "overlay toggle"); return; }
-            appl_row_rect(i,&bx,&by,&bw,&bh);
+            appl_row_rect(r,&bx,&by,&bw,&bh);
             if (x>=bx && x<=bx+bw && y>=by-2 && y<=by+bh+2) {
-                launch_in_domain(app, DMAPPS[app->avail[i]].exec);
+                launch_in_domain(app, a->exec, a->label);
                 redraw_commit(app, "launch"); return; } }
     } else if (app->tab == 6) {                     // Appearance: Export as a signed template (DM12)
         int bx,by,bw,bh; export_btn_rect(&bx,&by,&bw,&bh);
@@ -1934,13 +2259,18 @@ static void kb_key(void *data, struct wl_keyboard *k, uint32_t serial, uint32_t 
         redraw_commit(app, "clone edit");
         return;
     }
-    // Up=103 Down=108 Enter=28 Esc=1.
+    // Up=103 Down=108 Left=105 Right=106 Enter=28 Esc=1.
     if (key == 108 && app->sel < app->n_doms - 1) { app->sel++; refresh_fs_view(app); redraw_commit(app, "key"); }
     else if (key == 103 && app->sel > 0)        { app->sel--; refresh_fs_view(app); redraw_commit(app, "key"); }
+    // Left/Right switch tabs, so every tab -- the Applications/delegation tab included -- is
+    // reachable without a pointer.
+    else if (key == 106 && app->tab < N_TABS - 1) { app->tab++; app->port_panel = -1; redraw_commit(app, "key tab"); }
+    else if (key == 105 && app->tab > 0)          { app->tab--; app->port_panel = -1; redraw_commit(app, "key tab"); }
     // Enter launches the domain's terminal CONFINED (same as the Run Shell button).  This used
     // to call launch_app(), which only set environment variables -- the shell looked like it was
     // "in" the domain but the kernel never bound it, so none of the domain's policy applied.
-    else if (key == 28)                         { launch_in_domain(app, TERM_BIN[app->cfg[app->sel].term]); }
+    else if (key == 28)                         { launch_in_domain(app, TERM_BIN[app->cfg[app->sel].term], "Terminal");
+                                                  redraw_commit(app, "launch"); }
     else if (key == 1)                          { app->running = 0; }
 }
 static void kb_mods(void *d, struct wl_keyboard *k, uint32_t s, uint32_t dep, uint32_t la, uint32_t lo, uint32_t grp) { (void)d; (void)k; (void)s; (void)dep; (void)la; (void)lo; (void)grp; }
@@ -2066,7 +2396,7 @@ int main(void)
     // R4: the GLES2 terminal (gl-term) is the default terminal - the "ratty" realization of R3
     // (the Bevy-based ratty itself can't run on the OS).  The per-domain dropdown still offers
     // wl-term / hos-term.
-    for (int i = 0; i < MAX_DOMS; i++) { app.cfg[i] = DEFAULTS[i % N_DOMAINS]; app.cfg[i].term = TERM_GL; }
+    for (int i = 0; i < MAX_DOMS; i++) { app.cfg[i] = DEFAULTS[i % N_DOMAINS]; app.cfg[i].term = TERM_DEFAULT; }
 
     // DM10: load the domains from the declarative config (/config/domains.json), generated by the
     // kernel from system.json - the GUI now reflects DM0-DM6 instead of a hardcoded list.

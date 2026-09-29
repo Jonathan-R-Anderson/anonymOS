@@ -7,3 +7,4 @@ Exec=/kuml
 Icon=applications-development
 Categories=Development;Graphics;
 Keywords=uml;diagram;model;class;svg;
+NoDisplay=true

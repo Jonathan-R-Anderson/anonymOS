@@ -38,6 +38,7 @@ DEFAULT_MARKERS=(
     'fps_x100'                # kernel: calibration-free frame rate       (posix.d)
     'rounding      = 0'       # config: the softpipe decoration override  (custom/general.lua)
     'damage_tracking = 2'     # config: real damage tracking (adef0bff61)   (custom/general.lua)
+    '[appgate] selftest PASS' # kernel: app delegation gate + registry       (core/appreg.d, kernel_main.d)
 )
 
 if [ "$#" -gt 0 ]; then

@@ -1001,7 +1001,9 @@ private int forkTask(int parentTid) {
     installTaskUntypedCap(childTid);
     objEnsureTask(childTid);
     objSetProcess(childTid, childTid, parent.processObjId);
-    objCloneNamespace(childTid, parentTid); // Phase 9: child gets a private namespace clone
+    // (Phase 9's objCloneNamespace() used to run here as well, cloning the parent's namespace a SECOND
+    // time over the fail-closed clone made above -- leaking one namespace slot per fork, and falling
+    // back to a fresh root namespace when the clone failed.  The clone above is the only one.)
 
     // Track A A4: the child runs the same binary as the parent (CoW fork), so it
     // inherits /proc/self/exe resolution (busybox standalone re-execs it for applets).
@@ -1235,29 +1237,20 @@ private long execveTask(int tid, ulong pathPtr, ulong argvPtr, ulong envpPtr) {
     // task's identity ceiling.  Grant → load the executable blob like a boot module;
     // exceed the ceiling → deny (EPERM) + audit.  (The original path is used here,
     // before posixCanonExecPath, since /objects/apps/... is not an RT symlink.)
+    // appgate: the rights-ceiling check moved below, after placement -- it must be checked against the
+    // identity of the domain the app will RUN in, not the launcher's (a System launcher's ceiling is
+    // everything, so checking it here let any declared right through into a user domain).
+    int storeIdx = -1;
     if (modPhys == 0) {
         const(char)* origPath = cast(const(char)*)pathPtr;
         int appIdx = objstoreResolveExecPath(origPath);
         if (appIdx >= 0) {
-            uint declared = objstoreAppRights(appIdx);
-            uint ceiling = 0;
-            if (tid >= 0 && tid < MAX_TASKS) {
-                auto idr = identityById(g_tasks[tid].identityObjId);
-                if (idr !is null) ceiling = idr.rightsCeiling;
-            }
-            if ((declared & ~ceiling) != 0) {
-                klog("[objstore] launch DENIED: "); klog(origPath);
-                klog(" declared=0x"); klog_hex(declared);
-                klog(" ceiling=0x"); klog_hex(ceiling); klog("\n");
-                return -1; // EPERM — declared capabilities exceed the identity ceiling
-            }
             ulong ep, es;
             if (objstoreLoadExec(appIdx, &ep, &es) && es > 0) {
                 modPhys  = ep;
                 modSize  = es;
                 execName = "store-app".ptr;
-                klog("[objstore] launch GRANTED: "); klog(origPath);
-                klog(" rights=0x"); klog_hex(declared); klog("\n");
+                storeIdx = appIdx;
             }
         }
     }
@@ -1269,6 +1262,91 @@ private long execveTask(int tid, ulong pathPtr, ulong argvPtr, ulong envpPtr) {
         procFb("exec-ENOENT", cstrBasenameK(path));  // direct-fb: a missing binary on real HW
         return -2; // ENOENT
     }
+
+    // ── appgate: where does this image land, and may it run there? ──────────────────────────────
+    //
+    // The System domain owns the Domain Manager, the Domain Manager delegates applications out to the
+    // other domains, and a domain that was not delegated an application cannot launch it.  This is the
+    // one place every launch passes through (Linux execve, native HOSQ_SPAWN, the kernel spawners and
+    // the Domain Manager's spawn verb), so it is where that is enforced -- for every route at once.
+    //
+    // Placement follows the CALLER first: a process inside a domain stays in that domain whatever it
+    // execs (the old rule re-homed every exec by image name, so a confined program escaped its domain
+    // just by running /wl-domain-manager or any hos-* launcher, and a delegated app fell back into the
+    // session domain on its first exec).  Only an unconfined caller -- the kernel, the compositor, the
+    // desktop chrome -- is placed by the image: infrastructure stays unconfined, administration tools
+    // (the Domain Manager first) open in System, applications open in the session domain.  core.appreg
+    // holds the table and the decision; the grant table is core.appport's.
+    //
+    // Decided here -- after the image is known, before this task has been changed in any way -- so a
+    // refusal returns a clean EACCES to the program that asked, and a failed namespace clone fails
+    // closed instead of running the new image with the namespace it inherited.
+    uint agTarget = 0, agNewNs = 0;
+    {
+        import core.appreg : AppRegEntry, AppDecision, AppVerdict, appRegLookup, appRegStoreEntry,
+                             appRegKey, appgateDecide;
+        import core.appport : appPortAllowed, appgateNoteDeny;
+        import core.domain : domainSystemId, domainSessionId, domainById;
+        import core.task : g_taskStoreApp1, taskPrepareExecNs;
+        // An objstore app keeps its identity across a /proc/self/exe re-exec (execName is "store-app").
+        if (storeIdx < 0 && execName !is null && cstrEqK(execName, "store-app") &&
+            tid >= 0 && tid < MAX_TASKS && g_taskStoreApp1[tid] != 0)
+            storeIdx = cast(int)g_taskStoreApp1[tid] - 1;
+        char[80] storeKey = 0;
+        const(AppRegEntry)* reg;
+        const(char)* key;
+        if (storeIdx >= 0) { reg = appRegStoreEntry(); key = appgateStoreKey(storeIdx, storeKey[]); }
+        else               { reg = appRegLookup(execName); key = appRegKey(reg); }
+        const uint callerDom = g_tasks[tid].domainObjId;
+        const uint sys = domainSystemId();
+        const AppDecision dec = appgateDecide(callerDom, g_taskExecName[tid], reg, key, sys,
+                                              domainSessionId(), &appPortAllowed);
+        if (dec.verdict == AppVerdict.Noexec) {
+            klog("[appgate] refusing to exec a non-program image: "); klog(execName); klog("\n");
+            return -8;   // ENOEXEC
+        }
+        if (dec.verdict == AppVerdict.Deny) {
+            appgateLogDeny(execName, key, dec.target, tid);
+            appgateNoteDeny(execName, key, dec.target);
+            if (!appgateAuditOnly()) return -13;   // EACCES
+        }
+        if (storeIdx >= 0) {
+            // F4.2: the app's declared rights must fit the ceiling of the identity it will run under.
+            uint ceiling = 0;
+            auto td = domainById(dec.target != 0 ? dec.target : callerDom);
+            auto idr = identityById(td !is null ? td.identityObjId : g_tasks[tid].identityObjId);
+            if (idr !is null) ceiling = idr.rightsCeiling;
+            const uint declared = objstoreAppRights(storeIdx);
+            if ((declared & ~ceiling) != 0) {
+                klog("[objstore] launch DENIED: "); klog(key);
+                klog(" declared=0x"); klog_hex(declared);
+                klog(" ceiling=0x"); klog_hex(ceiling); klog("\n");
+                return -1; // EPERM — declared capabilities exceed the identity ceiling
+            }
+            klog("[objstore] launch GRANTED: "); klog(key);
+            klog(" rights=0x"); klog_hex(declared); klog("\n");
+        }
+        if (!taskPrepareExecNs(dec.target, agNewNs)) {
+            klog("[appgate] no namespace for domain "); klog_hex(dec.target);
+            klog(" -- refusing "); klog(execName); klog("\n");
+            return -12;  // ENOMEM: never run the new image with the namespace it inherited
+        }
+        agTarget = dec.target;
+    }
+    // Committed from here on.  A vfork child is still a thread of its parent's process (sharing the
+    // parent's namespace); make it its own process first, so installing the new namespace below can
+    // never be routed back to -- or release -- the namespace its suspended parent is still using.
+    if (task.processLeaderTid != tid)
+        objSetProcess(tid, tid, task.parentObjId);
+    {
+        import core.task : taskCommitExecNs;
+        import core.hoscall : g_taskOwnedNs;
+        taskCommitExecNs(tid, agTarget, agNewNs);
+        // A namespace the previous image cloned for itself (native namespace_clone) must not be
+        // re-enterable by the new one -- that was the root namespace for anything the desktop started.
+        g_taskOwnedNs[tid] = 0;
+        appgateLogPlace(execName, agTarget, tid);
+    }
     procFb("exec", execName !is null ? execName : pathBase);  // direct-fb: process launched
 
     // Track A A4: remember this task's binary so a later /proc/self/exe re-exec
@@ -1277,6 +1355,8 @@ private long execveTask(int tid, ulong pathPtr, ulong argvPtr, ulong envpPtr) {
         g_taskExecModPhys[tid] = modPhys;
         g_taskExecModSize[tid] = modSize;
         g_taskExecName[tid]    = execName;
+        {   import core.task : g_taskStoreApp1;
+            g_taskStoreApp1[tid] = (storeIdx >= 0) ? cast(ushort)(storeIdx + 1) : 0; }
         // NATIVE_OBJECT_ABI §3 / Z4a.5: enter the native personality iff this is the
         // trusted /hos-sh image, OR a native-shell launch of zsh — requested via /hos-zsh,
         // a symlink to the shared zsh boot module (the *request path* marks it native, the
@@ -1506,38 +1586,15 @@ private long execveTask(int tid, ulong pathPtr, ulong argvPtr, ulong envpPtr) {
     // child now has its own fresh address space, no longer sharing the parent's).
     resumeVforkParent(tid);
 
-    // ── ROADMAP 4.0b: confine the program THIS task just became ────────────────────────────────
-    //
-    // The decision lives here rather than in spawnWaylandProgram because this is the choke point
-    // every launch passes through.  spawnWaylandProgram calls execveTask, and so does the Linux
-    // execve syscall -- which is how Hyprland starts everything you open from a keybind or the app
-    // menu.  Hooking only the former confined kernel-spawned tasks and missed every app a user
-    // actually opens: on live media that meant nothing was confined at all.
-    //
-    // Keyed on the program that was just loaded, not on the task's history, because that is what
-    // execve changes: a shell that execs a sandboxed app must end up sandboxed, and a task that
-    // execs a system app must not stay confined from whatever it was before.
-    //
-    // Re-binding on every exec is deliberate.  domainBindTaskNs() clones the domain namespace
-    // fresh, so a task cannot inherit a namespace from the program it used to be running.
+    // ROADMAP 4.0b's confinement now happens above (appgate), before the old image is torn down.  The
+    // legacy line stays: test suites key on it.
     {
-        import core.domain : domainSessionId;
-        import core.task : domainBindTaskNs;
-        const bool sysApp = isSystemProgram(execName);
-        const uint sd = domainSessionId();
-        if (!sysApp && sd != 0) {
-            cast(void)domainBindTaskNs(tid, sd);
-        } else {
-            // A system app must not keep a sandbox it inherited from a previous exec.
-            g_tasks[tid].namespaceObjId = g_tasks[0].namespaceObjId;
-            g_tasks[tid].domainObjId    = 0;
-        }
         static __gshared int g_exBindLogN = 0;
         if (g_exBindLogN < 12) {
             ++g_exBindLogN;
             klog("[4.0b] exec "); klog(execName !is null ? execName : "?".ptr);
-            klog(sysApp ? " SYSTEM(unconfined)" : " CONFINED ns=");
-            if (!sysApp) klog_hex(g_tasks[tid].namespaceObjId);
+            klog(agTarget == 0 ? " SYSTEM(unconfined)" : " CONFINED ns=");
+            if (agTarget != 0) klog_hex(g_tasks[tid].namespaceObjId);
             klog("\n");
         }
     }
@@ -1548,46 +1605,130 @@ private long execveTask(int tid, ulong pathPtr, ulong argvPtr, ulong envpPtr) {
 // GUI roadmap clients: launch Wayland clients once Hyprland has a listener. Each
 // client is a boot module, reusing the existing task/exec machinery. Best-effort
 // and isolated: failure logs and leaves desktop boot untouched.
-// ROADMAP 4.0b: does this program run as a SYSTEM app, outside the user sandbox?
-//
-// Confinement broke installing because the installer is spawned through the same path as every
-// other app and the session domain denies /config -- the installer/disk control surface.  Allowing
-// /config for everyone would hand any app in the domain the ability to drive the installer, so the
-// split has to be per-app.
-//
-// An ALLOWLIST, deliberately, not a list of things to confine.  A denylist would silently confine
-// every daemon added later, and the failure mode is a service that cannot read its own config for
-// reasons that look nothing like a policy change.  Anything not named here is confined; adding a
-// system service means saying so explicitly.
-//
-// Measured basis: only two GUI programs touch /config -- wl-installer (live media) and
-// wl-domain-manager, which uses /config/domain.action plus domains/templates/users/services/
-// packages.json.  The kernel's own daemons (hos-*) are launchers for dbus, sshd, NetworkManager,
-// wpa and dhcp; they are infrastructure, not user apps, and confining them is not what 4.0b is for.
-private bool isSystemProgram(const(char)* prog) @nogc nothrow {
-    if (prog is null) return true;                  // unknown: fail SAFE (unconfined), never break boot
-    const(char)* b = cstrBasenameK(prog);
-    static immutable string[] SYSTEM_PROGS = [
-        "calamares",           // the installer: reads /config/disks.json, writes install.action
-        "wl-installer",
-        "wl-domain-manager",   // reads+writes /config/domain.action and the domain JSON views
-        // The Software Center reads the catalog the kernel serves at /config/software.catalog and
-        // asks for installs through /config/software.action -- the same shape as the Domain
-        // Manager above, and the same reason it cannot run inside a domain's restricted view
-        // (which denies /config by default).  The privilege it gains is reading a catalog; the
-        // install itself stays cap-gated in core/software.d, which is where it belongs.
-        "wl-software",
-        "Hyprland",            // the compositor itself
-        "wl-layer-bar",        // the shell bar is part of the desktop, not an app in it
-    ];
-    foreach (s; SYSTEM_PROGS) {
-        size_t i = 0;
-        while (i < s.length && b[i] != 0 && b[i] == s[i]) ++i;
-        if (i == s.length && b[i] == 0) return true;
+
+// ── appgate helpers (execveTask) ────────────────────────────────────────────────────────────────
+// ROADMAP 4.0b's isSystemProgram() allowlist is gone: placement is core.appreg's table + the caller's
+// domain (see execveTask).
+
+// "store:<name>" for objstore app `idx` into buf; returns buf.ptr (NUL-terminated).
+private const(char)* appgateStoreKey(int idx, char[] buf) {
+    import core.objstore : objstoreApp;
+    immutable string pre = "store:";
+    size_t p = 0;
+    foreach (c; pre) buf[p++] = c;
+    auto e = objstoreApp(idx);
+    if (e !is null)
+        foreach (i; 0 .. e.nameLen) { if (p + 1 >= buf.length || e.name[i] == 0) break; buf[p++] = e.name[i]; }
+    buf[p] = 0;
+    return buf.ptr;
+}
+
+private void appgateKlogDomain(uint dom) {
+    import core.domain : domainNamePrint;
+    if (dom == 0) klog("unconfined");
+    else domainNamePrint(dom);
+}
+
+private void appgateLogDeny(const(char)* image, const(char)* key, uint dom, int tid) {
+    static __gshared uint n = 0;
+    if (n >= 48) return;
+    ++n;
+    klog("[appgate] DENY "); klog(image !is null ? image : "?".ptr);
+    klog(" app="); klog(key !is null ? key : "-".ptr);
+    klog(" domain="); appgateKlogDomain(dom);
+    klog(" tid="); klog_dec(cast(ulong)cast(uint)tid);
+    klog(appgateAuditOnly() ? " (audit: allowed)\n" : "\n");
+}
+
+// Every placement into System is logged (they are rare and the tests look for the Domain Manager's);
+// everything else only for the first few dozen execs.
+private void appgateLogPlace(const(char)* image, uint dom, int tid) {
+    import core.domain : domainSystemId;
+    static __gshared uint n = 0;
+    const bool toSystem = dom != 0 && dom == domainSystemId();
+    if (!toSystem && n >= 64) return;
+    if (!toSystem) ++n;
+    klog("[appgate] place "); klog(image !is null ? image : "?".ptr);
+    klog(" -> "); appgateKlogDomain(dom);
+    klog(" tid="); klog_dec(cast(ulong)cast(uint)tid); klog("\n");
+}
+
+// `APPGATE_AUDIT=1 make iso` stages /epin-appgate-audit.conf: refusals are logged but not enforced
+// (recovery on real hardware).  A boot module, never a writable file -- a runtime switch would be
+// something a System program could flip to turn the gate off.
+private __gshared int g_appgateAudit = -1;   // -1 unknown, 0 enforce, 1 audit-only (cached)
+private bool appgateAuditOnly() {
+    if (g_appgateAudit < 0) {
+        g_appgateAudit = 0;
+        if (g_mboot_modules !is null && g_module_count > 0) {
+            auto recs = cast(ubyte*)g_mboot_modules;
+            for (int i = 0; i < g_module_count; i++) {
+                auto rec = cast(multiboot_module_t*)(recs + i * 128);
+                const(char)* modName = cast(const(char)*)(cast(ubyte*)rec + 16);
+                const(char)* modBase = modName;
+                for (const(char)* p = modName; *p != 0; p++) if (*p == '/') modBase = p + 1;
+                if (cstrEqK(modBase, "epin-appgate-audit.conf")) { g_appgateAudit = 1; break; }
+            }
+        }
+        if (g_appgateAudit == 1) klog("[appgate] AUDIT MODE: refusals are logged, not enforced\n");
     }
-    // The kernel's own service launchers all share this prefix.
-    if (b[0] == 'h' && b[1] == 'o' && b[2] == 's' && b[3] == '-') return true;
-    return false;
+    return g_appgateAudit == 1;
+}
+
+// Boot: bring the grant table live, prove the decision table, and flag any executable boot module
+// the registry does not classify (it would be refused in every non-System domain).
+private void appgateBootInit() {
+    import core.appport : appGrantsInit;
+    import core.appreg : appgateSelfTestCases, appRegLookup;
+    appGrantsInit();
+    const uint bad = appgateSelfTestCases(&appgateSelfTestFail);
+    if (bad == 0) klog("[appgate] selftest PASS (decision table + delegation keys)\n");
+    uint unclassified = 0;
+    if (g_mboot_modules !is null && g_module_count > 0) {
+        auto recs = cast(ubyte*)g_mboot_modules;
+        for (int i = 0; i < g_module_count; i++) {
+            auto rec = cast(multiboot_module_t*)(recs + i * 128);
+            const(char)* modName = cast(const(char)*)(cast(ubyte*)rec + 16);
+            const(char)* modBase = modName;
+            for (const(char)* p = modName; *p != 0; p++) if (*p == '/') modBase = p + 1;
+            if (!appgateLooksExecutable(modBase, cast(ulong)rec.mod_start, cast(ulong)rec.mod_end)) continue;
+            if (appRegLookup(modBase) !is null) continue;
+            ++unclassified;
+            klog("[appgate] unclassified executable "); klog(modBase); klog("\n");
+        }
+    }
+    if (unclassified == 0) klog("[appgate] every executable boot module is classified\n");
+}
+
+private extern(C) void appgateSelfTestFail(const(char)* what) {
+    klog("[appgate] selftest FAIL: "); klog(what); klog("\n");
+}
+
+// An ELF executable module (not a shared library or data): ELF magic, ET_EXEC or ET_DYN, and for
+// ET_DYN a name that is not a library (PIE executables are ET_DYN too).
+private bool appgateLooksExecutable(const(char)* base, ulong start, ulong end) {
+    if (end <= start || end - start < 64) return false;
+    for (const(char)* p = base; *p != 0; ++p)
+        if (p[0] == '.' && p[1] == 's' && p[2] == 'o' && (p[3] == 0 || p[3] == '.')) return false;
+    auto h = cast(const(ubyte)*)phys_to_virt(start);
+    if (h[0] != 0x7F || h[1] != 'E' || h[2] != 'L' || h[3] != 'F') return false;
+    const ushort et = *cast(const(ushort)*)(h + 16);
+    return et == 2 || et == 3;    // ET_EXEC / ET_DYN
+}
+
+// kernel_main owns the task table, so core.domain asks here whether a domain still has programs.
+private extern(C) uint appgateDomainBusy(uint domObjId) {
+    uint n = 0;
+    for (int i = 1; i < MAX_TASKS; ++i)
+        if (g_tasks[i].active && !g_tasks[i].exited && g_tasks[i].domainObjId == domObjId) ++n;
+    return n;
+}
+
+// A domain is being deleted: tombstone its private files so a domain that later reuses the objId
+// cannot read them.
+private extern(C) void appgateDomainGone(uint domObjId) {
+    import core.syscalls.posix : rtScrubDomain;
+    rtScrubDomain(domObjId);
 }
 
 // Software Center (core/software.d): start the package fetcher for an approved install request.
@@ -1662,7 +1803,9 @@ private bool spawnWaylandProgram(const(char)* prog, const(char)* tag) {
             // The bind itself now happens in execveTask, the choke point EVERY launch passes
             // through -- including the apps Hyprland forks for a keybind, which never reach here.
             // This site only reports what the session domain is; it no longer decides.
-            const bool sysApp  = isSystemProgram(prog);
+            // appgate: placement is decided in execveTask (core.appreg + the caller's domain); this
+            // line only reports the session domain before the exec.
+            const bool sysApp  = false;
             const uint boundNs = 0;
             // Prove confinement is ON rather than inferring it from an absence of denials.  Zero
             // denials is ambiguous: it reads the same whether the policy is being enforced and not
@@ -1736,13 +1879,16 @@ private bool spawnWaylandProgram(const(char)* prog, const(char)* tag) {
 // require every domain to expose its own /wl-term etc., which is not how the templates are
 // built.  The child's console stdio is already open by then and deliberately survives, so a
 // confined program can still print.
-private extern(C) bool domainSpawnProgram(uint domObjId, const(char)* prog) {
-    // domainBindTaskNs lives in core.task (NOT core.domain, despite the name), which this
-    // module already imports wholesale at the top.
-    if (domObjId == 0 || prog is null) return false;
+// appgate: the task is marked as belonging to the domain BEFORE execveTask, so the exec's placement
+// keeps it there and its gate checks THAT domain's grants -- a domain that was not delegated the
+// program gets -13 (EACCES) back, which the control write returns to the Domain Manager.  (It used to
+// exec first, unconfined, and bind afterwards: the gate would have judged the wrong domain, and the
+// task held a clone of the ROOT namespace until the bind.)  execveTask does the bind itself.
+private extern(C) long domainSpawnProgram(uint domObjId, const(char)* prog) {
+    if (domObjId == 0 || prog is null) return -22;
 
     int t = allocTask();
-    if (t <= 0) { klog("[domain] spawn: no free task slot\n"); return false; }
+    if (t <= 0) { klog("[domain] spawn: no free task slot\n"); return -11; }
 
     g_tasks[t].parentId         = 0;
     g_tasks[t].processLeaderTid = t;
@@ -1751,9 +1897,10 @@ private extern(C) bool domainSpawnProgram(uint domObjId, const(char)* prog) {
     if (g_tasks[t].untypedObjId == 0) {
         klog("[domain] spawn: no untyped budget\n");
         releaseTask(t);
-        return false;
+        return -12;
     }
-    g_tasks[t].namespaceObjId   = nsClone(g_tasks[0].namespaceObjId);
+    g_tasks[t].domainObjId      = domObjId;   // appgate: placement + gate follow the caller's domain
+    g_tasks[t].namespaceObjId   = 0;          // execveTask installs a clone of the domain's namespace
     capTableClear(g_tasks[t].capTabId);
     installTaskUntypedCap(t);
     fdtabSetupConsoleStdio(g_tasks[t].fdTabId);
@@ -1792,21 +1939,16 @@ private extern(C) bool domainSpawnProgram(uint domObjId, const(char)* prog) {
     physSetActiveUntyped(savedUntyped);
     x64WriteCR3(savedCr3);
     if (r != 0) {
-        klog("[domain] spawn: exec failed for "); klog(prog); klog("\n");
+        klog("[domain] spawn: exec failed for "); klog(prog);
+        klog(r == -13 ? " (not delegated to this domain)\n" : "\n");
         import core.exports : g_spawnEnvDomain, g_spawnEnvShell;
         g_spawnEnvDomain[0] = 0; g_spawnEnvShell[0] = 0;   // exec never consumed them
         releaseTask(t);
-        return false;
+        return (r < 0) ? r : -22;
     }
-
-    // Confine it: private clone of the domain's restricted namespace + the domain's identity
-    // + domainObjId.  From here its absolute opens run the namespaceCheckOpen gauntlet and its
-    // device/network access is the domain's mask.
-    if (domainBindTaskNs(t, domObjId) == 0) {
-        klog("[domain] spawn: bind FAILED (domain has no namespace) -- killing task\n");
-        releaseTask(t);
-        return false;
-    }
+    // execveTask confined it (appgate): a private clone of the domain's restricted namespace + the
+    // domain's identity + domainObjId.  From here its absolute opens run the namespaceCheckOpen
+    // gauntlet and its device/network access is the domain's mask.
 
     // DM13: the confined task starts in its domain's mode.  A native domain starts native
     // (execMode is already 0 from allocTask); a Linux-flavoured one starts already dropped,
@@ -1820,7 +1962,7 @@ private extern(C) bool domainSpawnProgram(uint domObjId, const(char)* prog) {
 
     klog("[domain] spawn: "); klog(prog); klog(" confined in domain ");
     klog_hex(cast(ulong)domObjId); klog(" as task "); klog_hex(cast(ulong)t); klog("\n");
-    return true;
+    return 0;
 }
 
 // DM13 bridge: core.domain cannot import core.task (core.task already imports core.domain),
@@ -1950,10 +2092,10 @@ private void maybeSpawnCloudHypervisorProbe() {
     x64WriteCR3(savedCr3);
     g_current_task_id = savedCur;
     if (r != 0) { klog("[ch] probe: execveTask failed\n"); releaseTask(t); g_chProbeTid = -2; return; }
-    // execveTask bound CH into the SESSION domain (domainBindTaskNs): that namespace has no "/" (no
-    // /dev/kvm, /guest-hello.elf) and its device mask lacks DEVCLASS_VIRT.  Undo it for this opt-in
-    // probe before its first schedule: domain 0 + identity 0 is deviceClassGate's "unrestricted".
-    // (Do NOT add cloud-hypervisor to isSystemProgram — that would unconfine every launch.)
+    // execveTask placed CH in the System domain (appgate: the VM app is System-hosted), whose device
+    // mask lacks DEVCLASS_VIRT.  Undo it for this opt-in probe before its first schedule: domain 0 +
+    // identity 0 is deviceClassGate's "unrestricted".  (Never make cloud-hypervisor INFRA in core.appreg
+    // -- that would unconfine every launch of it.)
     {
         import core.namespace : nsRelease;
         if (g_tasks[t].namespaceObjId != g_tasks[0].namespaceObjId)
@@ -2917,7 +3059,11 @@ private void maybeProveDualIdentity() {
     klog(") -- session domain is ");
     klog_hex(domainSessionId());
     klog("\n");
-    const bool ok = domainSpawnInto(bank, "wl-calc\0".ptr);
+    // appgate: a domain runs only what it has been delegated -- delegate the probe apps through the
+    // same verb the Domain Manager uses (kernel context), so the proof exercises the real path.
+    cast(void)domainControlWrite("port BankVault wl-calc".ptr, 22);
+    cast(void)domainControlWrite("port Throwaway wl-clocks".ptr, 24);
+    const bool ok = domainSpawnInto(bank, "wl-calc\0".ptr) == 0;
     klog(ok ? "[4.1] dual-identity spawn accepted\n" : "[4.1] dual-identity spawn REFUSED\n");
     // And prove the gate REFUSES app-to-app across identities.  xid-test runs as Banking and
     // connects to the dbus socket owned by dbus-daemon under the session identity: neither side is
@@ -6028,10 +6174,13 @@ void d_kernel_main() {
     {   // DM3: give core.domain a launcher, so "spawn <domain> <prog>" can create a confined
         // task.  core.domain cannot reach allocTask/execveTask (kernel_main already imports it,
         // so importing back would be a cycle) -- hence the hook.
-        import core.domain : domainSetSpawnHook, domainSetModeHook, domainSetRebootHook;
+        import core.domain : domainSetSpawnHook, domainSetModeHook, domainSetRebootHook,
+                             domainSetBusyHook, domainSetGoneHook;
         domainSetSpawnHook(&domainSpawnProgram);
         domainSetModeHook(&domainModeSelf);   // DM13: "mode self linux" ratchet
         domainSetRebootHook(&domainRebootBridge);   // "reboot|poweroff System"
+        domainSetBusyHook(&appgateDomainBusy);      // appgate: no deleting a domain with programs in it
+        domainSetGoneHook(&appgateDomainGone);      // appgate: tombstone a deleted domain's files
     }
     domainSelfTest();            // DOMAIN_MANAGER DM0: one-shot proof create/lookup/dup/unknown-id/freeze (deterministic at boot)
     nsRestrictedSelfTest();      // DOMAIN_MANAGER DM2: one-shot proof deny-by-default restricted namespace (deterministic at boot)
@@ -6120,6 +6269,9 @@ void d_kernel_main() {
     domDistroProof();            // DOMAIN_MANAGER DM11: per-domain distro/pkgMgr + RO /linux compat root
     templateBundleProof();       // DOMAIN_MANAGER DM12: signed .hosdt template export/import + trust + rollback
     domInheritProof();           // DOMAIN_MANAGER DM9: template inheritance least-privilege merge
+    // appgate: the delegation table goes live AFTER the last boot-time domain mutation (the proofs
+    // above create/clone/delete throwaway domains) and BEFORE the first program runs (kernelLoop).
+    appgateBootInit();
     smpWorkReport();             // SMP_ROADMAP S4 foundation: APs ran parallel kernel work during boot
     bootProgress("domains");
     if (g_mboot_modules !is null && g_module_count > 0) {

@@ -115,27 +115,32 @@ static void probe_kvm(struct app *a){
     snprintf(a->status, sizeof a->status, "Virtualization available (KVM API v%d)", a->kvm_api);
 }
 
-/* Launch Cloud Hypervisor confined into THIS domain, via the Domain Manager's
- * spawn control.  execve is ENOSYS in the personality, so we ask the kernel to
- * spawn the boot module: writing "spawn <domain> /cloud-hypervisor" to
- * /config/domain.action runs it in <domain> (domainSpawnInto).  The domain must
- * have /dev/kvm (DEVCLASS_VIRT) for CH to do anything — that is what the probe
- * above shows. */
+/* Launch Cloud Hypervisor confined into THIS domain, via the kernel's spawn control:
+ * "spawn self /cloud-hypervisor" on /config/domain.action runs it in the CALLER's own domain.
+ * appgate: "self" is resolved by the kernel from this task's domain -- never from the EPIN_DOMAIN
+ * environment variable, which anything that starts this program can set.  Only the Domain Manager
+ * may spawn into a different domain.  The domain must have /dev/kvm (DEVCLASS_VIRT) for CH to do
+ * anything -- that is what the probe above shows. */
 static void launch_ch(struct app *a){
     if (!a->kvm_ok){
         snprintf(a->status, sizeof a->status, "Cannot launch: this domain has no /dev/kvm access");
         return; }
-    const char *dom = getenv("EPIN_DOMAIN"); if (!dom || !dom[0]) dom = "System";
-    char cmd[128];
-    int n = snprintf(cmd, sizeof cmd, "spawn %s /cloud-hypervisor", dom);
+    static const char cmd[] = "spawn self /cloud-hypervisor";
     int fd = open("/config/domain.action", O_WRONLY);
     if (fd < 0){
-        snprintf(a->status, sizeof a->status, "Launch failed: no /config access in %s (%s)", dom, strerror(errno));
+        snprintf(a->status, sizeof a->status, "Launch failed: no domain control here (%s)", strerror(errno));
         return; }
-    ssize_t w = write(fd, cmd, (size_t)n);
+    ssize_t w = write(fd, cmd, sizeof cmd - 1);
+    int e = (w < 0) ? errno : 0;
     close(fd);
-    if (w == n) snprintf(a->status, sizeof a->status, "Launched Cloud Hypervisor in %s", dom);
-    else        snprintf(a->status, sizeof a->status, "Launch failed: could not write control");
+    if (w == (ssize_t)(sizeof cmd - 1))
+        snprintf(a->status, sizeof a->status, "Launched Cloud Hypervisor in this domain");
+    else if (e == EACCES)
+        snprintf(a->status, sizeof a->status, "Launch refused: Virtual Machines is not delegated to this domain");
+    else if (e == EPERM)
+        snprintf(a->status, sizeof a->status, "Launch refused: not permitted from here");
+    else
+        snprintf(a->status, sizeof a->status, "Launch failed: %s", e ? strerror(e) : "could not write control");
 }
 
 static int load_file(const char *path, unsigned char **out, size_t *out_size){

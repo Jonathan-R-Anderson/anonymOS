@@ -34,6 +34,20 @@ forbid   COMPOSITOR DIED
 # behaviour and failed every run.  Assert the live-media contract instead.
 require  [gui] live media — installer only
 
+# ── appgate: the System domain owns the Domain Manager, the Domain Manager delegates applications,
+#    and the kernel refuses to exec an application in a domain it was not delegated to.  The
+#    decision table is proven at boot, the grant table goes live before the first program runs,
+#    and every executable boot module must be classified (an unclassified one is refused in every
+#    non-System domain -- tests/appgate/check_registry.py catches that on the host too).
+require  [appgate] selftest PASS
+forbid   [appgate] selftest FAIL
+require  [appgate] grants:
+require  [appgate] every executable boot module is classified
+forbid   [appgate] unclassified executable
+# Boot-time infrastructure stays unconfined -- a refusal here means a registry row is wrong.
+require  [appgate] place wl-layer-bar -> unconfined
+forbid   [appgate] DENY
+
 # ── the app catalogue unpacked.  The launcher shows hardcoded fallbacks if this is missing,
 #    which looks fine on screen and is wrong.
 require  /apps.blob

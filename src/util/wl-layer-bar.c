@@ -59,6 +59,7 @@ enum { BAR_H = 28 };                 /* GNOME top-bar height */
 #define COL_TEXT    0xfff2f2f2u
 #define COL_DIM     0xff9aa0a6u
 #define COL_HOVER   0x22ffffffu      /* (alpha blended) hover pill */
+#define COL_NOTICE  0xff5a1e1eu      /* appgate: the "not delegated" notice pill */
 
 /* clickable regions */
 enum { R_NONE = 0, R_ACTIVITIES, R_CLOCK, R_WIFI, R_INDICATORS };
@@ -98,6 +99,13 @@ struct app {
     int  clk_x0, clk_x1;     /* Clock */
     int  wifi_x0, wifi_x1;   /* Wi-Fi glyph */
     int  ind_x0, ind_x1;     /* volume+battery */
+    /* appgate: a launch the kernel refused (it logs each one in /config/appgate.json) is shown in
+     * place of the clock for a few seconds -- otherwise a refused launch from the app grid or a
+     * keybind looks exactly like a program that silently failed to start. */
+    unsigned gate_seq;       /* last denial sequence number shown */
+    int      gate_seen;      /* gate_seq initialised (denials from before the bar started are old news) */
+    char     notice[160];
+    time_t   notice_until;
 };
 
 static volatile sig_atomic_t g_toggle = 0;
@@ -251,12 +259,14 @@ static void draw_bar(struct app *app){
     if (app->hover == R_ACTIVITIES) fill_rect(app, app->act_x0+3, 3, app->act_x1-6, app->height-6, COL_HOVER);
     draw_text(app, act, 12, cy - 8, aw + 4, 14, COL_TEXT);
 
-    /* Clock (centered) */
-    int cw = text_width(app, app->clock_str, 13);
+    /* Clock (centered) -- or, for a few seconds after a refused launch, the appgate notice. */
+    const char *center = app->notice[0] ? app->notice : app->clock_str;
+    int cw = text_width(app, center, 13);
     int cx = (app->width - cw) / 2;
     app->clk_x0 = cx - 8; app->clk_x1 = cx + cw + 8;
+    if (app->notice[0]) fill_rect(app, app->clk_x0, 3, app->clk_x1-app->clk_x0, app->height-6, COL_NOTICE);
     if (app->hover == R_CLOCK) fill_rect(app, app->clk_x0, 3, app->clk_x1-app->clk_x0, app->height-6, COL_HOVER);
-    draw_text(app, app->clock_str, cx, cy - 8, cw + 4, 13, COL_TEXT);
+    draw_text(app, center, cx, cy - 8, cw + 4, 13, COL_TEXT);
 
     /* Indicators (right): battery, volume, wifi -- laid out from the right edge */
     int x = app->width - 14;
@@ -340,7 +350,7 @@ static void pointer_button(void *d, struct wl_pointer *p, uint32_t se, uint32_t 
     if (button != 0x110 /*BTN_LEFT*/ || state != 1 /*pressed*/) return;
     switch (hit_region(a, a->pointer_x, a->pointer_y)){
         case R_ACTIVITIES: launch("/wl-overview");      break;
-        case R_CLOCK:      launch("/wl-calendar");      break;
+        case R_CLOCK:      launch(a->notice[0] ? "/wl-domain-manager" : "/wl-calendar"); break;
         case R_WIFI:       launch("/wl-wifi-menu");     break;   /* pick network + password */
         case R_INDICATORS: launch("/wl-quicksettings"); break;
         default: break;
@@ -387,9 +397,53 @@ static void registry_global(void *d, struct wl_registry *r, uint32_t name, const
 static void registry_remove(void *d, struct wl_registry *r, uint32_t n){ (void)d;(void)r;(void)n; }
 static const struct wl_registry_listener registry_listener = { .global=registry_global, .global_remove=registry_remove };
 
+/* appgate: pick up a newly refused launch from /config/appgate.json -- "seq" counts refusals, and
+ * "denies" holds the last few as { "seq": N, "image": .., "app": .., "domain": .. }.  Returns 1 when
+ * the notice changed. */
+static int json_str_after(const char *from, const char *key, char *out, size_t cap){
+    char pat[24]; snprintf(pat, sizeof pat, "\"%s\"", key);
+    const char *k = strstr(from, pat); if (!k) return 0;
+    const char *q1 = strchr(k + strlen(pat), '"'); if (!q1) return 0;
+    const char *q2 = strchr(q1 + 1, '"'); if (!q2) return 0;
+    size_t n = (size_t)(q2 - q1 - 1); if (n >= cap) n = cap - 1;
+    memcpy(out, q1 + 1, n); out[n] = 0;
+    return 1;
+}
+static int poll_appgate(struct app *app){
+    unsigned char *buf; size_t sz;
+    if (load_file("/config/appgate.json", &buf, &sz) < 0 || sz == 0) return 0;
+    char *j = malloc(sz + 1);
+    if (!j){ free(buf); return 0; }
+    memcpy(j, buf, sz); j[sz] = 0; free(buf);
+    int changed = 0;
+    const char *sk = strstr(j, "\"seq\"");
+    unsigned seq = sk ? (unsigned)strtoul(sk + 6 + strspn(sk + 6, " :"), NULL, 10) : 0;
+    if (!app->gate_seen){ app->gate_seen = 1; app->gate_seq = seq; }
+    else if (seq > app->gate_seq){
+        app->gate_seq = seq;
+        /* the newest entry: the last "seq": N inside "denies" */
+        const char *d = strstr(j, "\"denies\""), *last = NULL;
+        for (const char *p = d ? strstr(d, "{") : NULL; p; p = strstr(p + 1, "{")) last = p;
+        char appn[72] = "", dom[40] = "";
+        if (last){ json_str_after(last, "label", appn, sizeof appn);
+                   if (!appn[0]) json_str_after(last, "app", appn, sizeof appn);
+                   if (!appn[0] || !strcmp(appn, "-")) json_str_after(last, "image", appn, sizeof appn);
+                   json_str_after(last, "domain", dom, sizeof dom); }
+        snprintf(app->notice, sizeof app->notice, "%s is not delegated to %s - click to open the Domain Manager",
+                 appn[0] ? appn : "That program", dom[0] ? dom : "this domain");
+        app->notice_until = time(NULL) + 6;
+        log_line(app->notice);
+        changed = 1;
+    }
+    free(j);
+    return changed;
+}
+
 /* once-a-second tick: refresh clock + wifi + honour the hide flag file / SIGUSR1 */
 static void tick(struct app *app){
     int changed = 0;
+    if (poll_appgate(app)) changed = 1;
+    if (app->notice[0] && time(NULL) >= app->notice_until){ app->notice[0] = 0; changed = 1; }
     char prev[64]; strncpy(prev, app->clock_str, sizeof prev); prev[sizeof prev - 1] = 0;
     build_clock(app);
     if (strcmp(prev, app->clock_str)) changed = 1;

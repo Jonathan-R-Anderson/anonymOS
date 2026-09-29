@@ -25,7 +25,8 @@ import core.cap : CAP_RIGHT_READ, CAP_RIGHT_WRITE, CAP_RIGHT_STAT;  // DOMAIN_MA
 extern (C) @nogc nothrow:
 
 enum int NS_MAX       = 64;   // live Namespace objects
-enum int NS_BIND_MAX  = 32;   // mount bindings per namespace (DM2: real per-domain fs policies)
+enum int NS_BIND_MAX  = 48;   // mount bindings per namespace (DM2: real per-domain fs policies;
+                              // appgate: every domain now also binds its read-only runtime)
 enum int NS_PATH_MAX  = 64;   // mount-point path length
 
 struct NsBinding {
@@ -145,6 +146,14 @@ public uint nsClone(uint srcObjId) {
         return id;
     }
     return 0;
+}
+
+// appgate: like nsClone, but an invalid source yields 0 -- NEVER a fresh root namespace.  nsClone's
+// fallback to nsAlloc() hands out a "/" binding with every right, which is the wrong answer for any
+// caller that is confining a task: a stale source must fail closed, not open.
+public uint nsCloneStrict(uint srcObjId) {
+    if (nsRecByObj(srcObjId) is null) return 0;
+    return nsClone(srcObjId);
 }
 
 public void nsRelease(uint objId) {

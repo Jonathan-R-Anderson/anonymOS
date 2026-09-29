@@ -12,6 +12,7 @@
 //   LBA 0        superblock (magic, version, appCount, bootCount, nextFreeLba)
 //   LBA 1..32    app directory  (ObjAppEntry, 256B each → 2/sector, 64 entries)
 //   LBA 33..48   domain directory (DomainEntry, 256B each, 32 entries)  [DM5]
+//   LBA 49..62   application-delegation table, two 7-sector slots  [appgate]
 //   LBA 64..     blob region (manifest / permissions / executable / storage),
 //                allocated sequentially, sector-granular.
 //
@@ -57,7 +58,12 @@ struct ObjSuper {
     ulong   fsBlobLba;          // relative LBA of the snapshot (0 = none)   offset 40
     uint    fsBlobLen;          // bytes actually stored                     offset 48
     uint    fsBlobCap;          // sectors reserved, so a growing /home does not have to move
-    ubyte[SECTOR - 56] _pad;
+    // appgate: the persisted application-delegation table (see objstoreSaveGrants).  Carved out of
+    // what was zeroed padding, so every existing store reads 0 here = "nothing persisted yet".
+    uint    grantsLen;          // bytes in the current slot (0 = none)                    offset 56
+    uint    grantsSum;          // FNV-1a of those bytes                                   offset 60
+    uint    grantsSlot;         // which of the two slots is current (0 or 1)              offset 64
+    ubyte[SECTOR - 68] _pad;
 }
 static assert(ObjSuper.sizeof == SECTOR);
 
@@ -65,6 +71,12 @@ static assert(ObjSuper.sizeof == SECTOR);
 // directory at 1..32 and the blob region at 64).  Each DomainEntry persists a domain's
 // DEFINITION (name / identity / template / persist mode); the writable overlay+home blobs are DM6.
 enum ulong DOM_DIR_LBA      = 33;
+// appgate: the delegation table lives in the 15 sectors between the domain directory and the blob
+// region, as two alternating 7-sector slots.  A save writes the idle slot and then commits by
+// rewriting the superblock, so a crash mid-save leaves the previous table intact.
+enum ulong GRANTS_LBA        = 49;
+enum uint  GRANTS_SLOT_SECS  = 7;
+enum uint  GRANTS_SLOT_BYTES = GRANTS_SLOT_SECS * 512;
 enum uint  DOM_MAX_PERSIST  = 32;
 struct DomainEntry {
     uint    inUse;
@@ -200,6 +212,41 @@ private uint sectorsFor(uint bytes) { return (bytes + SECTOR - 1) / SECTOR; }
 private bool magicOk() {
     foreach (i; 0 .. 8) if (g_super.magic[i] != OBJ_MAGIC[i]) return false;
     return true;
+}
+
+static assert(GRANTS_LBA == DOM_DIR_LBA + 16, "grants region must start right after the domain directory");
+static assert(GRANTS_LBA + 2 * GRANTS_SLOT_SECS <= BLOB_LBA_BASE, "grants region would overlap the blob region");
+
+private uint grantsFnv(const(ubyte)* p, uint len) {
+    uint h = 2166136261u;
+    foreach (i; 0 .. len) { h ^= p[i]; h *= 16777619u; }
+    return h;
+}
+
+// Save the delegation table (appport's text form).  false = not mounted / too large / I/O error.
+public bool objstoreSaveGrants(const(ubyte)* data, uint len) {
+    if (!g_mounted || data is null || len == 0 || len > GRANTS_SLOT_BYTES) return false;
+    const uint slot = (g_super.grantsLen != 0 && g_super.grantsSlot == 0) ? 1 : 0;   // the idle one
+    memset(g_stage.ptr, 0, GRANTS_SLOT_BYTES);
+    memcpy(g_stage.ptr, data, len);
+    if (!stWrite(GRANTS_LBA + slot * GRANTS_SLOT_SECS, GRANTS_SLOT_SECS, g_stage.ptr)) return false;
+    g_super.grantsLen  = len;
+    g_super.grantsSum  = grantsFnv(data, len);
+    g_super.grantsSlot = slot;
+    return stWrite(0, 1, &g_super);                  // the commit record
+}
+
+// Load the delegation table into dst.  Returns its length, 0 if none was ever saved, or -1 if the
+// saved copy fails its checksum (the caller fails closed).
+public int objstoreLoadGrants(ubyte* dst, uint cap) {
+    if (!g_mounted || dst is null) return 0;
+    const uint len = g_super.grantsLen;
+    if (len == 0) return 0;
+    if (len > GRANTS_SLOT_BYTES || len > cap || g_super.grantsSlot > 1) return -1;
+    if (!stRead(GRANTS_LBA + g_super.grantsSlot * GRANTS_SLOT_SECS, GRANTS_SLOT_SECS, g_stage.ptr)) return -1;
+    if (grantsFnv(g_stage.ptr, len) != g_super.grantsSum) return -1;
+    memcpy(dst, g_stage.ptr, len);
+    return cast(int)len;
 }
 
 // Persist the superblock (LBA 0) and the directory (LBA 1..32).

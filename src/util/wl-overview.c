@@ -85,22 +85,60 @@ static char            APP_STRINGS[MAX_APPS * 2][128];   /* backing store for pa
 #define APPDIR "/usr/share/applications"
 
 /* Pull "Name=" and "Exec=" out of one .desktop file.  Deliberately minimal: no locale
- * variants, no field codes (%U/%f), no Type/NoDisplay handling -- these are our own files,
- * not arbitrary freedesktop ones.  Returns 1 when both keys were found. */
+ * variants, no field codes (%U/%f) -- these are our own files, not arbitrary freedesktop ones.
+ * NoDisplay=true hides an entry (e.g. kUML, a CLI run from a terminal).  Returns 1 when both
+ * keys were found and the entry is displayable. */
 static int parse_desktop(const char *path, char *name, char *exec, size_t cap)
 {
     FILE *f = fopen(path, "r");
     if (!f) return 0;
     char line[256];
+    int hidden = 0;
     name[0] = exec[0] = 0;
     while (fgets(line, sizeof line, f)) {
         size_t n = strlen(line);
         while (n && (line[n-1] == '\n' || line[n-1] == '\r')) line[--n] = 0;
         if (!strncmp(line, "Name=", 5) && !name[0]) { strncpy(name, line + 5, cap - 1); name[cap-1] = 0; }
         else if (!strncmp(line, "Exec=", 5) && !exec[0]) { strncpy(exec, line + 5, cap - 1); exec[cap-1] = 0; }
+        else if (!strcmp(line, "NoDisplay=true")) hidden = 1;
     }
     fclose(f);
-    return name[0] && exec[0];
+    return name[0] && exec[0] && !hidden;
+}
+
+/* appgate: the kernel lists, in /config/appgate.json "desktop", every program the app grid may
+ * start -- applications the desktop's session domain has been delegated, the System tools that
+ * open in System, and the desktop's own popups.  A tile outside that list would only be refused,
+ * so it is not shown.  If the file cannot be read (an older kernel), every tile stays. */
+static char *g_desktop_list = NULL;     /* the raw "desktop": [ ... ] array text, or NULL */
+static void load_desktop_list(void)
+{
+    FILE *f = fopen("/config/appgate.json", "r");
+    if (!f) return;
+    static char buf[8192];
+    size_t n = fread(buf, 1, sizeof buf - 1, f);
+    fclose(f);
+    buf[n] = 0;
+    char *k = strstr(buf, "\"desktop\"");
+    if (!k) return;
+    char *br = strchr(k, '[');
+    char *be = br ? strchr(br, ']') : NULL;
+    if (!br || !be) return;
+    *be = 0;
+    g_desktop_list = br + 1;
+}
+static int desktop_allows(const char *exec)
+{
+    if (!g_desktop_list) return 1;
+    char first[128];
+    size_t i = 0;
+    while (exec[i] && exec[i] != ' ' && i < sizeof first - 1) { first[i] = exec[i]; i++; }
+    first[i] = 0;
+    const char *base = strrchr(first, '/');
+    base = base ? base + 1 : first;
+    char quoted[140];
+    snprintf(quoted, sizeof quoted, "\"%s\"", base);
+    return strstr(g_desktop_list, quoted) != NULL;
 }
 
 static int cmp_entry(const void *a, const void *b)
@@ -131,6 +169,14 @@ static void load_apps(void)
     if (N_APPS == 0) {                       /* no apps.blob in this image -- use the fallback */
         for (int i = 0; i < N_BUILTIN && i < MAX_APPS; i++) APPS[N_APPS++] = BUILTIN_APPS[i];
     }
+    /* appgate: drop the tiles this desktop may not launch (see load_desktop_list). */
+    load_desktop_list();
+    int kept = 0;
+    for (int i = 0; i < N_APPS; i++) if (desktop_allows(APPS[i].exec)) APPS[kept++] = APPS[i];
+    if (kept != N_APPS) {
+        printf("OVERVIEW: %d of %d tiles launchable from the desktop\n", kept, N_APPS); fflush(stdout);
+    }
+    N_APPS = kept;
 }
 
 /* distinct accent colours cycled across the tiles */

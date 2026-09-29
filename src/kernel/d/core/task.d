@@ -5,9 +5,10 @@ import core.globals;
 import memory.mm;
 import core.objmgr : ObjType, objAlloc, objRetain, objRelease, objGet,
                      objBeginSweep, objMark, objSweepType; // Phase 3/4
-import core.namespace : nsAlloc, nsClone, nsRelease, nsResolveCheck; // Phase 9 + DOMAIN_MANAGER DM3
+import core.namespace : nsAlloc, nsClone, nsCloneStrict, nsRelease, nsResolveCheck; // Phase 9 + DOMAIN_MANAGER DM3 + appgate
 import core.domain : domainById, domainByName,
-                     domainClone, domainStart, domainDelete;         // DOMAIN_MANAGER DM3/DM6.2
+                     domainClone, domainStart, domainDelete,         // DOMAIN_MANAGER DM3/DM6.2
+                     domainBuildNamespace, g_domains;               // appgate: exec-time namespace
 import core.overlay : overlayWrite, overlayChangeCount;             // DOMAIN_MANAGER DM6.2 data plane
 import core.identity : identityCanTransition, identityByName;        // DOMAIN_MANAGER DM3
 import core.untyped : untypedDestroy; // IMMUTABLE_ROOTLESS §1.4: task memory budget
@@ -227,6 +228,9 @@ __gshared ulong[64][MAX_TASKS] g_sigRestorer;
 // A4: per-task program name (basename of the exec'd binary), for /proc/<pid> comm.
 // Set by execveTask / forkTask in kernel_main.d; read by posix.d's procfs.
 __gshared const(char)*[MAX_TASKS] g_taskExecName;
+// appgate: the objstore app a task is running (index + 1; 0 = not an objstore app).  The app's grant
+// key is "store:<name>", and a /proc/self/exe re-exec must keep it (execName is just "store-app").
+__gshared ushort[MAX_TASKS] g_taskStoreApp1;
 
 // NATIVE_OBJECT_ABI §3: per-task personality. true = the AnonymOS native shell context
 // (may call the native object ABI HOS_SYS_QUERY); false = Linux personality (the native
@@ -350,14 +354,67 @@ public void objEnsureNamespace(int tid) {
     int leader = task.processLeaderTid;
     if (leader < 0 || leader >= MAX_TASKS || !g_tasks[leader].active) leader = tid;
 
+    // appgate: self-healing a missing namespace with nsAlloc() gives a ROOT namespace ("/" with every
+    // right).  That is right for the kernel's own tasks and wrong for a domain-bound one, which would be
+    // unconfined by the repair -- so a domain task with no live namespace stays at 0, and every
+    // absolute open then fails closed (namespaceCheckOpen resolves nothing against namespace 0).
     if (leader != tid) {
         if (objGet(g_tasks[leader].namespaceObjId) is null)
-            g_tasks[leader].namespaceObjId = nsAlloc();
+            g_tasks[leader].namespaceObjId = (g_tasks[leader].domainObjId != 0) ? 0 : nsAlloc();
         task.namespaceObjId = g_tasks[leader].namespaceObjId; // thread shares
         return;
     }
     if (objGet(task.namespaceObjId) is null)
-        task.namespaceObjId = nsAlloc();
+        task.namespaceObjId = (task.domainObjId != 0) ? 0 : nsAlloc();
+}
+
+// ── appgate: the namespace a task gets when it execs (kernel_main.d execveTask) ─────────────────
+//
+// Split in two so the one step that can fail runs BEFORE the exec is committed: a failed clone must
+// return an error to the still-intact caller, never let the new image run with the namespace it
+// inherited (for a kernel spawn or a Hyprland child that is a clone of the ROOT namespace).
+
+// Prepare: a private clone of domain `target`'s namespace (building it on first use -- a domain created
+// from the GUI has none until then).  target 0 = unconfined, nothing to prepare.
+public bool taskPrepareExecNs(uint target, out uint newNs) {
+    newNs = 0;
+    if (target == 0) return true;
+    auto d = domainById(target);
+    if (d is null || d.isTemplate) return false;
+    if (d.nsObjId == 0) domainBuildNamespace(target);
+    if (d.nsObjId == 0) return false;
+    newNs = nsCloneStrict(d.nsObjId);
+    return newNs != 0;
+}
+
+// Commit (cannot fail): install the prepared namespace + the domain label + the domain's identity, and
+// release the namespace the task had -- unless someone else still holds it (a vfork parent sharing
+// it, threads), or it is PID1's or a domain's template namespace.  Without the release every exec
+// leaked one of the NS_MAX namespace slots, and exhausting them made later binds fail.
+public void taskCommitExecNs(int tid, uint target, uint newNs) {
+    if (tid < 0 || tid >= MAX_TASKS) return;
+    const uint old = g_tasks[tid].namespaceObjId;
+    if (target == 0) {
+        g_tasks[tid].namespaceObjId = g_tasks[0].namespaceObjId;   // unconfined: PID1's root view
+        g_tasks[tid].domainObjId    = 0;                           // identity unchanged, as before
+    } else {
+        auto d = domainById(target);
+        g_tasks[tid].namespaceObjId = newNs;
+        g_tasks[tid].domainObjId    = target;
+        if (d !is null && d.identityObjId != 0) g_tasks[tid].identityObjId = d.identityObjId;
+    }
+    releasePrivateNs(tid, old);
+}
+
+private void releasePrivateNs(int tid, uint ns) {
+    if (ns == 0 || ns == g_tasks[tid].namespaceObjId) return;
+    if (ns == g_tasks[0].namespaceObjId) return;
+    foreach (ref d; g_domains) if (d.inUse && d.nsObjId == ns) return;   // a domain's template ns
+    for (int i = 0; i < MAX_TASKS; ++i) {
+        if (i == tid) continue;
+        if (g_tasks[i].active && !g_tasks[i].exited && g_tasks[i].namespaceObjId == ns) return;
+    }
+    nsRelease(ns);
 }
 
 // fork: give the child process a private clone of the parent's namespace, so a
@@ -495,6 +552,11 @@ public void objReleaseUntyped(int tid) {
 // Allocate a task slot (id > 0 reserved for non-init tasks)
 private int initTaskSlot(int i) {
     g_tasks[i] = Task.init;
+    // appgate: a fresh slot runs no image yet.  execveTask reads the PREVIOUS image as the launcher
+    // (the app grid's children are restricted), so a kernel spawn must not inherit the name of
+    // whatever last occupied this slot.
+    g_taskExecName[i]  = null;
+    g_taskStoreApp1[i] = 0;
     g_tasks[i].active = true;
     g_tasks[i].processLeaderTid = i;
     g_tasks[i].mmapNext = 0x700000000000UL;

@@ -22,7 +22,10 @@ import core.pkgrepo  : pkgRepoCount, pkgRepoAt, pkgInstalledMask;          // DO
 import core.domain   : domainDeviceMask;                                  // DOMAIN_MANAGER DM10.7
 import core.domain   : domainDistro, domainPkgMgr, distroName, pkgMgrName; // DOMAIN_MANAGER DM11
 import core.domain   : domainById;                                        // apps.json domain names
-import core.appport  : appPortCount, appPortAt;                           // Software Center app porting
+import core.appport  : appPortCount, appPortAt, appPortHas, appPortAllowed,  // application delegation
+                       g_appgateDeny, g_appgateDenySeq, APPGATE_RING;
+import core.appreg   : AppRegEntry, AppCls, AppHost, AppVerdict, AF_DELEGABLE, AF_DESKTOP, g_appReg,
+                       appRegAppAt, appRegByAppId, appRegKey, appgateDecide;   // appgate views
 import core.template_bundle : templateCount, templateAt;                  // DOMAIN_MANAGER DM12
 import core.cap      : CAP_RIGHT_READ, CAP_RIGHT_WRITE, CAP_RIGHT_CALL,
                        CAP_RIGHT_EXEC, CAP_RIGHT_ADMIN_ALL,
@@ -570,10 +573,12 @@ public long objfsRead(int kind, const(char)* objName, size_t objLen, char* buf, 
 // object tables.  Read-only for now; the mutable ones become writable via the
 // identity policyEpoch transaction path (F2 phase 2).  /etc becomes a view of this.
 enum int CFG_NONE = 0, CFG_SYSTEM = 1, CFG_IDENTITIES = 2, CFG_USERS = 3, CFG_SERVICES = 4,
-         CFG_DOMAINS = 5, CFG_PACKAGES = 6, CFG_TEMPLATES = 7, CFG_DISKS = 8, CFG_APPS = 9;
+         CFG_DOMAINS = 5, CFG_PACKAGES = 6, CFG_TEMPLATES = 7, CFG_DISKS = 8, CFG_APPS = 9,
+         CFG_APPGATE = 10;
 
-private immutable string[9] g_configFiles =
-    ["system.json", "identities.json", "users.json", "services.json", "domains.json", "packages.json", "templates.json", "disks.json", "apps.json"];
+private immutable string[10] g_configFiles =
+    ["system.json", "identities.json", "users.json", "services.json", "domains.json", "packages.json", "templates.json", "disks.json", "apps.json",
+     "appgate.json"];
 
 // "<name>.json" -> config id (0 = not a config file).
 public int configfsId(const(char)* name, size_t len) {
@@ -591,6 +596,35 @@ public int configfsEnum(int logical, char* nameBuf, size_t cap) {
 }
 
 private size_t tCstrLen(const(char)* s) { size_t n = 0; while (s[n] != 0) ++n; return n; }  // DM12
+
+// apps.json row: { "id": .., "delegable": .., "host": .., "domains": [..] }.
+private void appsJsonRow(ref UB b, bool first, const(char)* id, size_t idLen, bool delegable, bool sysHost) {
+    import core.domain : domainSystemId;
+    if (!first) lit(b, ",\n");
+    lit(b, "  { \"id\": "); jstr(b, id, idLen);
+    lit(b, ", \"delegable\": "); lit(b, delegable ? "true" : "false");
+    lit(b, ", \"host\": ");      lit(b, sysHost ? "\"system\"" : "\"session\"");
+    lit(b, ", \"domains\": [");
+    bool df = true;
+    const uint sys = domainSystemId();
+    foreach (ref d; g_domains) {
+        if (!d.inUse || d.isTemplate || d.objId == sys) continue;
+        if (!appPortHas(id, d.objId)) continue;
+        if (!df) lit(b, ", "); df = false;
+        jstr(b, d.name.ptr, jNameLen(d.name.ptr, d.nameLen));
+    }
+    lit(b, "] }");
+}
+
+// A domain record's name without a trailing NUL (some records count it in nameLen).
+private size_t jNameLen(const(char)* p, uint n) { size_t k = 0; while (k < n && p[k] != 0) ++k; return k; }
+
+// A domain's name as a JSON string, or null.
+private void jdomName(ref UB b, uint dom) {
+    auto d = domainById(dom);
+    if (d is null) { lit(b, "null"); return; }
+    jstr(b, d.name.ptr, jNameLen(d.name.ptr, d.nameLen));
+}
 
 // JSON string literal (minimal escaping — kernel object names are controlled).
 private void jstr(ref UB b, const(char)* s, size_t n) {
@@ -740,25 +774,61 @@ public long configfsRender(int id, char* buf, size_t buflen) {
             return cast(long)b.len;
         }
         case CFG_APPS: {
-            // Software Center cross-domain ports: which domains may run each app as their own
-            // isolated instance.  One object per app that is ported to >= 1 domain.
+            // appgate: every application and the domains it has been delegated to.  System can always
+            // run everything and is not listed; "delegable": false = a System-only administration app
+            // (the Domain Manager shows "System only" instead of a delegation checklist).  Registry
+            // apps first, in table order, then objstore apps ("store:<name>") that have grants.
             lit(b, "[\n"); bool first = true;
+            for (uint i = 0;; ++i) {
+                auto e = appRegAppAt(i);
+                if (e is null) break;
+                appsJsonRow(b, first, e.appId.ptr, e.appId.length, (e.flags & AF_DELEGABLE) != 0,
+                            e.host == AppHost.System);
+                first = false;
+            }
             foreach (uint i; 0 .. appPortCount()) {
                 auto a = appPortAt(i);
-                if (a is null) continue;
-                if (!first) lit(b, ",\n"); first = false;
-                lit(b, "  { \"id\": "); jstr(b, a.app.ptr, a.appLen);
-                lit(b, ", \"domains\": [");
-                bool df = true;
-                foreach (uint j; 0 .. a.nDoms) {
-                    auto d = domainById(a.doms[j]);
-                    if (d is null) continue;
-                    if (!df) lit(b, ", "); df = false;
-                    jstr(b, d.name.ptr, d.nameLen);
-                }
-                lit(b, "] }");
+                if (a is null || appRegByAppId(a.app.ptr) !is null) continue;   // registry apps done above
+                appsJsonRow(b, first, a.app.ptr, a.appLen, true, false);
+                first = false;
             }
             lit(b, "\n]\n");
+            return cast(long)b.len;
+        }
+        case CFG_APPGATE: {
+            // appgate: what the desktop chrome needs to explain and pre-filter launches -- the System and
+            // session domains, the last few refused launches (the top bar turns a new one into a notice),
+            // and the images the app grid may start (wl-overview hides every other tile).
+            import core.domain : domainSystemId, domainSessionId;
+            const uint sys = domainSystemId(), sess = domainSessionId();
+            lit(b, "{ \"system\": ");  jdomName(b, sys);
+            lit(b, ", \"session\": "); jdomName(b, sess);
+            lit(b, ", \"seq\": ");     num(b, g_appgateDenySeq);
+            lit(b, ",\n  \"denies\": [");
+            bool first = true;
+            const uint seq = g_appgateDenySeq;
+            const uint lo = (seq > APPGATE_RING) ? seq - APPGATE_RING + 1 : 1;
+            for (uint q = lo; q <= seq && seq != 0; ++q) {
+                auto r = &g_appgateDeny[q % APPGATE_RING];
+                if (r.seq != q) continue;
+                if (!first) lit(b, ", "); first = false;
+                lit(b, "{ \"seq\": "); num(b, r.seq);
+                lit(b, ", \"image\": ");  jstr(b, r.image.ptr, tCstrLen(r.image.ptr));
+                lit(b, ", \"app\": ");    jstr(b, r.app.ptr, tCstrLen(r.app.ptr));
+                lit(b, ", \"label\": ");  jstr(b, r.label.ptr, tCstrLen(r.label.ptr));
+                lit(b, ", \"domain\": "); jstr(b, r.domain.ptr, tCstrLen(r.domain.ptr));
+                lit(b, " }");
+            }
+            lit(b, "],\n  \"desktop\": [");
+            first = true;
+            foreach (ref e; g_appReg) {
+                if ((e.flags & AF_DESKTOP) == 0) continue;
+                auto dec = appgateDecide(0, "wl-overview\0".ptr, &e, appRegKey(&e), sys, sess, &appPortAllowed);
+                if (dec.verdict != AppVerdict.Allow) continue;
+                if (!first) lit(b, ", "); first = false;
+                jstr(b, e.image.ptr, e.image.length);
+            }
+            lit(b, "] }\n");
             return cast(long)b.len;
         }
         case CFG_TEMPLATES: {

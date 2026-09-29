@@ -34,7 +34,8 @@ import core.ipc : IpcCapDesc, ipcDelegateCap, ipcAcceptCap; // Phase 7 IPC route
 import core.device : deviceNoteOpen; // Phase 8: /dev resolves to Device objects
 import core.namespace : nsResolveWithRights, nsResolveCheck; // Phase 9/IR-P2 + DM2 (deny vs not-found)
 import core.domain : domainControlWrite,                     // DM10.3: /config/domain.action control-write executor
-                     domainDeviceAllowed, domainSetDevice, domainByName, domainById, DomainId; // DM10.7
+                     domainDeviceAllowed, domainSetDevice, domainByName, domainById, DomainId, // DM10.7
+                     domainControlWriteFrom, domainSystemId;   // appgate: caller-authorized control + System
 import core.identity : identityDeviceAllowed, identityByName, // DM8: §7 device-class enforcement
                        DEVCLASS_INPUT, DEVCLASS_GPU, DEVCLASS_CAMERA,
                        DEVCLASS_MIC, DEVCLASS_AUDIO, DEVCLASS_USB, DEVCLASS_NET,
@@ -1517,6 +1518,32 @@ private LocalSocket* findUnixListenerCString(const(char)* path)
     return null;
 }
 
+// appgate: is this listener one of Hyprland's control/event sockets?  Matched on the listener's own
+// path by pattern, because the instance signature in it changes every boot:
+//   /run/user/<uid>/hypr/<signature>/.socket.sock   (requests: dispatch, eval, keyword, ...)
+//   /run/user/<uid>/hypr/<signature>/.socket2.sock  (the event stream)
+private bool listenerIsHyprIpc(const(LocalSocket)* l)
+{
+    if (l is null) return false;
+    const size_t n = l.pathLength;
+    static bool hasSuffix(const(LocalSocket)* l, size_t n, string suf) {
+        if (n < suf.length) return false;
+        foreach (i; 0 .. suf.length) if (l.path[n - suf.length + i] != suf[i]) return false;
+        return true;
+    }
+    immutable string pre = "/run/user/";
+    if (n < pre.length) return false;
+    foreach (i; 0 .. pre.length) if (l.path[i] != pre[i]) return false;
+    if (!hasSuffix(l, n, "/.socket.sock") && !hasSuffix(l, n, "/.socket2.sock")) return false;
+    immutable string mid = "/hypr/";
+    for (size_t i = pre.length; i + mid.length <= n; ++i) {
+        bool m = true;
+        foreach (j; 0 .. mid.length) if (l.path[i + j] != mid[j]) { m = false; break; }
+        if (m) return true;
+    }
+    return false;
+}
+
 private LocalSocket* findUnixListener(const(sockaddr_un)* addr, size_t len)
 {
     // Hyprland intentionally starts its display search at wayland-1. Keep the
@@ -2504,13 +2531,19 @@ private long fileObjWrite(ObjHeader* oh, const(void)* buf, ulong count) {
         return cast(ssize_t)count;
     }
 
-    // DM10.3: a write to /config/domain.action is a domain control command.  Parse + execute
-    // via the (deny-by-default) executor; the write always "succeeds" at the fd level so the
-    // client's write() returns the byte count (the command's accept/reject is observable in the
-    // domain state it then re-reads from /config/domains.json).
+    // DM10.3: a write to /config/domain.action is a domain control command.  appgate: the command is
+    // authorized against the WRITER -- its domain and the image it runs (only the Domain Manager in
+    // the System domain may delegate apps or change domain policy) -- and a refused or failed command
+    // fails the write() with its errno (EPERM / EACCES / EBUSY / ENOENT / ENXIO / EINVAL), so the
+    // caller learns why instead of re-reading state and guessing.  The caller is captured before the
+    // command runs: a spawn verb allocates and sets up another task along the way.
     if (f.type == FileType.FD_DOMAIN_CTL) {
-        domainControlWrite(cast(const(char)*)buf, cast(size_t)count);
-        return cast(ssize_t)count;
+        const int ctid = cast(int)g_current_task_id;
+        const bool okTid = ctid >= 0 && ctid < MAX_TASKS;
+        const uint cdom = okTid ? g_tasks[ctid].domainObjId : 0;
+        const(char)* cimg = okTid ? g_taskExecName[ctid] : null;
+        const long rc = domainControlWriteFrom(cdom, cimg, false, cast(const(char)*)buf, cast(size_t)count);
+        return rc < 0 ? cast(ssize_t)rc : cast(ssize_t)count;
     }
 
     // INSTALLER §D: a write to /config/install.action drives the in-OS installer (the desktop
@@ -2716,20 +2749,109 @@ private uint openRightsForFlags(int flags) {
 // immutable-2 tests ENFORCEMENT rather than re-reading the policy that describes it.
 public int namespaceOpenVerdict(const(char)* path, int flags) { return namespaceCheckOpen(path, flags); }
 
+// DM2: one binding lookup -- an explicit deny binding → EACCES; an unbound path in a restricted
+// namespace (no "/" mount) → ENOENT.  Both deny; the distinction is for the errno/audit.
+private int nsVerdictOne(uint ns, const(char)* path, uint need) {
+    const(char)* rest;
+    uint rights;
+    bool denied;
+    const uint target = nsResolveCheck(ns, path, rest, rights, denied);
+    if (target == 0) return negErrno(denied ? EACCES : ENOENT);
+    if ((rights & need) != need) return negErrno(EACCES);
+    return 0;
+}
+
+// Collapse "//", drop ".", resolve ".." (never above "/") -- purely textual.  false = too long.
+private bool nsLexicalNormalize(const(char)* path, char* outb, size_t cap) {
+    if (path is null || path[0] != '/' || cap < 2) return false;
+    size_t o = 0;
+    outb[o++] = '/';
+    const(char)* p = path;
+    while (*p != 0) {
+        while (*p == '/') ++p;
+        if (*p == 0) break;
+        const(char)* c = p;
+        size_t n = 0;
+        while (c[n] != 0 && c[n] != '/') ++n;
+        p = c + n;
+        if (n == 1 && c[0] == '.') continue;
+        if (n == 2 && c[0] == '.' && c[1] == '.') {          // pop the last component
+            if (o > 1) { --o; while (o > 1 && outb[o - 1] != '/') --o; }
+            continue;
+        }
+        if (o > 1) { if (o + 1 >= cap) return false; outb[o++] = '/'; }
+        if (o + n >= cap) return false;
+        foreach (i; 0 .. n) outb[o++] = c[i];
+    }
+    if (o > 1 && outb[o - 1] == '/') --o;
+    outb[o] = 0;
+    return true;
+}
+
+// appgate: the namespace verdict for `path` with rights `need`, judged the way the filesystem will
+// actually resolve it.  nsResolveCheck matches bindings by TEXT, while rtResolve honours ".." and
+// follows intermediate directory symlinks -- so "/tmp/../home/user/.config/hypr/custom/keybinds.lua"
+// (or "/tmp/dirlink/keybinds.lua") matched a domain's writable /tmp binding and landed in the
+// compositor's config, which PID1 executes.  The path is judged lexically normalised, and -- for a
+// domain-bound task -- again at the rtfs location it resolves to (the node, or its parent directory
+// + leaf for a create).  Unconfined tasks hold the root view; the text check is all they need.
+private int nsPathVerdict(const(char)* path, uint need) {
+    if (path is null) return negErrno(EFAULT);
+    const int tid = cast(int)g_current_task_id;
+    if (tid < 0 || tid >= MAX_TASKS) return negErrno(ENOENT);
+    objEnsureNamespace(tid);
+    const uint ns = g_tasks[tid].namespaceObjId;
+    char[1024] absb = void;
+    const(char)* ap = path;
+    if (path[0] != '/') {                                   // relative: the (global) cwd shim
+        size_t cl = 0;
+        for (; cl < g_cwd_len && cl < absb.length - 2; ++cl) absb[cl] = g_cwd_buf[cl];
+        if (cl == 0 || absb[cl - 1] != '/') absb[cl++] = '/';
+        size_t pi = 0;
+        while (path[pi] != 0 && cl < absb.length - 1) absb[cl++] = path[pi++];
+        absb[cl] = 0;
+        ap = absb.ptr;
+    }
+    char[1024] norm = void;
+    if (!nsLexicalNormalize(ap, norm.ptr, norm.length)) return negErrno(ENAMETOOLONG);
+    const int v = nsVerdictOne(ns, norm.ptr, need);
+    if (v != 0 || g_tasks[tid].domainObjId == 0) return v;
+
+    int parent; const(char)* leaf; size_t leafLen;
+    const int idx = rtResolve(ap, parent, leaf, leafLen);  // the ORIGINAL path: what the op will do
+    char[1024] canon = void;
+    size_t cl2;
+    if (idx > 0) {
+        cl2 = rtBuildPath(idx, canon.ptr, canon.length);
+    } else if (idx < 0 && parent >= 0 && leaf !is null && leafLen > 0) {
+        cl2 = rtBuildPath(parent, canon.ptr, canon.length);
+        if (cl2 == 1) cl2 = 0;                               // parent is "/": no "//leaf"
+        if (cl2 + 1 + leafLen + 1 > canon.length) return negErrno(ENAMETOOLONG);
+        canon[cl2++] = '/';
+        foreach (i; 0 .. leafLen) canon[cl2++] = leaf[i];
+        canon[cl2] = 0;
+    } else {
+        return 0;   // not an rtfs path (/dev, /proc, /config, boot modules): the text verdict stands
+    }
+    return nsVerdictOne(ns, canon.ptr, need);
+}
+
+// appgate: the gate for the path-mutating syscalls (mkdir, unlink, rename, symlink, chmod, chown),
+// which never consulted the namespace -- a confined task could unlink or rename its way into files
+// its view does not include.  Domain-bound tasks only; the root view is unchanged.
+private int nsWriteGate(const(char)* path) {
+    const int tid = cast(int)g_current_task_id;
+    if (tid < 0 || tid >= MAX_TASKS || g_tasks[tid].domainObjId == 0) return 0;
+    return nsPathVerdict(path, CAP_RIGHT_WRITE);
+}
+
 private int namespaceCheckOpen(const(char)* path, int flags) {
     if (path is null || path[0] != '/') return 0; // relative paths still use cwd shim
     int tid = cast(int)g_current_task_id;
     if (tid < 0 || tid >= MAX_TASKS) return negErrno(ENOENT);
-    objEnsureNamespace(tid);
-    const(char)* rest;
-    uint rights;
-    bool denied;
-    uint target = nsResolveCheck(g_tasks[tid].namespaceObjId, path, rest, rights, denied);
-    // DM2: an explicit deny binding → EACCES; an unbound path in a restricted namespace
-    // (no "/" mount) → ENOENT.  Both deny; the distinction is for the errno/audit.
-    if (target == 0) return negErrno(denied ? EACCES : ENOENT);
     uint need = openRightsForFlags(flags);
-    if ((rights & need) != need) return negErrno(EACCES);
+    {   const int v = nsPathVerdict(path, need);
+        if (v != 0) return v; }
 
     // IMMUTABLE_ROOTLESS §F immutable-2 — the state split, ENFORCED rather than described.
     //
@@ -5788,8 +5910,15 @@ private int rtFindChild(int parent, const(char)* name, size_t len) {
     // behaviour, which keeps the whole boot path and every non-domain caller unchanged.  IPC is
     // unaffected: Unix sockets (Wayland/D-Bus) are kernel socket objects matched in the socket layer,
     // not rtfs nodes routed here.
+    //
+    // appgate: an unconfined (dom 0) reader ALSO sees the System domain's private nodes, a shared node
+    // of the same name winning.  The Domain Manager and System's shells now run IN the System domain,
+    // and what they create -- the Domain Manager's overlay.lua, a new Hyprland config file written from
+    // a System terminal -- is read by the compositor, which runs unconfined.  Other domains still see
+    // only their own nodes and the shared base.
     const uint dom = rtCurrentDomain();
-    int sharedHit = -1;
+    const uint sys = (dom == 0) ? rtSystemDom() : 0;
+    int sharedHit = -1, sysHit = -1;
     for (int i = 1; i < RT_MAX_NODES; ++i) {
         if (g_rt[i].kind == RT_FREE) continue;
         if (g_rt[i].parent != parent) continue;
@@ -5797,9 +5926,34 @@ private int rtFindChild(int parent, const(char)* name, size_t len) {
         const uint own = g_rt[i].ownerDom;
         if (own == dom) return i;          // exact-domain match wins (dom==0 → the shared node)
         if (own == 0) sharedHit = i;       // shared base: fallback for a domain caller
+        else if (sys != 0 && own == sys) sysHit = i;   // dom 0: System's private node, below shared
         // own != 0 && own != dom → another domain's private node: invisible here, skip
     }
-    return sharedHit;                       // -1 if nothing (no shared base, no own-domain node)
+    return sharedHit >= 0 ? sharedHit : sysHit;   // -1 if nothing visible
+}
+
+// appgate: the System domain's objId for the dom-0 lookup above -- cached, since rtFindChild runs for
+// every path component.  System can be neither deleted nor renamed, so once found it never changes.
+private __gshared uint g_rtSysDom = 0;
+private uint rtSystemDom() {
+    if (g_rtSysDom == 0) g_rtSysDom = domainSystemId();
+    return g_rtSysDom;
+}
+
+// appgate: owner stamp for the files of a DELETED domain.  No task is ever bound to this value, so
+// the nodes become invisible to everyone -- in particular to a new domain that is handed the deleted
+// domain's objId (objIds are recycled LIFO) and would otherwise inherit its private files.
+enum uint RT_OWNER_GONE = 0xFFFF_FFFFu;
+
+// Called from domainDelete (through the kernel_main hook) before the objId is released.
+public void rtScrubDomain(uint domObjId) @nogc nothrow {
+    if (domObjId == 0 || domObjId == RT_OWNER_GONE) return;
+    uint n = 0;
+    for (int i = 1; i < RT_MAX_NODES; ++i)
+        if (g_rt[i].kind != RT_FREE && g_rt[i].ownerDom == domObjId) { g_rt[i].ownerDom = RT_OWNER_GONE; ++n; }
+    if (n != 0) {
+        klog("[appgate] deleted domain's private files retired: "); klog_dec(n); klog("\n");
+    }
 }
 
 // DM6.2 per-domain isolation: the domain the CURRENT task is bound to (0 = kernel/boot or a
@@ -7050,7 +7204,15 @@ public void pkgFetchSetRequest(const(char)* pkgmgr, const(char)* name, const(cha
     put(pkgmgr); if (n + 1 < req.length) req[n++] = ' ';
     put(name);   if (n + 1 < req.length) req[n++] = ' ';
     put(url);    if (n + 1 < req.length) req[n++] = '\n';
+    // appgate: the Software Center now runs in the System domain, so this runs in a System-bound
+    // task's context -- create the request as a SHARED node (domain 0), which is what the fetcher
+    // (unconfined infrastructure) and every later reader expect, rather than a System-private one.
+    const int tid = cast(int)g_current_task_id;
+    const bool haveTid = (tid >= 0 && tid < MAX_TASKS);
+    const uint savedDom = haveTid ? g_tasks[tid].domainObjId : 0;
+    if (haveTid) g_tasks[tid].domainObjId = 0;
     rtAddFile("run/pkg/request\0".ptr, "run/pkg/request".length, cast(const(ubyte)*)req.ptr, n);
+    if (haveTid) g_tasks[tid].domainObjId = savedDom;
 }
 
 // The Software Center's cap-gated placement step.  hos-pkg-fetch (userspace) has already downloaded
@@ -7273,10 +7435,21 @@ public void rtDomainIsolationProof() @nogc nothrow {
             if (own == 0) ++vis0;
         }
         ok = ok && (visA == 1) && (visB == 1) && (vis0 == 0);
+
+        // appgate: a System-private node is visible to an unconfined reader (the compositor reads what
+        // the System-bound Domain Manager writes) and still invisible to another domain.
+        const uint sysDom = rtSystemDom();
+        if (sysDom != 0) {
+            g_tasks[tid].domainObjId = sysDom;
+            const int nodeS = rtCreate(dir, "s\0".ptr, 1, RT_REG, cast(ushort)0x1A4, 0, 0);
+            g_tasks[tid].domainObjId = 0;     const int sBy0 = rtFindChild(dir, "s\0".ptr, 1);
+            g_tasks[tid].domainObjId = DOM_A; const int sByA = rtFindChild(dir, "s\0".ptr, 1);
+            ok = ok && (nodeS >= 0) && (sBy0 == nodeS) && (sByA == -1);
+        }
     }
 
     g_tasks[tid].domainObjId = savedDom;   // restore BEFORE logging (klog is domain-agnostic anyway)
-    klog(ok ? "[domain] rtfs per-domain isolation PASS (same path, two domains, each sees only its own)\n"
+    klog(ok ? "[domain] rtfs per-domain isolation PASS (same path, two domains, each sees only its own; System's visible to dom 0)\n"
             : "[domain] rtfs per-domain isolation FAIL\n");
 }
 
@@ -10745,6 +10918,26 @@ public int sys_connect(int sockfd, const(sockaddr)* addr, uint addrlen) {
     auto listener = findUnixListener(un, pathLen);
     if (listener is null) return negErrno(ECONNREFUSED);
 
+    // appgate: Hyprland's control sockets are the compositor's command line.  Its IPC 'eval' runs
+    // arbitrary Lua and 'dispatch exec' launches any program -- both AS PID1, unconfined -- so a
+    // confined program that could reach them could have the compositor launch what its own domain was
+    // never delegated, or rewrite domain policy through PID1.  Only unconfined callers (the desktop
+    // chrome) and the System domain (the Domain Manager) may connect.  The Wayland socket is a
+    // different listener and stays open to every domain.
+    if (listenerIsHyprIpc(listener)) {
+        const int me = cast(int)g_current_task_id;
+        const uint myDom = (me >= 0 && me < MAX_TASKS) ? g_tasks[me].domainObjId : 0;
+        if (myDom != 0 && myDom != domainSystemId()) {
+            static __gshared uint g_hyprIpcDenyN = 0;
+            if (g_hyprIpcDenyN < 16) {
+                ++g_hyprIpcDenyN;
+                klog("[appgate] hypr-ipc DENY tid="); klog_dec(cast(ulong)cast(uint)me);
+                klog(" domain="); klog_hex(myDom); klog("\n");
+            }
+            return negErrno(EACCES);
+        }
+    }
+
     // ── ROADMAP 4.1: observe CROSS-IDENTITY IPC before gating any of it ────────────────────────
     //
     // g_idIpcRules and brokerAuthorizePair() have existed since P5/P7 and are reached only by
@@ -12364,6 +12557,9 @@ public long linux_sys_getdents64(ulong fd, ulong dirp, ulong count) {
         // nodes; a domain with no private overrides under this dir needs no shadow check.  Only a
         // domain that actually has private nodes here pays the per-shared-entry rtFindChild dedup.
         const uint listDom = rtCurrentDomain();
+        // appgate: an unconfined lister also sees System's private nodes (rtFindChild's rule), listed
+        // only where rtFindChild would resolve the name to them -- a shared node of the same name wins.
+        const uint listSys = (listDom == 0) ? rtSystemDom() : 0;
         bool domHasPrivateHere = false;
         if (listDom != 0)
             for (int i = 1; i < RT_MAX_NODES; ++i)
@@ -12372,7 +12568,10 @@ public long linux_sys_getdents64(ulong fd, ulong dirp, ulong count) {
         for (int i = 1; i < RT_MAX_NODES; ++i) {
             if (g_rt[i].kind == RT_FREE || g_rt[i].parent != dirIdx) continue;
             const uint own = g_rt[i].ownerDom;
-            if (own != 0 && own != listDom) continue;                 // another domain's private node — hidden
+            if (listSys != 0 && own == listSys) {
+                if (rtFindChild(dirIdx, g_rt[i].name.ptr, g_rt[i].nameLen) != i) continue;  // a shared twin wins
+            }
+            else if (own != 0 && own != listDom) continue;            // another domain's private node — hidden
             if (own == 0 && domHasPrivateHere
                 && rtFindChild(dirIdx, g_rt[i].name.ptr, g_rt[i].nameLen) != i) continue;  // shadowed by my private — de-dup
             if (f.offset <= logical) {
@@ -13239,6 +13438,7 @@ private long rtMkdirSyscall(const(char)* path, ushort mode) {
     initFdTable();
     if (path is null) return negErrno(EFAULT);
     if (path[0] != '/') return negErrno(ENOENT);   // only absolute paths supported
+    { const int g = nsWriteGate(path); if (g != 0) return g; }   // appgate: the domain's view
 
     int parent; const(char)* leaf; size_t leafLen;
     const int idx = rtResolve(path, parent, leaf, leafLen);
@@ -13262,6 +13462,7 @@ public long linux_sys_mkdirat(ulong d, ulong p, ulong m) {
 private long rtUnlinkSyscall(const(char)* path, bool dirOnly) {
     initFdTable();
     if (path is null) return negErrno(EFAULT);
+    { const int g = nsWriteGate(path); if (g != 0) return g; }   // appgate: the domain's view
     int parent; const(char)* leaf; size_t leafLen;
     const int idx = rtResolve(path, parent, leaf, leafLen);
     if (idx < 0) {
@@ -13321,6 +13522,8 @@ public long linux_sys_unlinkat(ulong d, ulong p, ulong f) {
 private long rtRenameSyscall(const(char)* oldp, const(char)* newp) {
     initFdTable();
     if (oldp is null || newp is null) return negErrno(EFAULT);
+    { const int g = nsWriteGate(oldp); if (g != 0) return g; }   // appgate: both ends must be
+    { const int g = nsWriteGate(newp); if (g != 0) return g; }   // writable in the domain's view
     int op; const(char)* ol; size_t oll;
     const int oidx = rtResolve(oldp, op, ol, oll);
     if (oidx < 0)
@@ -13357,6 +13560,7 @@ public long linux_sys_link(ulong o, ulong n_)    { return negErrno(EROFS); }
 private long rtSymlinkCreate(const(char)* target, const(char)* linkPath) {
     initFdTable();
     if (target is null || linkPath is null) return negErrno(EFAULT);
+    { const int g = nsWriteGate(linkPath); if (g != 0) return g; }   // appgate: the domain's view
     int parent; const(char)* leaf; size_t leafLen;
     const int existing = rtResolve(linkPath, parent, leaf, leafLen);
     if (existing >= 0) return negErrno(EEXIST);
@@ -13647,6 +13851,7 @@ public long fdMmapBacking(ulong fd, ulong offset, ulong* physOut,
 // elogind startup that chmods pseudo-paths doesn't fail.
 private long rtChmodPath(const(char)* p, ushort mode) {
     if (p is null) return negErrno(EFAULT);
+    { const int g = nsWriteGate(p); if (g != 0) return g; }   // appgate: the domain's view
     int rp; const(char)* rl; size_t rll;
     const int ri = rtResolve(p, rp, rl, rll);
     if (ri >= 0) { g_rt[ri].mode = mode & 0xFFF; return 0; }
@@ -13677,6 +13882,7 @@ private bool chownIsNoop(ulong u, ulong g) {
 }
 
 private long rtChownPath(const(char)* p, ulong u, ulong g) {
+    if (p !is null) { const int ng = nsWriteGate(p); if (ng != 0) return ng; }   // appgate: the domain's view
     if (p !is null) {
         int rp; const(char)* rl; size_t rll;
         const int ri = rtResolve(p, rp, rl, rll);

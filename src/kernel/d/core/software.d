@@ -128,6 +128,15 @@ public bool softwareControlWrite(const(char)* cmd, size_t len) {
     //    rather than claiming an install that has not finished.
     {
         import core.kernel_main : softwareSpawnFetcher;
+        import core.syscalls.posix : softwareCallerDomain;
+        import core.domain : domainSystemId;
+        // Capture the requesting domain BEFORE the spawn: spawning the fetcher makes it the current
+        // task, so reading it afterwards always answered "domain 0".  appgate: the Software Center
+        // runs in the System domain, and an install made from System is SYSTEM-WIDE (the shared
+        // base) -- which domains may then run it is the Domain Manager's delegation, not where the
+        // files landed.
+        const uint reqDom = softwareCallerDomain();
+        const uint placeDom = (reqDom == domainSystemId()) ? 0 : reqDom;
         if (softwareSpawnFetcher(mgr.ptr, name.ptr, url.ptr)) {
             // Clear any stale markers from a previous install of the same package BEFORE arming the
             // poll, so softwarePoll() cannot fire on an old .done while this fetch is still running.
@@ -135,9 +144,8 @@ public bool softwareControlWrite(const(char)* cmd, size_t len) {
             g_swPendLen = 0;
             for (uint i = 0; i < nl && i + 1 < g_swPendName.length; ++i) { g_swPendName[i] = name[i]; ++g_swPendLen; }
             g_swPendName[g_swPendLen] = 0;
-            // Capture the requesting domain NOW (this control-write runs in the requesting app's
-            // context); the async placement will install into it.
-            { import core.syscalls.posix : softwareCallerDomain; g_swPendDom = softwareCallerDomain(); }
+            // The async placement installs into the domain captured above.
+            g_swPendDom = placeDom;
             g_swPendActive = true;
             swSet("busy fetching ", name[0 .. nl],
                   " from the Alpine mirror (hos-pkg-fetch); watch Logs, filter 'pkg'.");

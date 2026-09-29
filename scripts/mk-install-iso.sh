@@ -49,13 +49,19 @@ trap cleanup_install_tmp EXIT
 # PFSENSE=1 build does not push ~2 GiB of dead weight through $TMPDIR (often a small tmpfs).
 # The rm below is a safety net; each removal is mirrored by its limine.conf module line, and
 # each must also be in EXCLUDED_MODULES of scripts/build-boot-integrity-manifest.py (checked below).
+# The VMM test-probe markers (CHPROBE=1 / CHGUEST=) are stripped too, so an install made from a
+# test image does not run Cloud Hypervisor on every boot.
 tar -C cd --exclude=./esp-image --exclude=./esp-hidden-image --exclude=./decoy-linux.ext4 \
-    --exclude=./pfsense.iso -cf - . | tar -C "$ESP_ROOT" -xf -
-rm -f "$ESP_ROOT/esp-image" "$ESP_ROOT/esp-hidden-image" "$ESP_ROOT/decoy-linux.ext4" "$ESP_ROOT/pfsense.iso"
+    --exclude=./pfsense.iso --exclude=./guest-hello.elf --exclude=./epin-chprobe.conf \
+    -cf - . | tar -C "$ESP_ROOT" -xf -
+rm -f "$ESP_ROOT/esp-image" "$ESP_ROOT/esp-hidden-image" "$ESP_ROOT/decoy-linux.ext4" "$ESP_ROOT/pfsense.iso" \
+      "$ESP_ROOT/guest-hello.elf" "$ESP_ROOT/epin-chprobe.conf"
 sed -i '\#module_path: boot():/esp-image#d' "$ESP_ROOT/boot/limine/limine.conf"
 sed -i '\#module_path: boot():/esp-hidden-image#d' "$ESP_ROOT/boot/limine/limine.conf"
 sed -i '\#module_path: boot():/decoy-linux.ext4#d' "$ESP_ROOT/boot/limine/limine.conf"
 sed -i '\#module_path: boot():/pfsense.iso#d' "$ESP_ROOT/boot/limine/limine.conf"
+sed -i '\#module_path: boot():/guest-hello.elf#d' "$ESP_ROOT/boot/limine/limine.conf"
+sed -i '\#module_path: boot():/epin-chprobe.conf#d' "$ESP_ROOT/boot/limine/limine.conf"
 
 # The boot-integrity manifest ships in this ESP unchanged, and an attested install verifies every
 # module it lists -- one the installed ESP no longer carries halts that install on EVERY boot.  So

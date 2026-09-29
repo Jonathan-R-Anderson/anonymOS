@@ -648,7 +648,10 @@ private uint vmxClampCtl(uint desired, uint msr) {
 
 // VMX segment access-rights: 16 attribute bits + the 'unusable' bit at bit16 (NOT the SVM attrib=0).
 private uint vmxSegAr(const(KvmSegment)* s) {
-    if (s.unusable) return 0x0001_0000u;
+    // A not-present segment is programmed UNUSABLE, as Linux's vmx_segment_access_rights does: a
+    // VMM that leaves a segment zeroed (Cloud Hypervisor never touches LDT) must not end up with a
+    // "usable" type-0 LDTR, which fails the VM-entry guest-state checks.
+    if (s.unusable || !s.present) return 0x0001_0000u;
     return (s.type & 0xF)
          | (cast(uint)s.s   << 4)  | (cast(uint)s.dpl << 5) | (cast(uint)s.present << 7)
          | (cast(uint)s.avl << 12) | (cast(uint)s.l   << 13)
@@ -985,6 +988,16 @@ public int vmxEnter(Vm* vm, Vcpu* vc, KvmRegs* regs, const KvmSRegs* sregs,
     // makes it "launched".  Marking it launched anyway made the next entry VMRESUME -> VMfail(5).
     const ulong rawReason = vmxRead(VMCS_EXIT_REASON);
     if ((rawReason & 0x8000_0000UL) == 0) vc.launched = true;
+    else {
+        // Name the failure on serial (bounded): basic reason 33 = invalid guest state, 34 = MSR
+        // loading, 41 = machine-check; the qualification says which check failed.
+        static __gshared uint g_vmxEntryFailLogs = 0;
+        if (g_vmxEntryFailLogs < 8) {
+            ++g_vmxEntryFailLogs;
+            klog("[vmx] VM-entry FAILURE basic-reason="); klog_hex(rawReason & 0xFFFF);
+            klog(" qual="); klog_hex(vmxRead(VMCS_EXIT_QUALIFICATION)); klog("\n");
+        }
+    }
     // The injected vector (if any) was consumed from the IRR at plan time
     // (vmxPlanInjection), so nothing to clear here.
     // decode the VM-exit

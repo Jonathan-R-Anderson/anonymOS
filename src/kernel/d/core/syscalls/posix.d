@@ -298,7 +298,7 @@ private struct PipeBuf {
 __gshared PipeBuf[PIPE_MAX] g_pipes;
 
 // --- Epoll infrastructure ---
-private enum int EPOLL_MAX_INSTANCES = 16;
+private enum int EPOLL_MAX_INSTANCES = 64;   // system-wide; Cloud Hypervisor alone opens 2-3
 private enum int EPOLL_MAX_WATCHES   = 256;
 private enum uint EPOLLIN_F    = 0x001;
 private enum uint EPOLLOUT_F   = 0x004;
@@ -330,7 +330,7 @@ private struct EpollInst  { bool inUse; ubyte nestDepth; uint refs; EpollWatch[E
 __gshared EpollInst[EPOLL_MAX_INSTANCES] g_epollTable;
 
 // --- Eventfd infrastructure ---
-private enum int EVENTFD_MAX   = 32;
+private enum int EVENTFD_MAX   = 256;   // system-wide; Cloud Hypervisor alone keeps ~34 (24 IOAPIC routes)
 private enum int EFD_SEMAPHORE = 1;
 private enum int EFD_NONBLOCK  = 0x800;
 private enum int EFD_CLOEXEC   = 0x80000;
@@ -675,6 +675,22 @@ public bool inetBlockingRecvFd(ulong fd) @nogc nothrow {
     return socketBufferReadable(s.rx) < INET_DGRAM_HDR;  // nothing whole to pop yet
 }
 
+// A BLOCKING connected AF_UNIX socket with nothing queued and a live peer: park, don't EAGAIN.
+// signal-hook's iterator (Cloud Hypervisor's vmm_signal_handler thread) does a blocking recv() on
+// a socketpair and panics on EAGAIN.  Woken by the tick backstop like a parked pipe read.
+public bool localBlockingRecvFd(ulong fd) @nogc nothrow {
+    initFdTable();
+    int ifd = cast(int)fd;
+    if (ifd < 0 || ifd >= 1024) return false;
+    auto f = &g_fdTable[ifd];
+    if (f.type != FileType.FD_SOCKET) return false;
+    if (f.flags & 0x800 /*O_NONBLOCK*/) return false;   // genuine non-blocking socket: real EAGAIN
+    auto s = fileSocket(f);
+    if (s is null || inetIsInet(s)) return false;
+    if (s.state != LocalSocketState.connected) return false;
+    return socketBufferReadable(s.rx) == 0 && !s.peerClosed;
+}
+
 // ── DRM / KMS infrastructure ─────────────────────────────────────────────────
 private enum size_t GEM_MAX = 64;
 
@@ -933,7 +949,11 @@ private uint capRightsForFile(File* f) {
             rights |= CAP_RIGHT_READ | CAP_RIGHT_WRITE | CAP_RIGHT_MMAP;
             break;
     }
-    return rights & CAP_RIGHT_ALL;
+    // Keep the VM rights: only the KVM fd kinds above set them (the /dev/kvm open itself is
+    // gated on DEVCLASS_VIRT — that IS the grant).  This mask predates the VM rights and used
+    // to strip them from EVERY /dev/kvm, VM and vCPU fd, so KVM_CREATE_VM was always denied.
+    return rights & (CAP_RIGHT_ALL | CAP_RIGHT_VM_CREATE | CAP_RIGHT_VM_MEM |
+                     CAP_RIGHT_VM_RUN | CAP_RIGHT_VM_CONTROL);
 }
 
 private bool capIsRevoked(Capability* cap) {
@@ -1780,6 +1800,23 @@ public void fdtabSetupConsoleStdio(int tableId) {
     g_fdTabs[tableId][2].type = FileType.FD_CONSOLE;
     g_fdTabs[tableId][2].flags = O_WRONLY;
     publishFdInTable(tableId, 2, &g_fdTabs[tableId][2], -1, -1);
+}
+
+// VMM probe stdio: stdin=/dev/null (FD_NULL has no CAP_RIGHT_IOCTL -> isatty(0)==0 -> Cloud
+// Hypervisor starts no serial input thread and never reads the PS/2 console, which otherwise hangs
+// its teardown), stdout/stderr=console (-> serial).
+public void fdtabSetupProbeStdio(int tableId) {
+    if (tableId < 0 || tableId >= g_fdTabs.length) return;
+    g_fdTabs[tableId][0] = File.init;
+    g_fdTabs[tableId][0].type  = FileType.FD_NULL;
+    g_fdTabs[tableId][0].flags = O_RDWR;
+    publishFdInTable(tableId, 0, &g_fdTabs[tableId][0], -1, -1);
+    foreach (fd; 1 .. 3) {
+        g_fdTabs[tableId][fd] = File.init;
+        g_fdTabs[tableId][fd].type  = FileType.FD_CONSOLE;
+        g_fdTabs[tableId][fd].flags = O_WRONLY;
+        publishFdInTable(tableId, fd, &g_fdTabs[tableId][fd], -1, -1);
+    }
 }
 
 void initFdTable() {
@@ -9807,6 +9844,11 @@ private void hangTrace2(const(char)* name, ulong a, ulong b) {
 }
 
 public long linux_sys_ioctl(ulong fd, ulong cmd, ulong arg) {
+    // The request is `unsigned int` in Linux, but musl declares ioctl(int, int, ...), so every
+    // _IOR/_IOWR request (bit 31 set) arrives SIGN-EXTENDED, e.g. 0xffffffffc004ae02.  Linux
+    // truncates to 32 bits; do it once here for every handler below — per-handler casts caught
+    // TIOCGPTN, but KVM_GET_MSR_INDEX_LIST / GET_REGS / GET_SREGS / GET_MSRS all missed their cases.
+    cmd &= 0xFFFF_FFFFUL;
     hangTraceHot("ioctl fd,cmd", fd, cmd);
     // Terminal queries on the console, answered before the capability lookup for the same
     // reason as the console write path in sys_write(): isatty(1) was returning EBADF, and
@@ -12424,7 +12466,10 @@ public long linux_sys_gettimeofday(ulong tv, ulong tz) {
 private struct linux_timespec { long tv_sec; long tv_nsec; }
 
 public long linux_sys_nanosleep(ulong req, ulong rem) {
-    if (rem) { auto r = cast(linux_timespec*)rem; r.tv_sec = 0; r.tv_nsec = 0; }
+    // The real timed sleep is the park in the kernel_main dispatcher, which reads *req AFTER this
+    // leaf returns.  Do NOT touch *rem here: Linux writes it only when a sleep is interrupted, and
+    // callers routinely pass the SAME buffer for both (Rust's thread::sleep does nanosleep(ts, ts)),
+    // so zeroing it wiped the request — every Rust sleep returned at once and its callers spun.
     return 0;
 }
 public long linux_sys_clock_nanosleep(ulong clk, ulong fl, ulong req, ulong rem) {

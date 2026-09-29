@@ -23,6 +23,8 @@ EXCLUDED_MODULES = {
     "esp-hidden-image",
     "decoy-linux.ext4",
     "pfsense.iso",
+    "guest-hello.elf",      # CHGUEST= VMM test guest (test images only)
+    "epin-chprobe.conf",    # CHPROBE=1 VMM test marker (test images only)
     "install.json",
     "zksync-attestation.json",
 }

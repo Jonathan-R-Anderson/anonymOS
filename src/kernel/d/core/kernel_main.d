@@ -428,7 +428,18 @@ private void wakePollers() @nogc nothrow {
             const bool due = (dl != 0 && nowMs >= dl);
             pollNoteParked(i, nowMs);   // measure how long this park really lasts
             if (ep >= 0) {
-                if (!due && !fdIsReadable(ep)) continue;   // nothing ready, not yet due: stay asleep
+                // `ep` is task i's fd number: evaluate it in task i's fd/cap tables, not in whichever
+                // process made the last syscall (g_fdTable is only switched at syscall entry) —
+                // otherwise a parked epoll waiter (Cloud Hypervisor's vmm thread) can sleep forever.
+                import core.syscalls.posix : g_activeFdTabId;
+                import core.cap : g_activeCapTabId;
+                const int svFd = g_activeFdTabId, svCap = g_activeCapTabId;
+                fdtabSetActive(g_tasks[i].fdTabId);
+                capTableSetActive(g_tasks[i].capTabId);
+                const bool ready = fdIsReadable(ep);
+                fdtabSetActive(svFd);
+                capTableSetActive(svCap);
+                if (!due && !ready) continue;   // nothing ready, not yet due: stay asleep
             } else if (!due && (g_wakeTick & (POLL_BACKSTOP_TICKS - 1)) != 0) {
                 pollNoteSkipped(i);     // a wake this call could have delivered, dropped by the mask
                 // ROADMAP 3.5b: poll() waiters -- RATE-LIMIT rather than filter.
@@ -733,6 +744,11 @@ private void crashBacktrace(int tid) {
     if (shown == 0) klog("  (no return addresses found on the stack)\n");
     x64WriteCR3(savedCr3);
 }
+
+// exit_group: a sibling thread asked the whole process to exit.  The flagged task is ended from
+// its OWN context by the run loop (exitTask switches to the victim's CR3), with the group's code.
+private __gshared bool[MAX_TASKS] g_taskGroupExit;
+private __gshared int[MAX_TASKS]  g_taskGroupExitCode;
 
 private void exitTask(int tid, int code) {
     if (tid < 0 || tid >= MAX_TASKS) return;
@@ -1878,15 +1894,34 @@ private bool vmmChProbeBootPresent() {
     }
     return g_chProbeBoot == 1;
 }
-// `cloud-hypervisor --version`: prints its version to stdout (serial) and exits 0 — an
-// unambiguous proof the VMM starts, runs and exits cleanly.  execveTask snapshots argv through
-// raw pointers while the kernel half is mapped, so a kernel-memory argv is fine.
-private __gshared immutable(char)[] g_chArg0 = "/cloud-hypervisor\0";
-private __gshared immutable(char)[] g_chArg1 = "--version\0";
-private __gshared ulong[3] g_chArgv;
-// EXPERIMENTAL, off by default: set true (and rebuild) to have the supervisor
-// loop spawn Cloud Hypervisor once for in-OS bring-up testing.  Kept off so it
-// never affects a normal boot; the in-OS launch path is still being brought up.
+// `CHGUEST=<elf> make iso` stages a PVH guest as boot module /guest-hello.elf; its presence makes
+// the probe BOOT that guest instead of only printing the version (tests/vmm/ch-hello/).
+private __gshared int g_chGuestBoot = -1;   // -1=unknown, 0=no, 1=yes (cached)
+private bool vmmChGuestPresent() {
+    if (g_chGuestBoot < 0) {
+        g_chGuestBoot = 0;
+        if (g_mboot_modules !is null && g_module_count > 0) {
+            auto recs = cast(ubyte*)g_mboot_modules;
+            for (int i = 0; i < g_module_count; i++) {
+                auto rec = cast(multiboot_module_t*)(recs + i * 128);
+                const(char)* modName = cast(const(char)*)(cast(ubyte*)rec + 16);
+                const(char)* modBase = modName;
+                for (const(char)* p = modName; *p != 0; p++) if (*p == '/') modBase = p + 1;
+                if (cstrEqK(modBase, "guest-hello.elf")) { g_chGuestBoot = 1; break; }
+            }
+        }
+    }
+    return g_chGuestBoot == 1;
+}
+// argv for the two probe modes.  execveTask snapshots argv through raw pointers before its CR3
+// switch, while the kernel half is mapped, so kernel-memory arrays are fine (EXEC_ARG_MAX=128).
+// `--version` prints and exits 0; the guest run needs --seccomp false (seccomp is not routed)
+// and --console off (else CH starts a TTY-resize listener via clone3/fork + /proc/self/fd).
+private __gshared immutable(char)*[3] g_chVersionArgv = [ "/cloud-hypervisor", "--version", null ];
+private __gshared immutable(char)*[16] g_chGuestArgv = [
+    "/cloud-hypervisor", "-v", "--kernel", "/guest-hello.elf", "--cpus", "boot=1",
+    "--memory", "size=32M", "--serial", "tty", "--console", "off", "--seccomp", "false", null, null ];
+// Off by default; the CHPROBE / CHGUEST markers enable the probe on test images.
 __gshared bool g_chProbeEnabled = false;
 private void maybeSpawnCloudHypervisorProbe() {
     if (g_chProbeTid >= 0 || g_chProbeTid == -2) return;   // one-shot (or already tried/absent)
@@ -1900,19 +1935,35 @@ private void maybeSpawnCloudHypervisorProbe() {
     g_tasks[t].namespaceObjId   = nsClone(g_tasks[0].namespaceObjId);
     capTableClear(g_tasks[t].capTabId);
     installTaskUntypedCap(t);
-    fdtabSetupConsoleStdio(g_tasks[t].fdTabId);
+    fdtabSetupProbeStdio(g_tasks[t].fdTabId);   // stdin=/dev/null: no CH serial input thread
 
     ulong savedCr3 = x64ReadCR3();
     uint savedUntyped = physActiveUntyped();
     ulong savedCur = g_current_task_id;
     physSetActiveUntyped(g_tasks[t].untypedObjId);
-    klog("[ch] probe: spawning /cloud-hypervisor --version (unconfined; stdout/err -> serial)\n");
-    g_chArgv[0] = cast(ulong)g_chArg0.ptr; g_chArgv[1] = cast(ulong)g_chArg1.ptr; g_chArgv[2] = 0;
-    long r = execveTask(t, cast(ulong)"/cloud-hypervisor\0".ptr, cast(ulong)g_chArgv.ptr, 0);
+    const bool bootGuest = vmmChGuestPresent();
+    klog(bootGuest ? "[ch] probe: booting /guest-hello.elf (-v --cpus boot=1 --memory size=32M --serial tty --console off --seccomp false)\n"
+                   : "[ch] probe: spawning /cloud-hypervisor --version (stdout/err -> serial)\n");
+    const ulong argv = bootGuest ? cast(ulong)g_chGuestArgv.ptr : cast(ulong)g_chVersionArgv.ptr;
+    long r = execveTask(t, cast(ulong)"/cloud-hypervisor\0".ptr, argv, 0);
     physSetActiveUntyped(savedUntyped);
     x64WriteCR3(savedCr3);
     g_current_task_id = savedCur;
     if (r != 0) { klog("[ch] probe: execveTask failed\n"); releaseTask(t); g_chProbeTid = -2; return; }
+    // execveTask bound CH into the SESSION domain (domainBindTaskNs): that namespace has no "/" (no
+    // /dev/kvm, /guest-hello.elf) and its device mask lacks DEVCLASS_VIRT.  Undo it for this opt-in
+    // probe before its first schedule: domain 0 + identity 0 is deviceClassGate's "unrestricted".
+    // (Do NOT add cloud-hypervisor to isSystemProgram — that would unconfine every launch.)
+    {
+        import core.namespace : nsRelease;
+        if (g_tasks[t].namespaceObjId != g_tasks[0].namespaceObjId)
+            nsRelease(g_tasks[t].namespaceObjId);
+        g_tasks[t].namespaceObjId = nsClone(g_tasks[0].namespaceObjId);
+        g_tasks[t].domainObjId    = 0;
+        g_tasks[t].identityObjId  = 0;
+        if (g_tasks[t].namespaceObjId == 0) { klog("[ch] probe: ns clone failed\n"); releaseTask(t); g_chProbeTid = -2; return; }
+        klog("[ch] probe: unconfined (domain 0, identity 0, root ns)\n");
+    }
     g_chProbeTid = t;
     klog("[ch] probe: cloud-hypervisor spawned as tid "); klog_hex(cast(ulong)t); klog("\n");
 }
@@ -4184,12 +4235,31 @@ private void dispatchSyscall(int tid) {
             break;
         }
 
-        // exit
+        // exit — this thread only
         case 60:
-        // exit_group
-        case 231:
             exitTask(tid, cast(int)rdi);
             return; // exitTask switches tasks; we never reach the set-RAX below
+
+        // exit_group — EVERY thread of the process, not just the caller.  It used to share the
+        // exit case, so a crashed multi-threaded program left its other threads running orphaned
+        // (Cloud Hypervisor's signal thread then spun on its closed socketpair and stalled the
+        // desktop).  Siblings are flagged and woken exactly like a kill() target, and the run
+        // loop ends each from its own context with the group's exit code.
+        case 231: {
+            const int lead = task.processLeaderTid;
+            if (lead > 0) {
+                for (int i = 1; i < MAX_TASKS; ++i) {        // never task 0 (the kernel)
+                    if (i == tid || !g_tasks[i].active || g_tasks[i].exited) continue;
+                    if (g_tasks[i].processLeaderTid != lead) continue;
+                    g_taskGroupExit[i]     = true;
+                    g_taskGroupExitCode[i] = cast(int)rdi;
+                    if (g_futexWaitActive[i]) clearFutexWait(i, -4);
+                    else g_tasks[i].waiting = false;
+                }
+            }
+            exitTask(tid, cast(int)rdi);
+            return;
+        }
 
         // rt_sigreturn (Z1: return from a signal handler — restore the saved context)
         case 15:
@@ -4458,12 +4528,17 @@ private void dispatchSyscall(int tid) {
     }
 
     const bool blkRead =
-        (rax == 0 && (isConsoleFd(rdi) || ptyBlockingReadFd(rdi) || pipeBlockingReadFd(rdi))) ||
+        (rax == 0 && (isConsoleFd(rdi) || ptyBlockingReadFd(rdi) || pipeBlockingReadFd(rdi)
+                      || localBlockingRecvFd(rdi))) ||
         // recvfrom(45)/recvmsg(47) on a BLOCKING AF_INET socket with an empty ring: same
         // rewind+yield treatment.  Without this, busybox ping got EAGAIN from its blocking raw
         // socket and died with "recvfrom: Resource temporarily unavailable" before the echo
         // reply could arrive.
         ((rax == 45 || rax == 47) && inetBlockingRecvFd(rdi)) ||
+        // ...and on a BLOCKING connected AF_UNIX socket (signal-hook's blocking recv on a socketpair
+        // panics on EAGAIN).  MSG_DONTWAIT (0x40) opts out: recvfrom flags=r10, recvmsg flags=rdx.
+        (rax == 45 && (r10 & 0x40) == 0 && localBlockingRecvFd(rdi)) ||
+        (rax == 47 && (rdx & 0x40) == 0 && localBlockingRecvFd(rdi)) ||
         (rax == HOS_SYS_QUERY && rdi == HOSQ_DEV_READ &&
          (ptyBlockingReadFd(rsi) || pipeBlockingReadFd(rsi) || isConsoleFd(rsi)));
     if (blkRead && ret == -11 /*EAGAIN*/) {
@@ -4488,6 +4563,7 @@ private void dispatchSyscall(int tid) {
         // handled above; a real EOF makes the re-run read() return 0 (not EAGAIN) so we don't re-park.
         g_pollBlocked[tid]  = true;
         g_pollDeadline[tid] = 0;
+        g_pollEpfd[tid]     = -1;   // not an epoll wait: take the tick backstop, never a stale epfd
         task.waiting        = true;
         task.regs[REG_RIP] -= 2;
         bootProgressEventHex("park", rax, g_parkScreenTrace);
@@ -4590,14 +4666,35 @@ private void dispatchSyscall(int tid) {
             // First entry: parse the request timespec (nanosleep req=rdi, clock_nanosleep req=rdx).
             const ulong reqPtr = (rax == 35) ? rdi : rdx;
             ulong ms = 0;
-            if (reqPtr >= 0x1000 && userPageMapped(tid, reqPtr) && userPageMapped(tid, reqPtr + 8)) {
-                const long tvSec  = *cast(long*)reqPtr;
-                const long tvNsec = *cast(long*)(reqPtr + 8);
+            // Fault the request in the way copy_from_user would — a demand-paged page is still a
+            // valid pointer — instead of treating it as unreadable.
+            bool readable = reqPtr >= 0x1000;
+            if (readable && !userPageMapped(tid, reqPtr))
+                readable = handlePageFault(tid, reqPtr, false) && userPageMapped(tid, reqPtr);
+            if (readable && !userPageMapped(tid, reqPtr + 8))
+                readable = handlePageFault(tid, reqPtr + 8, false) && userPageMapped(tid, reqPtr + 8);
+            long tvSec = 0, tvNsec = 0;
+            if (readable) {
+                tvSec  = *cast(long*)reqPtr;
+                tvNsec = *cast(long*)(reqPtr + 8);
                 if (tvSec > 0 || tvNsec > 0)                    // any non-zero duration rounds up to >= 1 ms
                     ms = (tvSec > 0 ? cast(ulong)tvSec * 1000 : 0)
                        + (cast(ulong)(tvNsec > 0 ? tvNsec : 0) + 999_999) / 1_000_000;
             }
-            if (ms == 0) return;                                // zero/unreadable duration: the no-op 0 stands
+            if (ms == 0) {
+                // Never park.  RAX MUST be written here: a bare `return` skipped the dispatcher's
+                // `RAX = ret`, handing the SYSCALL NUMBER back as the result — Rust's thread::sleep
+                // then saw clock_nanosleep return 230 and panicked asserting errno == EINTR.
+                task.regs[REG_RAX] = readable ? 0 : cast(ulong)(-14L);   // 0, or -EFAULT (bad pointer)
+                static __gshared uint g_sleepOddLogs = 0;
+                if (g_sleepOddLogs < 6) {
+                    ++g_sleepOddLogs;
+                    klog("[sleep] no park: nr="); klog_dec(rax); klog(" tid="); klog_dec(cast(ulong)tid);
+                    klog(readable ? " zero-duration" : " UNREADABLE req="); if (!readable) klog_hex(reqPtr);
+                    klog(" sec="); klog_hex(cast(ulong)tvSec); klog(" nsec="); klog_hex(cast(ulong)tvNsec); klog("\n");
+                }
+                return;
+            }
             g_pollBlocked[tid]  = true;
             g_pollDeadline[tid] = pitMs() + ms;
             g_pollEpfd[tid]     = -1;                           // no fd — woken purely by the deadline
@@ -5391,8 +5488,12 @@ private void kernelLoop() {
         // default; `CHPROBE=1 make iso` stages the marker that enables it.  Fires on the first
         // supervisor iteration after the idle task exists (the one-shot guard in the probe stops
         // any respawn).  See docs/hw-bringup/CLOUD_HYPERVISOR.md.
-        if (g_chProbeEnabled || vmmChProbeBootPresent()) {
-            if (g_idleTid >= 0) maybeSpawnCloudHypervisorProbe();
+        if (g_chProbeEnabled || vmmChProbeBootPresent() || vmmChGuestPresent()) {
+            // Wait for the first TSC calibration window: on CPUs that report no TSC rate via CPUID
+            // (VirtualBox), that is KVM_GET_TSC_KHZ's only source, and Cloud Hypervisor aborts VmBoot
+            // on any error from it.
+            import core.ticks : tscCalibrated;
+            if (g_idleTid >= 0 && tscCalibrated()) maybeSpawnCloudHypervisorProbe();
         }
 
         int tid = cast(int)g_current_task_id;
@@ -5432,6 +5533,12 @@ private void kernelLoop() {
         // terminate action.  Apply it now from the victim's own context (about to run
         // tid) — exitTask switches to tid's CR3 to free its pages, which is unsafe to
         // do from the keystroke-writer's context where the signal was raised.
+        if (g_taskGroupExit[tid]) {            // exit_group from a sibling thread (case 231)
+            g_taskGroupExit[tid] = false;
+            exitTask(tid, g_taskGroupExitCode[tid]);
+            bklRelease(&g_bkl);
+            continue;
+        }
         if (g_taskPendingSig[tid] != 0) {
             int psig = g_taskPendingSig[tid];
             if (psig > 0 && psig < 64 && (g_taskSigCustom[tid] & (1UL << psig)) &&

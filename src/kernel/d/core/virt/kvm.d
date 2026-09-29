@@ -36,7 +36,7 @@ import core.addrspace : userPageMapped, userPageWritable, handlePageFault;
 import core.exports : phys_to_virt;
 import core.cap : CAP_RIGHT_VM_CREATE, CAP_RIGHT_VM_MEM,
                   CAP_RIGHT_VM_RUN, CAP_RIGHT_VM_CONTROL;
-import core.io : klog, klog_hex;
+import core.io : klog, klog_hex, klog_dec;
 import memory.mm : alloc_phys_page, free_phys_page;
 
 extern (C) @nogc nothrow:
@@ -280,36 +280,29 @@ long kvmSystemIoctl(int tid, ulong cmd, ulong arg) {
         case KVM_GET_VCPU_MMAP_SIZE:
             return 4096; // one page: struct kvm_run
         case KVM_GET_SUPPORTED_CPUID: {
-            // arg -> struct kvm_cpuid2 { nent, pad, entries[] }.
-            // Honest minimal list: the host leaves we actually vouch for.
-            // Cloud Hypervisor reads host CPUID itself; this satisfies the probe.
+            // arg -> struct kvm_cpuid2 { u32 nent, pad; struct kvm_cpuid_entry2 entries[] } with
+            // 40-byte entries (KvmCpuidEntry2).  Honest minimal list: the host leaves we vouch for,
+            // with REAL host values (never faked).  It used to write 32-byte entries, put the NEXT
+            // leaf number in `index` and swap ECX/EDX in leaf 0, so Cloud Hypervisor saw no leaf 1
+            // and panicked in configure_vcpu (assert!(apic_id_patched)).
             if (!kvmUserOk(tid, arg, 8, true)) return E_FAULT;
-            uint nent = kvmUserRead!uint(arg);
+            const uint nent = kvmUserRead!uint(arg);
             enum uint PROVIDE = 4;
+            static immutable uint[PROVIDE] fns = [0x0000_0000, 0x0000_0001, 0x8000_0000, 0x8000_0001];
             if (nent < PROVIDE) {
                 kvmUserWrite!uint(arg, PROVIDE);
                 return E_BIG; // tell caller to retry with a bigger buffer
             }
-            if (!kvmUserOk(tid, arg, 8 + PROVIDE * 32, true)) return E_FAULT;
+            enum ulong ESZ = KvmCpuidEntry2.sizeof;   // 40
+            if (!kvmUserOk(tid, arg, 8 + PROVIDE * ESZ, true)) return E_FAULT;
             kvmUserWrite!uint(arg, PROVIDE);
             kvmUserWrite!uint(arg + 4, 0);
-            // Leaf 0: max basic leaf + vendor.  Leaf 1: feature flags with the
-            // VMX bit (ECX[5]) reflecting REAL hardware, never faked.
-            static immutable uint[8][4] leaves = [
-                [0x00000000, 0x00000001, 0x00000000, 0, 0,0,0,0],
-                [0x00000001, 0x00000000, 0x00000000, 0, 0,0,0,0],
-                [0x80000000, 0x80000001, 0x00000000, 0, 0,0,0,0],
-                [0x80000001, 0x00000000, 0x00000000, 0, 0,0,0,0],
-            ];
-            // Fill feature words from the real CPUID at call time (see below).
-            ulong base = arg + 8;
             foreach (i; 0 .. PROVIDE) {
-                kvmUserWrite!uint(base + i*32 + 0, leaves[i][0]);
-                kvmUserWrite!uint(base + i*32 + 4, leaves[i][1]);
-                kvmUserWrite!uint(base + i*32 + 8, 0);
-                foreach (j; 0 .. 5) kvmUserWrite!uint(base + i*32 + 12 + j*4, 0);
+                KvmCpuidEntry2 e;                     // index=0, flags=0, padding=0
+                e.func = fns[i];
+                kvmHostCpuid(fns[i], &e.eax, &e.ebx, &e.ecx, &e.edx);
+                kvmUserCopyOut(arg + 8 + i * ESZ, &e, ESZ);
             }
-            kvmFillCpuidFeatures(base);
             return 0;
         }
         case KVM_GET_MSR_INDEX_LIST: {
@@ -343,57 +336,89 @@ long kvmSystemIoctl(int tid, ulong cmd, ulong arg) {
     }
 }
 
-// Fill the feature words of the 4 CPUID leaves written above from the REAL
-// host CPUID.  Never claims VMX/SVM the hardware lacks.
-private void kvmFillCpuidFeatures(ulong base) {
-    uint eax, ebx, ecx, edx;
-    // Leaf 1: EAX=1
+// Host CPUID (subleaf 0) for KVM_GET_SUPPORTED_CPUID.  Same safe form as vmx.d x64Cpuid: NO
+// `push RBX` (LDC may address params/locals RSP-relative, so a push skews every access and cpuid
+// runs a garbage leaf) and never inlined; LDC preserves RBX across inline asm that clobbers it.
+private void kvmHostCpuid(uint leaf, uint* a, uint* b, uint* c, uint* d) {
+    pragma(inline, false);
+    uint ra, rb, rc, rd;
     asm @nogc nothrow {
-        push RBX;
-        mov EAX, 1;
+        mov EAX, leaf;
+        xor ECX, ECX;
         cpuid;
-        mov eax, EAX; mov ebx, EBX; mov ecx, ECX; mov edx, EDX;
-        pop RBX;
+        mov ra, EAX;
+        mov rb, EBX;
+        mov rc, ECX;
+        mov rd, EDX;
     }
-    // entry 1 (leaf 1): eax..edx at +32
-    kvmUserWrite!uint(base + 32 + 12, eax);
-    kvmUserWrite!uint(base + 32 + 16, ebx);
-    kvmUserWrite!uint(base + 32 + 20, ecx);
-    kvmUserWrite!uint(base + 32 + 24, edx);
-    // Leaf 0x80000001
-    asm @nogc nothrow {
-        push RBX;
-        mov EAX, 0x80000001;
-        cpuid;
-        mov eax, EAX; mov ebx, EBX; mov ecx, ECX; mov edx, EDX;
-        pop RBX;
+    *a = ra; *b = rb; *c = rc; *d = rd;
+}
+
+// Host TSC rate in kHz for KVM_GET_TSC_KHZ.  The kernel's own PIT calibration (core.ticks) lands
+// only after a quiet 250 ms window, which is later than a VMM started at boot asks, so fall back to
+// what the CPU reports: CPUID 0x15 (crystal Hz * TSC/crystal ratio), 0x16 (base MHz — the invariant
+// TSC runs at the nominal frequency), then the hypervisor leaf 0x40000010 (TSC kHz, provided by
+// nested hypervisors).  0 = unknown.  The chosen source is logged once.
+private __gshared bool g_kvmTscSrcLogged = false;
+private uint kvmHostTscKhz() {
+    import core.ticks : tscCalibrated, tscHz;
+    uint khz = 0;
+    const(char)* src = null;
+    if (tscCalibrated()) {
+        const ulong k = tscHz() / 1000;                       // TSC ticks per ms == kHz
+        khz = k > 0xFFFF_FFFF ? 0xFFFF_FFFF : cast(uint)k;
+        src = "calibrated";
     }
-    // entry 3 (leaf 0x80000001): at +96
-    kvmUserWrite!uint(base + 96 + 12, eax);
-    kvmUserWrite!uint(base + 96 + 16, ebx);
-    kvmUserWrite!uint(base + 96 + 20, ecx);
-    kvmUserWrite!uint(base + 96 + 24, edx);
-    // Vendor string for leaf 0 (entry 0): copy EBX/EDX/ECX from real CPUID.0
-    asm @nogc nothrow {
-        push RBX;
-        mov EAX, 0;
-        cpuid;
-        mov eax, EAX; mov ebx, EBX; mov ecx, ECX; mov edx, EDX;
-        pop RBX;
+    uint a, b, c, d;
+    kvmHostCpuid(0, &a, &b, &c, &d);
+    const uint maxBasic = a;
+    if (khz == 0 && maxBasic >= 0x15) {
+        kvmHostCpuid(0x15, &a, &b, &c, &d);                   // EAX=denominator EBX=numerator ECX=crystal Hz
+        if (a != 0 && b != 0 && c != 0) {
+            const ulong hz = (cast(ulong)c * b) / a;
+            if (hz >= 100_000_000UL && hz <= 10_000_000_000UL) { khz = cast(uint)(hz / 1000); src = "cpuid 0x15"; }
+        }
     }
-    kvmUserWrite!uint(base + 12, eax); // max basic leaf
-    kvmUserWrite!uint(base + 16, ebx);
-    kvmUserWrite!uint(base + 20, edx);
-    kvmUserWrite!uint(base + 24, ecx);
-    // Max extended leaf for entry 2 (leaf 0x80000000)
-    asm @nogc nothrow {
-        push RBX;
-        mov EAX, 0x80000000;
-        cpuid;
-        mov eax, EAX;
-        pop RBX;
+    if (khz == 0 && maxBasic >= 0x16) {
+        kvmHostCpuid(0x16, &a, &b, &c, &d);                   // EAX[15:0] = base frequency MHz
+        const uint mhz = a & 0xFFFF;
+        if (mhz >= 100 && mhz <= 10_000) { khz = mhz * 1000; src = "cpuid 0x16"; }
     }
-    kvmUserWrite!uint(base + 64 + 12, eax);
+    if (khz == 0) {
+        kvmHostCpuid(1, &a, &b, &c, &d);
+        if (c & (1u << 31)) {                                  // running under a hypervisor
+            kvmHostCpuid(0x4000_0000, &a, &b, &c, &d);
+            if (a >= 0x4000_0010) {
+                kvmHostCpuid(0x4000_0010, &a, &b, &c, &d);    // EAX = TSC frequency in kHz
+                if (a >= 100_000 && a <= 10_000_000) { khz = a; src = "cpuid 0x40000010"; }
+            }
+        }
+    }
+    if (!g_kvmTscSrcLogged) {
+        g_kvmTscSrcLogged = true;
+        klog("[kvm] TSC frequency for guests: ");
+        if (khz != 0) { klog_dec(khz); klog(" kHz ("); klog(src); klog(")\n"); }
+        else klog("unknown (not calibrated, no CPUID source)\n");
+    }
+    return khz;
+}
+
+private void kvmResetSeg(KvmSegment* g, ushort sel, ulong base, ubyte type, ubyte sflag) {
+    *g = KvmSegment.init;
+    g.base = base; g.limit = 0xFFFF; g.selector = sel; g.type = type; g.s = sflag; g.present = 1;
+}
+// x86 power-on segment/control state, as Linux reports it before any KVM_SET_SREGS (vmx_vcpu_reset).
+private void kvmResetSRegs(KvmSRegs* s, bool bsp) {
+    *s = KvmSRegs.init;
+    kvmResetSeg(&s.cs, 0xF000, 0xFFFF_0000, 0xB, 1);          // AR 0x9b
+    kvmResetSeg(&s.ds, 0, 0, 0x3, 1); kvmResetSeg(&s.es, 0, 0, 0x3, 1);
+    kvmResetSeg(&s.fs, 0, 0, 0x3, 1); kvmResetSeg(&s.gs, 0, 0, 0x3, 1);
+    kvmResetSeg(&s.ss, 0, 0, 0x3, 1);                          // AR 0x93
+    kvmResetSeg(&s.ldt, 0, 0, 0x2, 0);                         // AR 0x82
+    kvmResetSeg(&s.tr,  0, 0, 0xB, 0);                         // AR 0x8b
+    s.gdt.limit = 0xFFFF; s.idt.limit = 0xFFFF;
+    s.cr0 = 0x6000_0010;
+    s.apicBase = 0xFEE0_0000 | 0x800 | (bsp ? 0x100 : 0);      // enabled (+BSP)
 }
 // --- VM fd -------------------------------------------------------------------
 // Create a vCPU on the VM at the requested KVM vCPU id (the ioctl arg).
@@ -962,8 +987,12 @@ long kvmVcpuIoctl(int tid, uint vcpuObj, uint vcpuGen, ulong cmd, ulong arg) {
             if (!kvmUserOk(tid, arg, KvmSRegs.sizeof, true)) return E_FAULT;
             auto c = kvmCacheFor(vc, false);
             KvmSRegs s;
-            if (c !is null) s = c.sregs;
-            else foreach (i; 0 .. KvmSRegs.sizeof) (cast(ubyte*)&s)[i] = 0;
+            // Until the VMM has set sregs, report the x86 power-on state as Linux does (the cache
+            // page may already exist from SET_MSRS, zeroed).  A VMM that edits GET_SREGS output and
+            // never touches LDT (Cloud Hypervisor's setup_sregs) otherwise enters with a zeroed,
+            // "usable" LDTR and VM entry fails.
+            if (c !is null && vc.sregsSet) s = c.sregs;
+            else kvmResetSRegs(&s, vc.index == 0);
             kvmUserCopyOut(arg, &s, KvmSRegs.sizeof);
             return 0;
         }
@@ -1112,10 +1141,14 @@ long kvmVcpuIoctl(int tid, uint vcpuObj, uint vcpuGen, ulong cmd, ulong arg) {
             return 0;
         }
         case KVM_GET_TSC_KHZ: {
+            // An explicit KVM_SET_TSC_KHZ wins; otherwise report the host TSC rate, as Linux does
+            // (the guest reads the host TSC — no scaling).  -EIO only if the TSC is genuinely
+            // uncalibrated.  Returning -EIO by default was fatal to Cloud Hypervisor: its "EIO =>
+            // no TSC frequency" fallback never fires because kvm-ioctls builds the error from the
+            // ioctl's -1 return value rather than errno, so CH saw "os error -1" and aborted VmBoot.
             auto c = kvmCacheFor(vc, false);
             uint khz = (c !is null) ? c.tscKhz : 0;
-            // Linux returns -EIO when the TSC frequency is unknown; Cloud
-            // Hypervisor treats EIO as "no TSC frequency", not fatal.
+            if (khz == 0) khz = kvmHostTscKhz();
             return khz == 0 ? E_IO : cast(long)khz;
         }
         case KVM_GET_XSAVE: {

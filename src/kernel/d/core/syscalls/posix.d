@@ -6908,6 +6908,16 @@ public bool posixCanonExecPath(const(char)* path, char* outbuf, size_t outlen) {
 }
 
 // Seed one skeleton directory (idempotent).
+// The bytes of an rtfs regular file, as the CALLING task sees it (its domain's view), or null.
+// For kernel-side readers of small user-editable config files (the domain display settings).
+public const(ubyte)[] rtFileBytes(const(char)* path) {
+    if (!g_rtInitialized || path is null) return null;
+    int par; const(char)* leaf; size_t leafLen;
+    const int idx = rtResolve(path, par, leaf, leafLen);
+    if (idx < 0 || idx >= g_rtNodes || g_rt[idx].kind != RT_REG || g_rt[idx].data is null) return null;
+    return g_rt[idx].data[0 .. g_rt[idx].size];
+}
+
 // A domain's private home, /Domains/<name>/Home: its namespace grants it read-write, but the grant
 // is only a gate -- the directory has to exist, or every file an app "saved" there went to a
 // throwaway fd (open O_CREAT under a missing parent) and was gone.  Created on the domain's first

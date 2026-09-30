@@ -11,7 +11,9 @@
 -- kernel_main.d), but every application was reachable only through these bindings.
 
 hl.bind("SUPER + SHIFT + D", hl.dsp.exec_cmd("/wl-domain-manager"), { description = "Domain Manager (Qubes-style domains)" })
-hl.bind("SUPER + A",         hl.dsp.exec_cmd("/wl-overview"),       { description = "Window overview" })
+hl.bind("SUPER + A",         hl.dsp.exec_cmd("/wl-dock --toggle"),  { description = "Applications: open or close the launcher's drawer" })
+hl.bind("SUPER + F1",        hl.dsp.exec_cmd("/wl-welcome --show"), { description = "Help: shortcuts and configuration" })
+hl.bind("SUPER + SHIFT + O", hl.dsp.exec_cmd("/wl-overview"),       { description = "App grid (the classic overview)" })
 hl.bind("SUPER + C",         hl.dsp.exec_cmd("/wl-calendar"),       { description = "Calendar" })
 hl.bind("SUPER + W",         hl.dsp.exec_cmd("/wl-wifi-menu"),      { description = "Wi-Fi menu" })
 hl.bind("SUPER + N",         hl.dsp.exec_cmd("/wl-quicksettings"),  { description = "Quick settings" })

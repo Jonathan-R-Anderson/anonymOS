@@ -2266,6 +2266,10 @@ private void spawnWaylandClients() {
         // synthesized config never actually spawns, so launch it here via the proven kernel autostart.
         // Safe on Weston too: wl-layer-bar exits cleanly (returns 1) when no zwlr_layer_shell is offered.
         spawnWaylandProgram("wl-layer-bar\0".ptr, "[bar]\0".ptr);
+        // The launcher: the bar down the left edge (pinned applications, ~/.config/anonymos/dock.conf)
+        // and the drawer of every installed application behind its bottom button.  A layer surface
+        // like the top bar, so it is desktop shell, not a window, and runs on live media too.
+        spawnWaylandProgram("wl-dock\0".ptr, "[dock]\0".ptr);
         // Domain Manager, present on the desktop at boot.  Hyprland ONLY -- this whole
         // autostart is gated on g_guiClientAutostartEnabled = initIsHyprland, and Weston
         // keeps taking its list from /desktop.conf (where `autostart = /wl-domain-manager`
@@ -2292,6 +2296,10 @@ private void spawnWaylandClients() {
                 // wl-layer-bar above stays: it is the top bar, i.e. the desktop shell itself,
                 // not an application window.
                 spawnWaylandProgram("wl-domain-manager\0".ptr, "[dm]\0".ptr);
+                // The first-boot overlay: every shortcut and how to configure the system.  It exits
+                // at once when ~/.config/anonymos/welcome-done says it was already seen (and it is
+                // SUPER+F1 after that), so it appears on an installed system's first boot only.
+                spawnWaylandProgram("wl-welcome\0".ptr, "[welcome]\0".ptr);
             }
         }
     }

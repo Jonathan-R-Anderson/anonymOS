@@ -88,6 +88,7 @@
 #include <wayland-client.h>
 #include <png.h>
 #include <cairo/cairo.h>
+#include "hos-shell-ui.h"         /* the icon art and the domain badge, shared with the dock */
 #include <ft2build.h>
 #include FT_FREETYPE_H
 #include "xdg-shell-client-protocol.h"
@@ -123,9 +124,29 @@ static const char *DEFAULT_PATHS[] = {
 };
 
 /* ── geometry ──────────────────────────────────────────────────────────────────────────── */
+/* The grid starts right of the launcher bar (wl-dock), which covers the left edge: its width is
+ * dock.conf's `width`, 64 by default.  This surface ignores exclusive zones, so it has to know. */
+static int g_grid_x = 10;
+#define GRID_X g_grid_x
+static void grid_x_init(const char *home)
+{
+    if (access("/wl-dock", X_OK) != 0) return;                /* no dock in this image */
+    int w = 64;
+    char p[512];
+    snprintf(p, sizeof p, "%s/.config/anonymos/dock.conf", home);
+    FILE *f = fopen(p, "r");
+    if (f) {
+        char line[256];
+        while (fgets(line, sizeof line, f)) {
+            const char *q = line; while (*q == ' ' || *q == '\t') q++;
+            if (!strncmp(q, "width", 5)) { const char *e = strchr(q, '='); if (e) { int v = atoi(e + 1); if (v >= 40 && v <= 160) w = v; } }
+        }
+        fclose(f);
+    }
+    g_grid_x = w + 10;
+}
 enum {
     BAR_H     = 28,              /* wl-layer-bar's strip: the grid starts below it */
-    GRID_X    = 10,
     GRID_Y    = BAR_H + 10,
     CELL_W    = 100,
     CELL_H    = 100,
@@ -296,6 +317,10 @@ struct app {
     int hover, cursor;
     char home[256], desk_dir[300], trash_files[340], trash_info[340], cfg_dir[300];
     int trash_full;
+    char *appgate;             /* /config/appgate.json, whole: placements for the domain badges */
+    struct hos_domain *doms;   /* /config/domains.json: each domain's colour and tag */
+    int ndoms;
+    struct hos_font badge_font;
     struct saved_pos saved[MAX_ICONS];
     int nsaved;
 
@@ -456,6 +481,9 @@ static void init_fonts(struct app *a)
         }
         if (!f->ok) logf_("font %s unavailable", path);
     }
+    char bp[400];
+    snprintf(bp, sizeof bp, "%s/%s", dir, names[F_REG]);
+    if (hos_font_load(&a->badge_font, bp) != 0) logf_("badge font %s unavailable", bp);
 }
 
 static inline unsigned int div255(unsigned int x) { return (x + 1 + (x >> 8)) >> 8; }
@@ -659,25 +687,9 @@ static void wrap_label(struct app *a, const char *name, int maxw, int maxlines, 
 }
 
 /* ── cairo shapes ──────────────────────────────────────────────────────────────────────── */
-static void set_rgb(cairo_t *cr, uint32_t c)
-{
-    cairo_set_source_rgb(cr, ((c >> 16) & 0xff) / 255.0, ((c >> 8) & 0xff) / 255.0, (c & 0xff) / 255.0);
-}
-static void set_rgba(cairo_t *cr, uint32_t c, double al)
-{
-    cairo_set_source_rgba(cr, ((c >> 16) & 0xff) / 255.0, ((c >> 8) & 0xff) / 255.0, (c & 0xff) / 255.0, al);
-}
-static void rr_path(cairo_t *cr, double x, double y, double w, double h, double r)
-{
-    if (r * 2 > h) r = h / 2;
-    if (r * 2 > w) r = w / 2;
-    cairo_new_sub_path(cr);
-    cairo_arc(cr, x + w - r, y + r,     r, -M_PI / 2, 0);
-    cairo_arc(cr, x + w - r, y + h - r, r, 0,         M_PI / 2);
-    cairo_arc(cr, x + r,     y + h - r, r, M_PI / 2,  M_PI);
-    cairo_arc(cr, x + r,     y + r,     r, M_PI,      3 * M_PI / 2);
-    cairo_close_path(cr);
-}
+#define set_rgb  hos_set_rgb
+#define set_rgba hos_set_rgba
+#define rr_path  hos_rr_path
 static void rfill(struct app *a, double x, double y, double w, double h, double r, uint32_t c, double al)
 { rr_path(a->cv->cr, x, y, w, h, r); set_rgba(a->cv->cr, c, al); cairo_fill(a->cv->cr); }
 static void rstroke(struct app *a, double x, double y, double w, double h, double r, uint32_t c, double al)
@@ -697,313 +709,38 @@ static void mark(struct app *a, int x, int y, int w, int h)
     a->dx1 = imax(a->dx1, x + w); a->dy1 = imax(a->dy1, y + h);
 }
 
-/* ── icon art (vector, so it scales and needs no assets) ───────────────────────────────── */
-static uint32_t tile_color(int glyph)
-{
-    switch (glyph) {
-    case G_HOME:     return C_ACCENT;
-    case G_TERMINAL: return 0x2a3641u;
-    case G_SOFTWARE: return 0xe8590cu;
-    case G_VMS:      return 0x1971c2u;
-    case G_DOMAINS:  return 0x7048e8u;
-    case G_TRASH:    return 0x4b5563u;
-    default:         return 0x3b4652u;
-    }
-}
-static uint32_t hash_color(const char *s)
-{
-    static const uint32_t pal[] = { 0x1971c2u, 0xe8590cu, 0x2f9e44u, 0x7048e8u, 0xc2255cu, 0x0c8599u,
-                                    0xf08c00u, 0x5c7cfau };
-    unsigned h = 5381;
-    for (; *s; s++) h = h * 33 + (unsigned char)*s;
-    return pal[h % (sizeof pal / sizeof pal[0])];
-}
-
-/* A rounded tile like wl-vmm's OS badges: soft drop shadow (so it lifts off a busy wallpaper),
- * a top-lit gradient, a faint inner rim. */
-static void tile_base(struct app *a, double x, double y, double s, uint32_t c)
-{
-    cairo_t *cr = a->cv->cr;
-    double r = s * 0.24;
-    double cr_ = ((c >> 16) & 0xff) / 255.0, cg = ((c >> 8) & 0xff) / 255.0, cb = (c & 0xff) / 255.0;
-    rr_path(cr, x + 1, y + 2.5, s - 2, s - 1, r);
-    cairo_set_source_rgba(cr, 0, 0, 0, 0.42);
-    cairo_fill(cr);
-    cairo_pattern_t *g = cairo_pattern_create_linear(0, y, 0, y + s);
-    cairo_pattern_add_color_stop_rgb(g, 0, cr_ + (1 - cr_) * 0.16, cg + (1 - cg) * 0.16, cb + (1 - cb) * 0.16);
-    cairo_pattern_add_color_stop_rgb(g, 1, cr_ * 0.9, cg * 0.9, cb * 0.9);
-    rr_path(cr, x, y, s, s, r);
-    cairo_set_source(cr, g);
-    cairo_fill(cr);
-    cairo_pattern_destroy(g);
-    rr_path(cr, x + 0.5, y + 0.5, s - 1, s - 1, r);
-    cairo_set_source_rgba(cr, 1, 1, 1, 0.14);
-    cairo_set_line_width(cr, 1);
-    cairo_stroke(cr);
-}
-
-static void page_shape(cairo_t *cr, double x, double y, double s)
-{
-    double ix = x + s * 0.18, iy = y + s * 0.05, w = s * 0.64, h = s * 0.9, fold = s * 0.2;
-    cairo_move_to(cr, ix, iy);
-    cairo_line_to(cr, ix + w - fold, iy);
-    cairo_line_to(cr, ix + w, iy + fold);
-    cairo_line_to(cr, ix + w, iy + h);
-    cairo_line_to(cr, ix, iy + h);
-    cairo_close_path(cr);
-}
-/* A sheet of paper with a folded corner (wl-files' file icon, grown up). */
-static void draw_page(struct app *a, double x, double y, double s)
-{
-    cairo_t *cr = a->cv->cr;
-    cairo_save(cr);
-    cairo_translate(cr, 1, 2);
-    page_shape(cr, x, y, s);
-    cairo_set_source_rgba(cr, 0, 0, 0, 0.4);
-    cairo_fill(cr);
-    cairo_restore(cr);
-    page_shape(cr, x, y, s);
-    set_rgb(cr, 0xf4f6f9u);
-    cairo_fill_preserve(cr);
-    set_rgb(cr, 0xaab4c1u);
-    cairo_set_line_width(cr, 1);
-    cairo_stroke(cr);
-    double ix = x + s * 0.18, iy = y + s * 0.05, w = s * 0.64, fold = s * 0.2;
-    cairo_move_to(cr, ix + w - fold, iy);
-    cairo_line_to(cr, ix + w - fold, iy + fold);
-    cairo_line_to(cr, ix + w, iy + fold);
-    cairo_close_path(cr);
-    set_rgb(cr, 0xd3dae3u);
-    cairo_fill(cr);
-}
-
-static void draw_lock_badge(struct app *a, double cx, double cy)
-{
-    cairo_t *cr = a->cv->cr;
-    cairo_new_sub_path(cr);
-    cairo_arc(cr, cx, cy, 9, 0, 2 * M_PI);
-    set_rgb(cr, 0x1b232bu);
-    cairo_fill_preserve(cr);
-    cairo_set_source_rgba(cr, 1, 1, 1, 0.6);
-    cairo_set_line_width(cr, 1);
-    cairo_stroke(cr);
-    cairo_set_source_rgb(cr, 1, 1, 1);
-    cairo_rectangle(cr, cx - 4.5, cy - 1.5, 9, 6.5);
-    cairo_fill(cr);
-    cairo_new_sub_path(cr);
-    cairo_arc(cr, cx, cy - 1.5, 3, M_PI, 2 * M_PI);
-    cairo_set_line_width(cr, 1.6);
-    cairo_stroke(cr);
-}
-
-/* The art of one icon in an s x s square.  `with_text` = false for drag ghosts, which are drawn
- * through a cairo group that the glyph blitter (which writes pixels directly) cannot join. */
+/* ── icon art: hos-shell-ui.h (shared with the dock and the app grid) ─────────────────────── */
+/* The art of one icon in an s x s square, its text (a launcher's initial, a file's extension -- in
+ * this client's own glyph fonts) and, on an application, the badge of the domain it runs in.
+ * `with_text` = false for drag ghosts, drawn through a cairo group the glyph blitter (which writes
+ * pixels directly) cannot join. */
 static void draw_icon_art(struct app *a, const struct icon *ic, double x, double y, double s, int with_text)
 {
     cairo_t *cr = a->cv->cr;
-    cairo_set_line_cap(cr, CAIRO_LINE_CAP_ROUND);
-    cairo_set_line_join(cr, CAIRO_LINE_JOIN_ROUND);
-    uint32_t tc = tile_color(ic->glyph);
-    double lw = s * 0.07;
-    switch (ic->glyph) {
-    case G_HOME:                                            /* a house */
-        tile_base(a, x, y, s, tc);
-        cairo_set_source_rgb(cr, 1, 1, 1);
-        cairo_set_line_width(cr, lw);
-        cairo_move_to(cr, x + s * 0.2, y + s * 0.5);
-        cairo_line_to(cr, x + s * 0.5, y + s * 0.23);
-        cairo_line_to(cr, x + s * 0.8, y + s * 0.5);
-        cairo_stroke(cr);
-        cairo_rectangle(cr, x + s * 0.29, y + s * 0.47, s * 0.42, s * 0.31);
-        cairo_fill(cr);
-        set_rgb(cr, tc);
-        cairo_rectangle(cr, x + s * 0.45, y + s * 0.59, s * 0.1, s * 0.19);
-        cairo_fill(cr);
-        break;
-    case G_TERMINAL:                                        /* a prompt on a screen */
-        tile_base(a, x, y, s, tc);
-        rr_path(cr, x + s * 0.15, y + s * 0.2, s * 0.7, s * 0.6, s * 0.07);
-        set_rgb(cr, 0x0c1116u);
-        cairo_fill(cr);
-        cairo_set_line_width(cr, lw);
-        set_rgb(cr, C_ACCENT2);
-        cairo_move_to(cr, x + s * 0.27, y + s * 0.37);
-        cairo_line_to(cr, x + s * 0.4, y + s * 0.5);
-        cairo_line_to(cr, x + s * 0.27, y + s * 0.63);
-        cairo_stroke(cr);
-        cairo_set_source_rgb(cr, 1, 1, 1);
-        cairo_move_to(cr, x + s * 0.47, y + s * 0.64);
-        cairo_line_to(cr, x + s * 0.68, y + s * 0.64);
-        cairo_stroke(cr);
-        break;
-    case G_SOFTWARE:                                        /* a shopping bag with a download arrow */
-        tile_base(a, x, y, s, tc);
-        cairo_set_source_rgb(cr, 1, 1, 1);
-        rr_path(cr, x + s * 0.24, y + s * 0.37, s * 0.52, s * 0.42, s * 0.05);
-        cairo_fill(cr);
-        cairo_set_line_width(cr, s * 0.06);
-        cairo_new_sub_path(cr);
-        cairo_arc(cr, x + s * 0.5, y + s * 0.37, s * 0.13, M_PI, 2 * M_PI);
-        cairo_stroke(cr);
-        set_rgb(cr, tc);
-        cairo_set_line_width(cr, s * 0.055);
-        cairo_move_to(cr, x + s * 0.5, y + s * 0.46);
-        cairo_line_to(cr, x + s * 0.5, y + s * 0.68);
-        cairo_move_to(cr, x + s * 0.41, y + s * 0.6);
-        cairo_line_to(cr, x + s * 0.5, y + s * 0.69);
-        cairo_line_to(cr, x + s * 0.59, y + s * 0.6);
-        cairo_stroke(cr);
-        break;
-    case G_VMS:                                             /* a monitor with a play mark */
-        tile_base(a, x, y, s, tc);
-        cairo_set_source_rgb(cr, 1, 1, 1);
-        cairo_set_line_width(cr, s * 0.06);
-        rr_path(cr, x + s * 0.17, y + s * 0.22, s * 0.66, s * 0.44, s * 0.05);
-        cairo_stroke(cr);
-        cairo_move_to(cr, x + s * 0.5, y + s * 0.67);
-        cairo_line_to(cr, x + s * 0.5, y + s * 0.77);
-        cairo_move_to(cr, x + s * 0.35, y + s * 0.78);
-        cairo_line_to(cr, x + s * 0.65, y + s * 0.78);
-        cairo_stroke(cr);
-        cairo_move_to(cr, x + s * 0.44, y + s * 0.34);
-        cairo_line_to(cr, x + s * 0.61, y + s * 0.44);
-        cairo_line_to(cr, x + s * 0.44, y + s * 0.54);
-        cairo_close_path(cr);
-        cairo_fill(cr);
-        break;
-    case G_DOMAINS:                                         /* a shield (the delegation authority) */
-        tile_base(a, x, y, s, tc);
-        cairo_set_source_rgb(cr, 1, 1, 1);
-        cairo_move_to(cr, x + s * 0.5, y + s * 0.16);
-        cairo_line_to(cr, x + s * 0.78, y + s * 0.27);
-        cairo_curve_to(cr, x + s * 0.78, y + s * 0.6, x + s * 0.65, y + s * 0.75, x + s * 0.5, y + s * 0.86);
-        cairo_curve_to(cr, x + s * 0.35, y + s * 0.75, x + s * 0.22, y + s * 0.6, x + s * 0.22, y + s * 0.27);
-        cairo_close_path(cr);
-        cairo_fill(cr);
-        set_rgb(cr, tc);
-        cairo_set_line_width(cr, s * 0.07);
-        cairo_move_to(cr, x + s * 0.38, y + s * 0.5);
-        cairo_line_to(cr, x + s * 0.47, y + s * 0.6);
-        cairo_line_to(cr, x + s * 0.63, y + s * 0.39);
-        cairo_stroke(cr);
-        break;
-    case G_TRASH: {                                         /* a bin; paper sticks out when full */
-        tile_base(a, x, y, s, tc);
-        cairo_set_source_rgb(cr, 1, 1, 1);
-        cairo_set_line_width(cr, s * 0.055);
-        if (a->trash_full) {
-            cairo_save(cr);
-            cairo_set_source_rgba(cr, 1, 1, 1, 0.9);
-            cairo_rectangle(cr, x + s * 0.36, y + s * 0.13, s * 0.14, s * 0.18);
-            cairo_rectangle(cr, x + s * 0.52, y + s * 0.16, s * 0.12, s * 0.15);
-            cairo_fill(cr);
-            cairo_restore(cr);
-        }
-        cairo_move_to(cr, x + s * 0.22, y + s * 0.32);
-        cairo_line_to(cr, x + s * 0.78, y + s * 0.32);
-        cairo_stroke(cr);
-        cairo_move_to(cr, x + s * 0.28, y + s * 0.36);
-        cairo_line_to(cr, x + s * 0.33, y + s * 0.82);
-        cairo_line_to(cr, x + s * 0.67, y + s * 0.82);
-        cairo_line_to(cr, x + s * 0.72, y + s * 0.36);
-        cairo_stroke(cr);
-        cairo_set_line_width(cr, s * 0.04);
-        for (int k = 0; k < 3; k++) {
-            double lx = x + s * (0.4 + k * 0.1);
-            cairo_move_to(cr, lx, y + s * 0.44);
-            cairo_line_to(cr, lx, y + s * 0.73);
-        }
-        cairo_stroke(cr);
-        break;
+    hos_icon_art(cr, ic->glyph, x, y, s, ic->name, ic->ext, a->trash_full);
+    if (ic->glyph == G_FILE && ic->ext[0] && with_text)
+        text_center(a, F_BOLD, 9, (int)(x + s * 0.1), (int)(y + s * 0.56 + 1), (int)(s * 0.56), C_WHITE, ic->ext);
+    if ((ic->glyph == G_LAUNCHER || ic->glyph > G_TEXT) && with_text && ic->name[0]) {
+        char ch[8];
+        const char *p = ic->name;
+        uint32_t cp = utf8_next(&p);
+        if (cp < 0x80) { ch[0] = (char)toupper((int)cp); ch[1] = 0; }
+        else { size_t n = (size_t)(p - ic->name); if (n > 7) n = 7; memcpy(ch, ic->name, n); ch[n] = 0; }
+        int px = (int)(s * 0.46);
+        text_center(a, F_BOLD, px, (int)x, (int)(y + (s - px * 1.36) / 2), (int)s, C_WHITE, ch);
     }
-    case G_FOLDER: {                                        /* wl-files' folder, full size */
-        cairo_save(cr);
-        cairo_translate(cr, 1, 2);
-        rr_path(cr, x + s * 0.05, y + s * 0.14, s * 0.9, s * 0.72, s * 0.08);
-        cairo_set_source_rgba(cr, 0, 0, 0, 0.38);
-        cairo_fill(cr);
-        cairo_restore(cr);
-        set_rgb(cr, 0xd4962au);
-        rr_path(cr, x + s * 0.05, y + s * 0.12, s * 0.38, s * 0.2, s * 0.06);
-        cairo_fill(cr);
-        rr_path(cr, x + s * 0.05, y + s * 0.18, s * 0.9, s * 0.66, s * 0.08);
-        cairo_fill(cr);
-        cairo_pattern_t *g = cairo_pattern_create_linear(0, y + s * 0.3, 0, y + s * 0.86);
-        cairo_pattern_add_color_stop_rgb(g, 0, 0.98, 0.80, 0.38);
-        cairo_pattern_add_color_stop_rgb(g, 1, 0.92, 0.68, 0.24);
-        rr_path(cr, x + s * 0.05, y + s * 0.3, s * 0.9, s * 0.56, s * 0.08);
-        cairo_set_source(cr, g);
-        cairo_fill(cr);
-        cairo_pattern_destroy(g);
-        cairo_set_source_rgba(cr, 1, 1, 1, 0.3);
-        cairo_set_line_width(cr, 1.2);
-        cairo_move_to(cr, x + s * 0.12, y + s * 0.34);
-        cairo_line_to(cr, x + s * 0.88, y + s * 0.34);
-        cairo_stroke(cr);
-        break;
-    }
-    case G_IMAGE:                                           /* a page holding a landscape */
-        draw_page(a, x, y, s);
-        cairo_rectangle(cr, x + s * 0.26, y + s * 0.3, s * 0.48, s * 0.42);
-        set_rgb(cr, 0x4dabf7u);
-        cairo_fill(cr);
-        cairo_move_to(cr, x + s * 0.26, y + s * 0.72);
-        cairo_line_to(cr, x + s * 0.42, y + s * 0.48);
-        cairo_line_to(cr, x + s * 0.54, y + s * 0.62);
-        cairo_line_to(cr, x + s * 0.62, y + s * 0.54);
-        cairo_line_to(cr, x + s * 0.74, y + s * 0.72);
-        cairo_close_path(cr);
-        set_rgb(cr, 0x2f9e44u);
-        cairo_fill(cr);
-        cairo_new_sub_path(cr);
-        cairo_arc(cr, x + s * 0.63, y + s * 0.4, s * 0.05, 0, 2 * M_PI);
-        set_rgb(cr, 0xffd43bu);
-        cairo_fill(cr);
-        break;
-    case G_TEXT:                                            /* a page of lines */
-        draw_page(a, x, y, s);
-        set_rgb(cr, 0x98a3b3u);
-        cairo_set_line_width(cr, 1.6);
-        for (int k = 0; k < 6; k++) {
-            double ly = y + s * (0.3 + k * 0.09);
-            cairo_move_to(cr, x + s * 0.28, ly);
-            cairo_line_to(cr, x + s * (k == 5 ? 0.55 : 0.72), ly);
-        }
-        cairo_stroke(cr);
-        break;
-    case G_FILE:                                            /* a page with an extension badge */
-        draw_page(a, x, y, s);
-        if (ic->ext[0]) {
-            uint32_t bc = hash_color(ic->ext);
-            rr_path(cr, x + s * 0.1, y + s * 0.56, s * 0.56, s * 0.22, 3);
-            set_rgb(cr, bc);
-            cairo_fill(cr);
-            if (with_text)
-                text_center(a, F_BOLD, 9, (int)(x + s * 0.1), (int)(y + s * 0.56 + 1), (int)(s * 0.56), C_WHITE, ic->ext);
-        }
-        break;
-    case G_LAUNCHER:                                        /* a .desktop launcher: coloured tile + initial */
-    default: {
-        tile_base(a, x, y, s, hash_color(ic->name));
-        if (with_text && ic->name[0]) {
-            char ch[8];
-            const char *p = ic->name;
-            uint32_t cp = utf8_next(&p);
-            if (cp < 0x80) { ch[0] = (char)toupper((int)cp); ch[1] = 0; }
-            else { size_t n = (size_t)(p - ic->name); if (n > 7) n = 7; memcpy(ch, ic->name, n); ch[n] = 0; }
-            int px = (int)(s * 0.46);
-            text_center(a, F_BOLD, px, (int)x, (int)(y + (s - px * 1.36) / 2), (int)s, C_WHITE, ch);
-        }
-        break;
-    }
-    }
-    cairo_set_line_cap(cr, CAIRO_LINE_CAP_BUTT);
-    cairo_set_line_join(cr, CAIRO_LINE_JOIN_MITER);
     if (!ic->allowed) {                                     /* appgate: not launchable from here */
         rr_path(cr, x, y, s, s, s * 0.24);
         cairo_set_source_rgba(cr, 0, 0, 0, 0.45);
         cairo_fill(cr);
-        draw_lock_badge(a, x + s - 6, y + s - 6);
+        hos_lock_badge(cr, x + s - 6, y + s - 6);
+    }
+    /* the domain it runs in: a ring of the domain's colour and its tag (not on the Trash, which is
+     * the desktop's own, nor on plain files) */
+    if ((ic->kind == K_APP || ic->kind == K_LAUNCHER) && a->appgate) {
+        char pl[48];
+        hos_placement_of(a->appgate, ic->exec, pl, sizeof pl);
+        hos_domain_badge(cr, &a->badge_font, x, y, s, hos_domain_find(a->doms, a->ndoms, pl));
     }
 }
 
@@ -1351,7 +1088,7 @@ static int json_str(const char *from, const char *key, char *out, size_t cap)
 }
 static void read_appgate(struct app *a)
 {
-    FILE *f = fopen("/config/appgate.json", "r");
+    FILE *f = hos_fopen_root("/config/appgate.json", "r");
     if (!f) return;
     static char buf[16384];
     size_t n = fread(buf, 1, sizeof buf - 1, f);
@@ -1359,6 +1096,8 @@ static void read_appgate(struct app *a)
     buf[n] = 0;
     char sess[48];
     if (json_str(buf, "session", sess, sizeof sess)) copy_str(a->session, sizeof a->session, sess);
+    free(a->appgate); a->appgate = strdup(buf);
+    free(a->doms); a->ndoms = hos_domains_load(&a->doms);
     char *k = strstr(buf, "\"desktop\"");
     char *br = k ? strchr(k, '[') : NULL;
     char *be = br ? strchr(br, ']') : NULL;
@@ -3419,6 +3158,7 @@ int main(int argc, char **argv)
         else if (!strcmp(argv[i], "--image") && i + 1 < argc) image = argv[++i];
         else if (argv[i][0] != '-') image = argv[i];        /* the old interface: argv[1] = the PNG */
     }
+    if (render_prefix && getenv("WLDESKTOP_ROOT")) hos_root = getenv("WLDESKTOP_ROOT");   /* test data */
 
     signal(SIGINT, on_signal);
     signal(SIGTERM, on_signal);
@@ -3440,8 +3180,9 @@ int main(int argc, char **argv)
     if (a->img) logf_("loaded %dx%d %s", a->iw, a->ih, a->wp_path);
     else log_line("no wallpaper image -- solid background");
 
+    grid_x_init(a->home);
     init_fixed(a);
-    if (render_prefix) { a->offscreen = a->no_persist = 1; return render_png_selftest(a, render_prefix); }
+    if (render_prefix) { a->offscreen = a->no_persist = 1; read_appgate(a); return render_png_selftest(a, render_prefix); }
 
     a->display = wl_display_connect(NULL);
     if (!a->display) { log_line("no wayland display"); return 1; }

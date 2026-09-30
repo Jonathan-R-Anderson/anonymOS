@@ -38,6 +38,7 @@
 #include <string.h>
 #include <sys/mman.h>
 #include <sys/stat.h>
+#include <ctype.h>
 #include <sys/syscall.h>
 #include <sys/wait.h>
 #include <time.h>
@@ -169,6 +170,7 @@ struct gdomain {
     unsigned devices;         // DM10.7: §7 peripheral device mask (Permissions tab)
     char     distro[16];      // DM11: Linux-compat distribution
     char     pkgmgr[16];      // DM11: package manager
+    char     abbr[8];         // the badge tag on this domain's icons (~/.config/anonymos/domains.conf)
 };
 
 // DM10.7: a repository package, parsed from /config/packages.json (Packages tab).
@@ -890,7 +892,7 @@ static void write_overlay_lua(struct app *app) {
 }
 /* Read overlay.lua back into app_overlay_mask so the pills show the persisted state. */
 static void load_apps_overlay(struct app *app) {
-    for (int i = 0; i < 24; i++) app->app_overlay_mask[i] = 0;
+    for (int i = 0; i < app->n_avail && app->app_overlay_mask; i++) app->app_overlay_mask[i] = 0;
     FILE *f = fopen(OVERLAY_LUA, "r");
     if (!f) return;
     char line[256];
@@ -981,7 +983,54 @@ static int appl_rows(const struct app *app, int **rows)
 }
 
 static void export_btn_rect(int *x, int *y, int *w, int *h) {   // DM12 Appearance-tab Export button
-    *x = LABEL_X; *y = TAB_Y + 100; *w = 240; *h = 28;
+    *x = LABEL_X; *y = TAB_Y + 140; *w = 240; *h = 28;
+}
+static void badge_btn_rect(int *x, int *y, int *w, int *h) {    // Appearance: change the badge tag
+    *x = LABEL_X + 300; *y = TAB_Y + 86; *w = 110; *h = 26;
+}
+
+// The badge tag every icon of a domain wears, set in the domain config ~/.config/anonymos/domains.conf
+// ("<Domain> abbr=<tag>"): rewrite that domain's line, keep every other one.  The kernel reads the
+// file when it renders /config/domains.json, so the dock, the desktop and the app grid pick it up.
+static int write_domain_abbr(const char *dom, const char *tag)
+{
+    const char *home = getenv("HOME");
+    char dir[400], path[440];
+    snprintf(dir, sizeof dir, "%s/.config/anonymos", home && *home ? home : "/home/user");
+    mkdir(dir, 0700);
+    snprintf(path, sizeof path, "%s/domains.conf", dir);
+    char *old = NULL; size_t oldn = 0;
+    FILE *f = fopen(path, "r");
+    if (f) {
+        size_t cap = 4096; old = malloc(cap);
+        for (size_t r; old && (r = fread(old + oldn, 1, cap - oldn - 1, f)) > 0; ) {
+            oldn += r;
+            if (oldn + 1 >= cap) { cap *= 2; char *nb = realloc(old, cap); if (!nb) { free(old); old = NULL; break; } old = nb; }
+        }
+        fclose(f);
+        if (old) old[oldn] = 0;
+    }
+    f = fopen(path, "w");
+    if (!f) { free(old); return -1; }
+    if (!old || !oldn)
+        fputs("# Per-domain display settings -- the badge every icon of the domain wears.\n"
+              "#   <Domain> abbr=<up to 4 letters>\n", f);
+    int wrote = 0;
+    const size_t dl = strlen(dom);
+    for (char *line = old; line && *line; ) {
+        char *nl = strchr(line, '\n');
+        const size_t len = nl ? (size_t)(nl - line) : strlen(line);
+        const char *p = line; while (*p == ' ' || *p == '\t') p++;
+        if (!strncmp(p, dom, dl) && (p[dl] == ' ' || p[dl] == '\t')) {
+            if (!wrote && tag[0]) fprintf(f, "%s abbr=%s\n", dom, tag);
+            wrote = 1;
+        } else { fwrite(line, 1, len, f); fputc('\n', f); }
+        line = nl ? nl + 1 : line + len;
+    }
+    if (!wrote && tag[0]) fprintf(f, "%s abbr=%s\n", dom, tag);
+    fclose(f);
+    free(old);
+    return 0;
 }
 
 // DM10.5: evdev keycode → lowercase ASCII (US QWERTY) for the clone-name text field.  The DM gets
@@ -1094,6 +1143,7 @@ static int parse_domains(struct app *app)
         if (j_field(nm, objEnd, "devices", num, sizeof(num)))  g->devices = (unsigned)strtoul(num, NULL, 16);
         j_field(nm, objEnd, "distro",  g->distro,  sizeof(g->distro));
         j_field(nm, objEnd, "packageManager", g->pkgmgr, sizeof(g->pkgmgr));
+        j_field(nm, objEnd, "abbr", g->abbr, sizeof(g->abbr));
         if (g->name[0]) app->n_doms++;
         p = objEnd;
     }
@@ -1905,6 +1955,9 @@ static void tab_appearance(struct app *app, cairo_t *cr) {
     struct gdomain *sd = &app->doms[app->sel];
     if (cr) {
         cairo_argb(cr,sd->color); rounded_rect(cr,LABEL_X+220,TAB_Y+10,64,30,6); cairo_fill(cr);
+        cairo_argb(cr,sd->color); rounded_rect(cr,LABEL_X+222,TAB_Y+88,52,22,11); cairo_fill(cr);   // the badge
+        { int bx,by,bw,bh; badge_btn_rect(&bx,&by,&bw,&bh);
+          cairo_set_source_rgb(cr,0.22,0.27,0.34); rounded_rect(cr,bx,by,bw,bh,6); cairo_fill(cr); }
         int x,y,w,h; export_btn_rect(&x,&y,&w,&h);                       // DM12 Export
         cairo_set_source_rgb(cr,0.22,0.34,0.30); rounded_rect(cr,x,y,w,h,6); cairo_fill(cr);
     } else {
@@ -1913,18 +1966,23 @@ static void tab_appearance(struct app *app, cairo_t *cr) {
         draw_text(app,c,LABEL_X+300,TAB_Y+18,120,14,0xfff2f5fau);
         draw_text(app,"Wallpaper",LABEL_X,TAB_Y+58,200,14,0xffb7c1d0u);
         draw_text(app,"(domain default)",LABEL_X+220,TAB_Y+58,200,14,0xff97a1b0u);
+        // the badge tag on this domain's icons (a pill in its colour, drawn in the cairo pass)
+        draw_text(app,"Badge tag",LABEL_X,TAB_Y+94,200,14,0xffb7c1d0u);
+        draw_text(app,sd->abbr[0] ? sd->abbr : "-",LABEL_X+230,TAB_Y+94,60,12,0xffffffffu);
+        { int bx,by,bw,bh; badge_btn_rect(&bx,&by,&bw,&bh);
+          draw_text(app,"Change...",bx+18,by+6,bw-20,12,0xffe8edf5u); }
         // DM12: export this domain as a signed template + the local template registry
         int x,y,w,h; export_btn_rect(&x,&y,&w,&h);
         draw_text(app,"Export as signed .hosdt template",x+10,y+7,w-14,12,0xffe8edf5u);
         draw_text(app,"Installed signed templates (HMAC-verified, publisher-trusted):",
-                  LABEL_X, TAB_Y+142, app->width-LABEL_X-PAD, 12, 0xff8b94a3u);
+                  LABEL_X, TAB_Y+182, app->width-LABEL_X-PAD, 12, 0xff8b94a3u);
         for (int i = 0; i < app->n_templates; i++) {
             struct gtemplate *t = &app->templates[i];
             char ln[96]; snprintf(ln,sizeof(ln),"%s  v%s   publisher: %s", t->name, t->ver[0]?t->ver:"?", t->publisher);
-            draw_text(app, ln, LABEL_X+10, TAB_Y+166+i*20, app->width-LABEL_X-PAD-10, 13, 0xfff2f5fau);
+            draw_text(app, ln, LABEL_X+10, TAB_Y+206+i*20, app->width-LABEL_X-PAD-10, 13, 0xfff2f5fau);
         }
         if (app->n_templates == 0)
-            draw_text(app,"(none yet - click Export to publish this domain)",LABEL_X+10,TAB_Y+166,420,13,0xff8d97a6u);
+            draw_text(app,"(none yet - click Export to publish this domain)",LABEL_X+10,TAB_Y+206,420,13,0xff8d97a6u);
         draw_text(app,"Marketplace / I2P P2P sharing: out of scope (needs a network stack)",
                   LABEL_X, app->height-FOOTER_H-40, 560, 11, 0xff5b6675u);
     }
@@ -2165,6 +2223,7 @@ static void draw_manager(struct app *app)
                            app->edit_mode==3 ? "DENY filesystem path:" :
                            app->edit_mode==4 ? "Create new domain - name:" :
                            app->edit_mode==5 ? "Instantiate from template - new name:" :
+                           app->edit_mode==6 ? "New badge tag, up to 4 letters (empty: the default)" :
                                                "Grant READ-WRITE filesystem path:";
         char h2[96]; snprintf(h2,sizeof(h2),"%s  (domain %s)", head, sd->name);
         draw_text(app, h2, dx+20, dy+20, dw-40, 14, 0xfff0f3f8u);
@@ -2478,7 +2537,11 @@ static void handle_click(struct app *app)
                 launch_in_domain(app, a->exec, a->label);
                 redraw_commit(app, "launch"); return; } }
     } else if (app->tab == 6) {                     // Appearance: Export as a signed template (DM12)
-        int bx,by,bw,bh; export_btn_rect(&bx,&by,&bw,&bh);
+        int bx,by,bw,bh; badge_btn_rect(&bx,&by,&bw,&bh);
+        if (x>=bx && x<=bx+bw && y>=by && y<=by+bh) {                    // change the badge tag
+            app->editbuf[0] = 0; app->editlen = 0; app->edit_mode = 6; app->editing = 1;   /* typing replaces */
+            redraw_commit(app, "badge edit"); return; }
+        export_btn_rect(&bx,&by,&bw,&bh);
         if (x>=bx && x<=bx+bw && y>=by && y<=by+bh) {
             domain_action(app, "export"); load_templates(app); redraw_commit(app, "export"); return; }
     }
@@ -2539,6 +2602,14 @@ static void kb_key(void *data, struct wl_keyboard *k, uint32_t serial, uint32_t 
             if (app->edit_mode == 0)      domain_action_clone(app);         // clone a domain
             else if (app->edit_mode == 4) domain_create_new(app, 0);        // from-scratch Create
             else if (app->edit_mode == 5) domain_create_new(app, 1);        // instantiate from template
+            else if (app->edit_mode == 6) {                                 // the domain's badge tag
+                char tag[8]; int n = 0;
+                for (const char *p = app->editbuf; *p && n < 4; p++)
+                    if (*p != ' ') tag[n++] = (char)toupper((unsigned char)*p);
+                tag[n] = 0;
+                write_domain_abbr(app->doms[app->sel].name, tag);
+                load_domains(app);
+            }
             else if (app->editbuf[0] == '/') {                              // grant/deny a filesystem path
                 const char *v = app->edit_mode==1 ? "fsro" : app->edit_mode==3 ? "fsdeny" : "fsrw";
                 domain_action_arg(app, v, app->editbuf);

@@ -616,6 +616,45 @@ private void appsJsonRow(ref UB b, bool first, const(char)* id, size_t idLen, bo
     lit(b, "] }");
 }
 
+// A domain's badge abbreviation -- the short tag every icon of the domain carries -- as a JSON string.
+// From the domain config, DOMAIN_CONF: a line "<Domain> abbr=<tag>" (persisted under /home, so a
+// user's choice survives reboot; the Domain Manager writes it).  Otherwise the first three letters of
+// the name, upper-cased: Personal -> PER.
+enum DOMAIN_CONF = "/home/user/.config/anonymos/domains.conf";
+private void domAbbr(ref UB b, const(char)* name, size_t n) {
+    import core.syscalls.posix : rtFileBytes;
+    char[8] ab; size_t an = 0;
+    auto conf = rtFileBytes(DOMAIN_CONF.ptr);
+    size_t i = 0;
+    while (an == 0 && i < conf.length) {
+        size_t e = i; while (e < conf.length && conf[e] != '\n') ++e;
+        auto line = cast(const(char)[])conf[i .. e];
+        i = e + 1;
+        size_t k = 0; while (k < line.length && (line[k] == ' ' || line[k] == '\t')) ++k;
+        if (k >= line.length || line[k] == '#') continue;
+        size_t ne = k; while (ne < line.length && line[ne] != ' ' && line[ne] != '\t') ++ne;
+        if (ne - k != n) continue;
+        bool same = true; foreach (j; 0 .. n) if (line[k + j] != name[j]) { same = false; break; }
+        if (!same) continue;
+        foreach (j; ne .. line.length) {
+            if (j + 5 > line.length || line[j .. j + 5] != "abbr=") continue;
+            foreach (c; line[j + 5 .. $]) {
+                if (c == ' ' || c == '\t' || c == '\r') break;
+                if (an < 4 && c > ' ' && c != '"' && c != '\\' && c < 0x7f) ab[an++] = c;
+            }
+            break;
+        }
+    }
+    if (an == 0)
+        foreach (j; 0 .. n) {
+            char c = name[j];
+            if (c >= 'a' && c <= 'z') c = cast(char)(c - 32);
+            if ((c >= 'A' && c <= 'Z') || (c >= '0' && c <= '9')) ab[an++] = c;
+            if (an == 3) break;
+        }
+    jstr(b, ab.ptr, an);
+}
+
 // A domain record's name without a trailing NUL (some records count it in nameLen).
 private size_t jNameLen(const(char)* p, uint n) { size_t k = 0; while (k < n && p[k] != 0) ++k; return k; }
 
@@ -728,6 +767,7 @@ public long configfsRender(int id, char* buf, size_t buflen) {
                 auto idr = identityById(e.identityObjId);
                 if (idr !is null) jstr(b, idr.name.ptr, idr.nameLen); else lit(b, "null");
                 lit(b, ", \"color\": \"");     hex(b, idr !is null ? idr.color : 0xFF808080u); put(b, '"');  // DM10: GUI accent
+                lit(b, ", \"abbr\": ");       domAbbr(b, e.name.ptr, jNameLen(e.name.ptr, e.nameLen));  // icon badge
                 lit(b, ", \"template\": ");    num(b, e.templateObjId);
                 lit(b, ", \"state\": \"");     litz(b, domainStateName(e.state)); put(b, '"');
                 lit(b, ", \"type\": \"");      lit(b, e.isTemplate ? "template" : "domain"); put(b, '"');
@@ -854,7 +894,18 @@ public long configfsRender(int id, char* buf, size_t buflen) {
                 if (!first) lit(b, ", "); first = false;
                 jstr(b, e.image.ptr, e.image.length);
             }
-            lit(b, "] }\n");
+            // Where each of those runs when the desktop starts it -- the domain whose colour and tag
+            // its icon wears.
+            lit(b, "],\n  \"placement\": {");
+            first = true;
+            foreach (ref e; g_appReg) {
+                if ((e.flags & AF_DESKTOP) == 0) continue;
+                auto dec = appgateDecide(0, "wl-overview\0".ptr, &e, appRegKey(&e), sys, sess, &appPortAllowed);
+                if (dec.verdict != AppVerdict.Allow) continue;
+                if (!first) lit(b, ", "); first = false;
+                jstr(b, e.image.ptr, e.image.length); lit(b, ": "); jdomName(b, dec.target);
+            }
+            lit(b, "} }\n");
             return cast(long)b.len;
         }
         case CFG_TEMPLATES: {

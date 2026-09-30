@@ -502,6 +502,18 @@ no OpenGL/Mesa dependency, which crashes in this freestanding/musl environment.
   wallpaper, decorated windows (drop shadow + titlebar + identity-accent dot +
   min/max/close + rounded corners), a Spotlight-style launcher (Super+Space),
   and a real Finder-style **file manager** (`wl-files`).
+- **Launcher** (`wl-dock`): a translucent bar down the left edge with the pinned
+  applications (scrolls when they do not fit) and, at its bottom, the button that
+  slides out a drawer of every installed application with search (`SUPER`+`A`).
+  Right-click pins/unpins; `~/.config/anonymos/dock.conf` sets the pins, the
+  button's picture (`launcher-icon = <PNG>`) and the width.
+- **Domain badges**: every application icon -- launcher, drawer, desktop, app grid --
+  is ringed in the colour of the domain it runs in, with the domain's tag at its
+  bottom left (`Personal` -> `PER`; changed in Domains -> Appearance, stored in
+  `~/.config/anonymos/domains.conf`).
+- **First-boot overlay** (`wl-welcome`): an installed system's first boot shows every
+  keyboard shortcut the compositor has bound (read from Hyprland, so it follows your
+  own keybindings) and which configuration file changes what; `SUPER`+`F1` shows it again.
 - Bundled assets: Noto fonts, icons, cursors, wallpapers, themes (license-guarded).
 - **Automatic tiling window manager** (Hyprland-style) implemented *inside* the
   Weston desktop-shell — a literal Hyprland port is impossible on the Pixman CPU

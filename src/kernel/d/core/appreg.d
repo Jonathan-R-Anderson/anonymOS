@@ -158,6 +158,8 @@ static immutable AppRegEntry[] g_appReg = [
     AppRegEntry("Hyprland",          null, INF, SES, DNO, null, CHR),
     AppRegEntry("wl-layer-bar",      null, INF, SES, DNO, null, CHR),
     AppRegEntry("wl-overview",       null, INF, SES, DNO, null, CHR | DSK),
+    AppRegEntry("wl-dock",           null, INF, SES, DNO, null, CHR),        // the launcher bar + drawer
+    AppRegEntry("wl-welcome",        null, INF, SES, DNO, null, CHR | DSK),  // the first-boot overlay
     AppRegEntry("wl-quicksettings",  null, INF, SES, DNO, null, CHR | DSK),
     AppRegEntry("wl-wifi-menu",      null, INF, SES, DNO, null, CHR | DSK),
     AppRegEntry("wl-wallpaper",      null, INF, SES, DNO, null, CHR),
@@ -369,12 +371,15 @@ public AppDecision appgateDecide(uint callerDom, const(char)* parentImage, const
     else if (cls == AppCls.Runtime) ok = true;
     else if (cls == AppCls.App)     ok = grantKey !is null && granted !is null && granted(d.target, grantKey);
     else                            ok = false;
-    // The app grid execs whatever an Exec= line in /usr/share/applications says, and packages can
-    // add .desktop files -- so its children are limited to what a launcher tile legitimately is:
-    // applications, the Domain Manager and desktop chrome.  Anything else (a service launcher, a
-    // developer tool with attacker-chosen arguments) is refused rather than started in domain 0/System.
-    if (parentImage !is null && regEqC("wl-overview", parentImage)
-        && (reg is null || (reg.flags & AF_DESKTOP) == 0))
+    // The launchers (the app grid, the dock's drawer) exec whatever an Exec= line in
+    // /usr/share/applications says, and packages can add .desktop files -- so their children are
+    // limited to what a launcher tile legitimately is: a desktop-flagged image (applications, the
+    // Domain Manager, desktop chrome) or any application proper -- App class, which always runs
+    // confined in a domain that was granted it (an installed package is one).  Anything else (a
+    // service launcher, a developer tool with attacker-chosen arguments) is refused rather than
+    // started in domain 0/System.
+    if (parentImage !is null && (regEqC("wl-overview", parentImage) || regEqC("wl-dock", parentImage))
+        && (reg is null || ((reg.flags & AF_DESKTOP) == 0 && reg.cls != AppCls.App)))
         ok = false;
     d.verdict = ok ? AppVerdict.Allow : AppVerdict.Deny;
     return d;

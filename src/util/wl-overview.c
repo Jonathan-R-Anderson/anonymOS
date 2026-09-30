@@ -29,6 +29,7 @@
 #include <ft2build.h>
 #include FT_FREETYPE_H
 #include "xdg-shell-client-protocol.h"
+#include "hos-shell-ui.h"         /* the domain badge every icon carries */
 
 extern char **environ;
 
@@ -40,8 +41,7 @@ enum { WIN_W = 920, WIN_H = 620,
        TITLEBAR_H = 28, CLOSE_W = 28,
        SEARCH_Y = 46, SEARCH_H = 40, SEARCH_MARGIN = 220,
        GRID_COLS = 5, CELL_PITCH_X = 160, CELL_PITCH_Y = 150,
-       ICON = 96, GRID_Y = 116,
-       MAX_APPS = 32 };
+       ICON = 96, GRID_Y = 116 };
 
 /* app list: LABEL -> EXEC path (each tile gets a cycled accent colour)
  *
@@ -78,9 +78,17 @@ static const struct appentry BUILTIN_APPS[] = {
 enum { N_BUILTIN = (int)(sizeof(BUILTIN_APPS)/sizeof(BUILTIN_APPS[0])) };
 
 /* Populated by load_apps(); indexes into these are what the grid draws and launches. */
-static struct appentry APPS[MAX_APPS];
-static int             N_APPS = 0;
-static char            APP_STRINGS[MAX_APPS * 2][128];   /* backing store for parsed strings */
+static struct appentry *APPS;         /* grows with the installed applications -- no fixed cap */
+static int             N_APPS = 0, CAP_APPS = 0;
+static int apps_reserve(void)
+{
+    if (N_APPS < CAP_APPS) return 1;
+    int nc = CAP_APPS ? CAP_APPS * 2 : 64;
+    struct appentry *nv = realloc(APPS, (size_t)nc * sizeof *nv);
+    if (!nv) return 0;
+    APPS = nv; CAP_APPS = nc;
+    return 1;
+}
 
 #define APPDIR "/usr/share/applications"
 
@@ -163,16 +171,17 @@ static void load_apps(void)
     DIR *d = opendir(APPDIR);
     if (d) {
         struct dirent *e;
-        while ((e = readdir(d)) && N_APPS < MAX_APPS) {
+        while ((e = readdir(d))) {
             size_t l = strlen(e->d_name);
             if (l < 9 || strcmp(e->d_name + l - 8, ".desktop")) continue;
             char path[256];
             snprintf(path, sizeof path, "%s/%s", APPDIR, e->d_name);
-            char *nm = APP_STRINGS[N_APPS * 2], *ex = APP_STRINGS[N_APPS * 2 + 1];
+            char nm[128], ex[128];
             if (!parse_desktop(path, nm, ex, 128)) continue;
             if (!exec_installed(ex)) continue;
-            APPS[N_APPS].label = nm;
-            APPS[N_APPS].exec  = ex;
+            if (!apps_reserve()) break;
+            APPS[N_APPS].label = strdup(nm);
+            APPS[N_APPS].exec  = strdup(ex);
             N_APPS++;
         }
         closedir(d);
@@ -180,7 +189,7 @@ static void load_apps(void)
         if (N_APPS > 1) qsort(APPS, (size_t)N_APPS, sizeof APPS[0], cmp_entry);
     }
     if (N_APPS == 0) {                       /* no apps.blob in this image -- use the fallback */
-        for (int i = 0; i < N_BUILTIN && i < MAX_APPS; i++) APPS[N_APPS++] = BUILTIN_APPS[i];
+        for (int i = 0; i < N_BUILTIN && apps_reserve(); i++) APPS[N_APPS++] = BUILTIN_APPS[i];
     }
     /* appgate: drop the tiles this desktop may not launch (see load_desktop_list). */
     load_desktop_list();
@@ -230,7 +239,10 @@ struct app {
     int  searchlen;
     int  shift;
     int  hover;                    // hovered filtered position (-1 none)
-    int  filt[MAX_APPS];           // app indices currently visible
+    int *filt;                     // app indices currently visible (N_APPS of them at most)
+    char *appgate;                 // /config/appgate.json: where each tile's program runs
+    struct hos_domain *doms; int ndoms;   // each domain's colour and tag (the badges)
+    struct hos_font badge_font;
     int  n_filt;
 };
 
@@ -329,7 +341,9 @@ static int ci_contains(const char *hay, const char *needle){
 }
 static void recompute_filter(struct app *app){
     app->n_filt = 0;
-    for (int i=0;i<N_APPS && app->n_filt<MAX_APPS;i++)
+    if (!app->filt) app->filt = malloc((size_t)(N_APPS ? N_APPS : 1) * sizeof *app->filt);
+    if (!app->filt) return;
+    for (int i=0;i<N_APPS;i++)
         if (ci_contains(APPS[i].label, app->search)) app->filt[app->n_filt++] = i;
     if (app->hover >= app->n_filt) app->hover = -1;
 }
@@ -415,6 +429,21 @@ static void draw_overview(struct app *app){
         /* label under the tile, centred in the cell */
         draw_text_centered(app, APPS[idx].label, cx+CELL_PITCH_X/2, cy+ICON+8, CELL_PITCH_X-4, 15,
                            hovered?TXT:DIM);
+        /* the domain the program runs in: its colour ring and tag */
+        if (app->appgate) {
+            char pl[48];
+            hos_placement_of(app->appgate, APPS[idx].exec, pl, sizeof pl);
+            const struct hos_domain *dm = hos_domain_find(app->doms, app->ndoms, pl);
+            if (dm) {
+                cairo_surface_t *cs = cairo_image_surface_create_for_data((unsigned char *)app->pixels, CAIRO_FORMAT_RGB24,
+                                                                          app->width, app->height, app->width * 4);
+                cairo_t *cr = cairo_create(cs);
+                hos_domain_badge(cr, &app->badge_font, ix, cy, ICON, dm);
+                cairo_destroy(cr);
+                cairo_surface_flush(cs);
+                cairo_surface_destroy(cs);
+            }
+        }
     }
 }
 
@@ -587,6 +616,9 @@ int main(void){
     app.width = WIN_W; app.height = WIN_H; app.stride = WIN_W*4; app.buffer_size = (size_t)app.stride*WIN_H;
     signal(SIGCHLD, SIG_IGN);
     init_freetype(&app);
+    hos_font_load(&app.badge_font, "/usr/share/fonts/noto/NotoSans-Regular.ttf");
+    app.appgate = hos_read_file("/config/appgate.json");
+    app.ndoms = hos_domains_load(&app.doms);
     recompute_filter(&app);
 
     log_line("OVERVIEW: starting app-grid overview");

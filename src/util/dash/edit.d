@@ -123,14 +123,19 @@ private void refresh(const(char)[] prompt, ref Buf line, size_t cursor) {
     o.put('\r');
     o.put(prompt);
     colour(o, line.str());
-    o.put("\x1b[J");
     const W = cols();
     const pw = dispWidth(prompt);
     const endPos = pw + dispWidth(line.str());
     const curPos = pw + dispWidth(line.str()[0 .. cursor]);
     const endRow = cast(int)(endPos / W), curRow = cast(int)(curPos / W), curCol = cast(int)(curPos % W);
-    if (endPos > 0 && endPos % W == 0) o.put("\r\n");
-    const up = (endPos > 0 && endPos % W == 0 ? endRow : endRow) - curRow;
+    // Text that ends exactly at the right margin leaves the cursor where the terminal's wrap rule
+    // says: xterm holds it at the margin (the wrap is pending), wl-term has already moved to the next
+    // row.  A space and a CR put both at column 0 of the next row -- endRow -- and the erase below
+    // removes the space.  (A bare CRLF here went one row too far on wl-term, and every later
+    // redraw of a long line printed the prompt again one row down.)
+    if (endPos > 0 && endPos % W == 0) o.put(" \r");
+    o.put("\x1b[J");
+    const up = endRow - curRow;
     if (up > 0) { char[16] t; const n = snprintf(t.ptr, t.length, "\x1b[%dA", up); o.put(t[0 .. n]); }
     o.put('\r');
     if (curCol > 0) { char[16] t; const n = snprintf(t.ptr, t.length, "\x1b[%dC", curCol); o.put(t[0 .. n]); }

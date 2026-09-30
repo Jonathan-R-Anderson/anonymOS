@@ -6023,13 +6023,13 @@ private enum int    RT_CHUNK_DIR     = 4096;   // 16 M nodes: past what any RAM 
 private enum int    RT_INITIAL_NODES = 3 * RT_CHUNK;
 private enum size_t RT_NAME_MAX  = 255;           // Linux's NAME_MAX (nameLen is a ubyte)
 private enum ulong  RT_MIN_CAP_BYTES = 64UL * 1024 * 1024;   // tmpfs soft cap floor (ENOSPC past it)
-// The cap: a quarter of RAM, at least 64 MiB.  It was a flat 64 MiB, which a VM snapshot (the guest's
+// The cap: half of RAM, at least 64 MiB.  It was a flat 64 MiB, which a VM snapshot (the guest's
 // whole memory image) or a large package could not fit in on any machine.
 private ulong rtMaxBytes() {
     import memory.mm : memStats;
     ulong totalB, freeB;
     memStats(totalB, freeB);
-    const ulong q = totalB / 4;
+    const ulong q = totalB / 2;           // tmpfs's default share: half of memory
     return q > RT_MIN_CAP_BYTES ? q : RT_MIN_CAP_BYTES;
 }
 
@@ -6064,6 +6064,10 @@ private struct RtNode {
     // skip free nodes), so the many places that free a node need not touch the index.  APPENDED.
     int    hnext   = -1;
     int    hbucket = -1;
+    // Scattered payload (see rtEnsureCapScattered): the bytes of kernel-virtual window reserved for
+    // `data` when its pages are single pages mapped there rather than one contiguous block
+    // (dataPhys == 0).  0 = contiguous or empty.  APPENDED.
+    ulong  vres;
 }
 
 private struct RtTable {
@@ -6692,6 +6696,7 @@ private int rtCreate(int parent, const(char)* name, size_t len, ubyte kind,
     g_rt[idx].dataPhys = 0;
     g_rt[idx].size     = 0;
     g_rt[idx].cap      = 0;
+    g_rt[idx].vres     = 0;
     g_rt[idx].pkgIdx   = 0;
     // DM6.2 per-domain isolation: stamp the node with the writing task's domain (0 = shared).  A
     // domain-bound write therefore creates a node PRIVATE to that domain that shadows any shared
@@ -6786,8 +6791,21 @@ private int rtResolve(const(char)* path, out int outParent,
 // Grow a file node's page-backed payload to at least `need` bytes.  The old pages
 // are now FREED after the copy (was a leak) and the global byte total is kept so the
 // RT_MAX_BYTES cap and `df` reflect reality.
+// Why a payload could not grow -- the first few, so a failed install says which limit it met.
+private __gshared uint g_rtCapFailN = 0;
+private void rtCapFail(const(char)* why, ulong need) {
+    if (g_rtCapFailN >= 8) return;
+    ++g_rtCapFailN;
+    klog("[rtfs] no room: "); klog(why); klog(" need="); klog_dec(need);
+    klog(" used="); klog_dec(g_rtBytes); klog(" cap="); klog_dec(rtMaxBytes()); klog("\n");
+}
 private bool rtEnsureCap(ref RtNode n, uint need) {
     if (need <= n.cap) return true;
+    if (n.vres != 0) return rtEnsureCapScattered(n, need);   // already scattered: stays so
+    // A large payload takes single pages from the start: it has no need of one physical block, and
+    // taking one per file spends the contiguous memory other allocations do need (an install moves
+    // a gigabyte of files through here).  Falls back to a block when no window is available.
+    if (need >= RT_SCATTER_MIN && rtEnsureCapScattered(n, need)) return true;
     // Grow geometrically (doubling, at most +64 MiB per step) so a file written in chunks is copied
     // O(n) times, not once per write -- a 128 MB VM snapshot written 1 MB at a time was 128 copies.
     // Falls back to the exact size when the larger block is over the cap or not available.
@@ -6806,10 +6824,10 @@ private bool rtEnsureCap(ref RtNode n, uint need) {
         pages = (need + 4095) / 4096;
         newCap = cast(uint)(pages * 4096);
         // Enforce the tmpfs soft cap on the *additional* bytes this grow would commit.
-        if (g_rtBytes + (newCap - n.cap) > maxBytes) return false;
+        if (g_rtBytes + (newCap - n.cap) > maxBytes) { rtCapFail("over the rtfs cap", need); return false; }
         phys = alloc_phys_pages(pages);
-    } else if (phys == 0 && g_rtBytes + (newCap - n.cap) > maxBytes) return false;
-    if (phys == 0) return false;
+    } else if (phys == 0 && g_rtBytes + (newCap - n.cap) > maxBytes) { rtCapFail("over the rtfs cap", need); return false; }
+    if (phys == 0) return rtEnsureCapScattered(n, need);  // no contiguous block that big: scatter
     ubyte* nd = cast(ubyte*)phys_to_virt(phys);
     // Copy only bytes that actually exist in RAM: min(size, cap), and none when data is null
     // (a disk-backed node has size ~1 GiB with data=null/cap=0 — never copy from null).
@@ -6829,6 +6847,103 @@ private bool rtEnsureCap(ref RtNode n, uint need) {
     return true;
 }
 
+// ── large payloads: single pages behind one kernel-virtual window ─────────────────────────────
+// A payload used to be ONE physically contiguous block, so a big file -- Firefox's 130 MB
+// libxul.so, a 60 MB package download -- needed that much contiguous free memory and failed ENOSPC
+// on a machine with gigabytes free (the Software Center's Firefox install died that way).  When no
+// contiguous block is available, the payload is built from single pages mapped at consecutive
+// addresses of a kernel-virtual window instead, so `data` stays one flat pointer for every reader;
+// it grows by mapping more pages, or by moving its page mappings to a bigger window -- never by
+// copying.  The windows lie in the direct map's PML4 slot above any RAM: that slot's tables are
+// shared by every address space (archMapKernel copies it), so a mapping made once is visible to
+// every process and CPU.  Windows are never handed out twice, so no CPU can hold a stale
+// translation for a live one.
+private __gshared ulong g_rtKvaNext = 0, g_rtKvaEnd = 0;
+private enum uint RT_SCATTER_MIN = 256 * 1024;       // payloads from this size on are scattered
+private enum ulong RT_KVA_OFF = 384UL << 30;          // the window area: 384 GiB into the direct map
+private ulong rtKvaReserve(ulong bytes) {
+    import core.globals : hhdm_offset;
+    import memory.mm : memStats;
+    if (g_rtKvaEnd == 1) return 0;                    // no room for it on this machine
+    if (g_rtKvaNext == 0) {
+        ulong totalB, freeB; memStats(totalB, freeB);
+        const ulong slotEnd = (hhdm_offset & ~((1UL << 39) - 1)) + (1UL << 39);
+        const ulong base = (hhdm_offset + RT_KVA_OFF + 0x1FFFFF) & ~0x1FFFFFUL;
+        if (totalB >= RT_KVA_OFF || base >= slotEnd) { g_rtKvaEnd = 1; return 0; }
+        g_rtKvaNext = base; g_rtKvaEnd = slotEnd;
+    }
+    bytes = (bytes + 0x1FFFFF) & ~0x1FFFFFUL;
+    if (bytes == 0 || g_rtKvaNext + bytes > g_rtKvaEnd) return 0;
+    const ulong va = g_rtKvaNext;
+    g_rtKvaNext += bytes;
+    return va;
+}
+private bool rtEnsureCapScattered(ref RtNode n, uint need) {
+    import arch.x86_64.arch : map_page_hhdm, unmap_page_hhdm, PTE_PRESENT, PTE_RW;
+    import memory.mm : alloc_phys_page, free_phys_page;
+    const ulong newCap = (cast(ulong)need + 4095) & ~4095UL;
+    if (newCap > 0xFFFF_F000UL) return false;
+    if (g_rtBytes + (newCap - n.cap) > rtMaxBytes()) { rtCapFail("over the rtfs cap (scattered)", need); return false; }
+    ulong va = cast(ulong)n.data;
+    if (n.vres == 0 || newCap > n.vres) {
+        // a (bigger) window: twice what is needed, at least 16 MiB, so growth rarely moves
+        ulong res = newCap * 2;
+        if (res < (16UL << 20)) res = 16UL << 20;
+        const ulong nva = rtKvaReserve(res);
+        if (nva == 0) { rtCapFail("no kernel-virtual window", need); return false; }
+        if (n.vres != 0) {                            // scattered already: move the mappings
+            for (ulong off = 0; off < n.cap; off += 4096) {
+                const ulong ph = unmap_page_hhdm(va + off);
+                if (ph) map_page_hhdm(ph, nva + off, PTE_PRESENT | PTE_RW, &alloc_phys_page);
+            }
+        } else if (n.cap != 0 && n.data !is null) {   // a contiguous block: page by page into new pages
+            ulong off = 0;
+            for (; off < n.cap; off += 4096) {
+                const ulong ph = alloc_phys_page();
+                if (ph == 0) break;
+                map_page_hhdm(ph, nva + off, PTE_PRESENT | PTE_RW, &alloc_phys_page);
+                auto dst = cast(ubyte*)phys_to_virt(ph);
+                foreach (k; 0 .. 4096) dst[k] = n.data[off + k];
+            }
+            if (off < n.cap) {                        // out of pages: undo, keep the block as it was
+                for (ulong o = 0; o < off; o += 4096) { const ulong ph = unmap_page_hhdm(nva + o); if (ph) free_phys_page(ph); }
+                return false;
+            }
+            free_phys_pages(n.dataPhys, n.cap / 4096);
+            n.dataPhys = 0;
+        }
+        n.vres = res;
+        va = nva;
+        n.data = cast(ubyte*)nva;
+    }
+    // commit the pages [cap, newCap), zeroed
+    for (ulong off = n.cap; off < newCap; off += 4096) {
+        const ulong ph = alloc_phys_page();
+        if (ph == 0) { g_rtBytes += off - n.cap; n.cap = cast(uint)off; rtCapFail("out of pages", need); return false; }
+        auto z = cast(ubyte*)phys_to_virt(ph);
+        foreach (k; 0 .. 4096) z[k] = 0;
+        map_page_hhdm(ph, va + off, PTE_PRESENT | PTE_RW, &alloc_phys_page);
+    }
+    g_rtBytes += newCap - n.cap;
+    n.cap = cast(uint)newCap;
+    return true;
+}
+// A scattered payload as one contiguous block again (the ELF loader maps an image by physical
+// address).  False when no block that big is free.
+private bool rtMakeContiguous(ref RtNode n) {
+    import arch.x86_64.arch : unmap_page_hhdm;
+    import memory.mm : free_phys_page;
+    if (n.vres == 0) return n.dataPhys != 0;
+    const ulong phys = alloc_phys_pages(n.cap / 4096);
+    if (phys == 0) return false;
+    auto nd = cast(ubyte*)phys_to_virt(phys);
+    foreach (k; 0 .. n.cap) nd[k] = n.data[k];
+    const ulong va = cast(ulong)n.data;
+    for (ulong off = 0; off < n.cap; off += 4096) { const ulong ph = unmap_page_hhdm(va + off); if (ph) free_phys_page(ph); }
+    n.data = nd; n.dataPhys = phys; n.vres = 0;
+    return true;
+}
+
 // Release a node's payload pages (on unlink / overwrite) and update the byte total.
 // Every caller frees the node right after (kind=RT_FREE), so this is also the ONE place a
 // freed node drops its disk-backed registration (no disk write): a later reuse of the index
@@ -6842,8 +6957,14 @@ private void rtFreeData(ref RtNode n) {
     if (n.dataPhys != 0 && n.cap != 0) {
         free_phys_pages(n.dataPhys, n.cap / 4096);
         g_rtBytes -= n.cap;
+    } else if (n.vres != 0 && n.data !is null) {       // scattered: every page, one by one
+        import arch.x86_64.arch : unmap_page_hhdm;
+        import memory.mm : free_phys_page;
+        const ulong va = cast(ulong)n.data;
+        for (ulong off = 0; off < n.cap; off += 4096) { const ulong ph = unmap_page_hhdm(va + off); if (ph) free_phys_page(ph); }
+        g_rtBytes -= n.cap;
     }
-    n.data = null; n.dataPhys = 0; n.size = 0; n.cap = 0;
+    n.data = null; n.dataPhys = 0; n.size = 0; n.cap = 0; n.vres = 0;
 }
 
 // Build the absolute path of RT node `idx` ("/a/b/c") into `buf`; returns length.
@@ -8422,6 +8543,35 @@ public const(char)* rtExecNameInherit(int parentTid, int childTid, const(char)* 
     return g_rtExecNames[childTid].ptr;
 }
 
+/// exec of an INSTALLED SCRIPT: `path` names an rtfs file a verified package install placed whose
+/// first line is "#!<interpreter> [arg]".  Writes the interpreter and its optional argument (both
+/// NUL-terminated) and returns true; the caller runs the interpreter with the script as its argument,
+/// as Linux's execve does.  Packages ship launchers this way (Firefox's /usr/bin/firefox-esr is
+/// `exec /usr/lib/firefox-esr/firefox-esr "$@"`).  Only package files -- a script a program wrote
+/// itself is not run by exec, like any other file it wrote.
+public bool rtScriptInterp(const(char)* path, char* interp, size_t icap, char* arg, size_t acap) @nogc nothrow {
+    if (path is null || path[0] != '/' || !g_rtInitialized) return false;
+    int par; const(char)* lf; size_t ll;
+    const int idx = rtResolve(path, par, lf, ll);
+    if (idx <= 0 || g_rt[idx].kind != RT_REG || g_rt[idx].pkgIdx == 0) return false;
+    const(ubyte)* d = g_rt[idx].data;
+    const size_t n = g_rt[idx].size;
+    if (d is null || n < 4 || d[0] != '#' || d[1] != '!') return false;
+    if (nsPathVerdict(path, openRightsForFlags(0)) != 0) return false;
+    size_t i = 2;
+    while (i < n && (d[i] == ' ' || d[i] == '\t')) ++i;
+    size_t k = 0;
+    while (i < n && d[i] != ' ' && d[i] != '\t' && d[i] != '\n' && k + 1 < icap) interp[k++] = cast(char)d[i++];
+    interp[k] = 0;
+    if (k == 0 || interp[0] != '/') return false;
+    while (i < n && (d[i] == ' ' || d[i] == '\t')) ++i;
+    k = 0;                                           // Linux: the rest of the line is ONE argument
+    while (i < n && d[i] != '\n' && k + 1 < acap) arg[k++] = cast(char)d[i++];
+    while (k > 0 && (arg[k - 1] == ' ' || arg[k - 1] == '\t' || arg[k - 1] == '\r')) --k;
+    arg[k] = 0;
+    return true;
+}
+
 /// exec of an INSTALLED program: `path` names an rtfs file that a verified package install placed.
 /// Returns true with the image's physical base/size (rtfs payloads are physically contiguous, so the
 /// ELF loader takes them exactly like a boot module), a stable per-task name, and the package's
@@ -8433,6 +8583,10 @@ public bool rtExecImage(const(char)* path, int tid, ulong* phys, ulong* size, co
     int par; const(char)* lf; size_t ll;
     const int idx = rtResolve(path, par, lf, ll);
     if (idx <= 0 || g_rt[idx].kind != RT_REG || g_rt[idx].pkgIdx == 0) return false;
+    if (g_rt[idx].vres != 0 && !rtMakeContiguous(g_rt[idx])) {
+        klog("[exec] no contiguous block for a large installed program\n");
+        return false;
+    }
     if (g_rt[idx].data is null || g_rt[idx].dataPhys == 0 || g_rt[idx].size < 64) return false;
     const(ubyte)* d = g_rt[idx].data;
     if (d[0] != 0x7F || d[1] != 'E' || d[2] != 'L' || d[3] != 'F') return false;

@@ -700,7 +700,19 @@ int main(int argc, char **argv)
     snprintf(apkurl, sizeof apkurl, "%s/%s-%s.apk", path, name, ver);
     snprintf(apkpath, sizeof apkpath, CACHE_DIR "/%s-%s.apk", name, ver);
     size_t napk = 0;
-    int status = http_get(host, port, apkurl, apkpath, &napk);
+    /* A connection that fails outright (status <= 0: refused, reset, timed out) is retried with a
+     * growing pause -- one dropped connection to a CDN node used to fail a whole 112-package
+     * install.  An HTTP answer (404, 500, ...) is final. */
+    int status = -1;
+    for (int attempt = 1; attempt <= 4; attempt++) {
+        napk = 0;
+        status = http_get(host, port, apkurl, apkpath, &napk);
+        if (status > 0) break;
+        if (attempt < 4) {
+            plog("[pkg] %s-%s.apk: no answer from the mirror (attempt %d of 4), retrying", name, ver, attempt);
+            sleep((unsigned)(attempt * 2));
+        }
+    }
     if (status < 0) return fail_exit(name);
     if (status != 200) { plog("[pkg] mirror answered HTTP %d for %s-%s.apk — nothing installed", status, name, ver); return fail_exit(name); }
     plog("[pkg] fetched %zu bytes of %s-%s.apk", napk, name, ver);
@@ -725,6 +737,11 @@ int main(int argc, char **argv)
     if (manifest < 0) { plog("[pkg] cannot write manifest %s (errno %d)", manifestpath, errno); return fail_exit(name); }
     int nfiles = ustar_extract_data(apktar, stagedir, manifest);
     close(manifest);
+    /* The files are staged: the archive and its decompressed copy are spent.  They live in the same
+     * RAM filesystem the install is placed into, and kept they tripled every package's footprint --
+     * Firefox and its dependencies ran into the filesystem's cap half-way through. */
+    unlink(apktar);
+    unlink(apkpath);
     if (nfiles <= 0) { plog("[pkg] %s contained no installable data files", name); return fail_exit(name); }
     plog("[pkg] unpacked %d files of %s into %s", nfiles, name, stagedir);
 

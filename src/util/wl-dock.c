@@ -306,8 +306,13 @@ static int cmp_app(const void *x, const void *y)
 /* Re-read the application entries, the domains (colours, tags) and the placements. */
 static void refresh_world(struct app *a)
 {
-    free(a->appgate); a->appgate = hos_read_file("/config/appgate.json");
-    free(a->doms); a->ndoms = hos_domains_load(&a->doms);
+    /* A read that fails (the kernel short of memory for a moment) keeps what was known: an empty
+     * result would strip every badge until the next refresh. */
+    char *ag = hos_read_file("/config/appgate.json");
+    if (ag) { free(a->appgate); a->appgate = ag; }
+    struct hos_domain *nd = NULL;
+    const int nn = hos_domains_load(&nd);
+    if (nn > 0) { free(a->doms); a->doms = nd; a->ndoms = nn; } else free(nd);
     a->napps = 0;
     char appdir[512];
     snprintf(appdir, sizeof appdir, "%s%s", hos_root, APPDIR);

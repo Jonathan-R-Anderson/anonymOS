@@ -1197,6 +1197,14 @@ __gshared size_t g_execArgCount;
 __gshared ulong[MAX_TASKS] g_taskExecModPhys;
 __gshared ulong[MAX_TASKS] g_taskExecModSize;
 
+// "#!" scripts (see execveTask): per-nesting-depth argv buffers.
+private enum int SCRIPT_DEPTH = 4;
+private __gshared int g_execScriptDepth = 0;
+private __gshared char[256][SCRIPT_DEPTH] g_scrInterp = '\0';
+private __gshared char[256][SCRIPT_DEPTH] g_scrArg = '\0';
+private __gshared char[512][SCRIPT_DEPTH] g_scrPath = '\0';
+private __gshared ulong[EXEC_ARG_MAX + 4][SCRIPT_DEPTH] g_scrArgv;
+
 private long execveTask(int tid, ulong pathPtr, ulong argvPtr, ulong envpPtr) {
     auto task = &g_tasks[tid];
 
@@ -1216,6 +1224,32 @@ private long execveTask(int tid, ulong pathPtr, ulong argvPtr, ulong envpPtr) {
         execName = g_taskExecName[tid];
         {   import core.task : g_taskPkg1;
             pkg1 = g_taskPkg1[tid]; }
+    }
+
+    // An installed "#!" script: run its interpreter with the script as the argument, as Linux does
+    // -- argv becomes [interpreter, (its argument), script, original argv[1..]].  Nested scripts
+    // (an interpreter that is itself a script) get their own buffers, up to SCRIPT_DEPTH deep.
+    if (modPhys == 0 && g_execScriptDepth < SCRIPT_DEPTH) {
+        import core.syscalls.posix : rtScriptInterp;
+        const int dl = g_execScriptDepth;
+        if (rtScriptInterp(path, g_scrInterp[dl].ptr, 256, g_scrArg[dl].ptr, 256)) {
+            size_t pl = 0;
+            while (path[pl] != 0 && pl + 1 < g_scrPath[dl].length) { g_scrPath[dl][pl] = path[pl]; ++pl; }
+            g_scrPath[dl][pl] = 0;
+            size_t a = 0;
+            g_scrArgv[dl][a++] = cast(ulong)g_scrInterp[dl].ptr;
+            if (g_scrArg[dl][0] != 0) g_scrArgv[dl][a++] = cast(ulong)g_scrArg[dl].ptr;
+            g_scrArgv[dl][a++] = cast(ulong)g_scrPath[dl].ptr;
+            if (argvPtr != 0) {
+                auto av = cast(const(ulong)*)argvPtr;
+                for (size_t i = 1; av[0] != 0 && av[i] != 0 && a + 1 < g_scrArgv[dl].length; ++i) g_scrArgv[dl][a++] = av[i];
+            }
+            g_scrArgv[dl][a] = 0;
+            ++g_execScriptDepth;
+            const long r = execveTask(tid, cast(ulong)g_scrInterp[dl].ptr, cast(ulong)g_scrArgv[dl].ptr, envpPtr);
+            --g_execScriptDepth;
+            return r;
+        }
     }
 
     // Track A A4: follow a leading RT-overlay symlink chain (e.g. /bin/cat -> /busybox)
@@ -5834,6 +5868,12 @@ private void kernelLoop() {
                 g_instBudgetSpentMs += dt;
             }
         }
+        // The supervisor's own work below -- placing an installed package's files, the firewall
+        // download, the self-tests -- is the kernel's: charge what it allocates to the kernel's
+        // untyped memory, not to whichever task made the last syscall.  Left as that task's, the
+        // Software Center's placement ran on a short-lived helper's quota and every file of a
+        // Firefox install failed "out of pages" with gigabytes free.
+        physSetActiveUntyped(g_tasks[0].untypedObjId);
         installMaybeStartHiddenTest(pitMs());  // TEST image only: delayed hidden install repro
         installMaybeStartFdeTest(pitMs());     // TEST image only: headless Full-disk install
         maybeSpawnWaylandClient();

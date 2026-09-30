@@ -64,6 +64,51 @@ private void physFreeBitClear(ulong addr) {      // called when a page is handed
     if (idx >= FREE_LIST_CAP) return;
     g_physPageFreeBit[idx >> 3] &= cast(ubyte)~(1 << (idx & 7));
 }
+// Is a page popped from the free list still free?  No when a multi-page run (physTakeRun) took it
+// after it was pushed: its stack entry is then stale and skipped.  Untracked pages have no bit.
+private bool physFreeBitLive(ulong addr) {
+    size_t idx = pageAuditIndex(addr);
+    if (idx >= FREE_LIST_CAP) return true;
+    return (g_physPageFreeBit[idx >> 3] & cast(ubyte)(1 << (idx & 7))) != 0;
+}
+
+// Multi-page requests once the bump pointer has run out: a run of `n` consecutive pages that are
+// all in the free list, found in its bitmap.  The bump pointer only moves forward and freed pages
+// only ever came back one by one, so after enough churn -- a large Software Center install moves
+// a gigabyte through memory -- every multi-page allocation failed with plenty of memory free:
+// /config documents, window buffers, a new terminal, all at once.  The taken pages' bits are
+// cleared; their entries in g_free_pages go stale, and the single-page path skips them.
+private __gshared size_t g_runHint = 0;
+private __gshared size_t g_freeStale = 0;          // stale entries in g_free_pages
+private ulong physTakeRun(size_t n) {
+    if (n == 0 || n > FREE_LIST_CAP) return 0;
+    size_t runStart = 0, runLen = 0;
+    size_t idx = g_runHint % FREE_LIST_CAP;
+    for (size_t scanned = 0; scanned < FREE_LIST_CAP; ) {
+        if (idx >= FREE_LIST_CAP) { idx = 0; runLen = 0; }        // runs never wrap
+        if ((idx & 7) == 0 && g_physPageFreeBit[idx >> 3] == 0) { // a whole empty byte
+            runLen = 0; idx += 8; scanned += 8; continue;
+        }
+        if (g_physPageFreeBit[idx >> 3] & cast(ubyte)(1 << (idx & 7))) {
+            if (runLen == 0) runStart = idx;
+            if (++runLen == n) {
+                foreach (k; runStart .. runStart + n) g_physPageFreeBit[k >> 3] &= cast(ubyte)~(1 << (k & 7));
+                g_freeStale += n;
+                g_runHint = runStart + n;
+                return cast(ulong)runStart << 12;
+            }
+        } else runLen = 0;
+        ++idx; ++scanned;
+    }
+    return 0;
+}
+// Drop the stale entries from g_free_pages (when it fills up).
+private void physCompactFreeList() {
+    size_t w = 0;
+    foreach (r; 0 .. g_free_count) if (physFreeBitLive(g_free_pages[r])) g_free_pages[w++] = g_free_pages[r];
+    g_free_count = w;
+    g_freeStale = 0;
+}
 
 // Phase 3 object-memory audit: physical pages can be attributed to the
 // MemRegion currently mapping them and/or to a shared VMO backing object.
@@ -210,6 +255,7 @@ private void free_phys_page_impl(ulong addr) {
         }
         if (idx < PAGE_AUDIT_CAP) g_physPageRef[idx] = 0;
     }
+    if (g_free_count >= FREE_LIST_CAP && g_freeStale) physCompactFreeList();
     if (g_free_count >= FREE_LIST_CAP) return; // list full — drop (leak)
     if (physFreeBitTestSet(addr)) {            // already in the free list → DOUBLE FREE: skip the re-add
         ++g_doubleFreeCount;
@@ -255,7 +301,7 @@ void memStats(out ulong totalBytes, out ulong freeBytes) {
         freeBytes += (g_next_phys_alloc <= start) ? (end - start)   // not reached yet
                                                   : (end - g_next_phys_alloc);
     }
-    freeBytes += cast(ulong)g_free_count * 4096;              // returned pages, reusable
+    freeBytes += cast(ulong)(g_free_count - g_freeStale) * 4096;  // returned pages, reusable
     if (freeBytes > totalBytes) freeBytes = totalBytes;
 }
 
@@ -359,8 +405,9 @@ private ulong alloc_phys_page_impl() {
 
     // Reuse a freed page first (zeroed, like the bump path) so churned single-page
     // allocations (per-frame readback buffers, etc.) don't grow the high-water mark.
-    if (g_free_count > 0) {
+    while (g_free_count > 0) {
         ulong ret = g_free_pages[--g_free_count];
+        if (!physFreeBitLive(ret)) { if (g_freeStale) --g_freeStale; continue; }   // a run took it
         ++g_reuse_hits;
         // Verify the poison survived intact.  Any altered word = a live mapping wrote
         // to this frame while it was free → the use-after-free we are hunting.  Logs
@@ -462,6 +509,24 @@ private ulong alloc_phys_pages_impl(size_t n) {
                  }
                  return ret;
              }
+        }
+    }
+    // The bump pointer is spent: a run of freed pages.
+    {
+        const ulong ret = physTakeRun(n);
+        if (ret != 0) {
+            foreach (k; 0 .. n) {
+                const size_t ri = pageAuditIndex(ret + k * 4096);
+                if (ri < PAGE_AUDIT_CAP) g_physPageRef[ri] = 0;
+                physPageClearOwner(ret + k * 4096);
+            }
+            physPagesSetOwner(ret, n, 0, 0);
+            physPagesSetUntypedOwner(ret, n, chargedObj);
+            if (hhdm_offset != 0) {
+                ulong* ptr = cast(ulong*)(ret + hhdm_offset);
+                for (size_t k = 0; k < (needed_size / 8); k++) ptr[k] = 0;
+            }
+            return ret;
         }
     }
     klog("OOM in alloc_phys_pages!\n");

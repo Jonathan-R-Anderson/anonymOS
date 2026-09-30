@@ -1940,7 +1940,7 @@ static void tab_applications(struct app *app, cairo_t *cr) {
         }
         if (g_appl_total > g_appl_fit) {               /* the list scrolls: say where we are */
             char sc[64];
-            snprintf(sc, sizeof sc, "rows %d-%d of %d  (scroll for more)", g_appl_scroll + 1,
+            snprintf(sc, sizeof sc, "rows %d-%d of %d  (scroll or PgUp/PgDn for more)", g_appl_scroll + 1,
                      g_appl_scroll + nrows, g_appl_total);
             draw_text(app, sc, LABEL_X, TAB_Y + 40 + nrows * g_appl_pitch + 4, 300, 12, 0xff8d97a6u);
         }
@@ -2623,6 +2623,14 @@ static void kb_key(void *data, struct wl_keyboard *k, uint32_t serial, uint32_t 
             }
         }
         redraw_commit(app, "clone edit");
+        return;
+    }
+    // PageUp/PageDown scroll the Applications list (as the wheel does), without a mouse wheel.
+    if ((key == 104 || key == 109) && app->tab == 5) {
+        const int before = g_appl_scroll;
+        g_appl_scroll += key == 109 ? (g_appl_fit > 1 ? g_appl_fit - 1 : 1) : -(g_appl_fit > 1 ? g_appl_fit - 1 : 1);
+        if (g_appl_scroll < 0) g_appl_scroll = 0;
+        if (g_appl_scroll != before) redraw_commit(app, "applications page");
         return;
     }
     // Up=103 Down=108 Left=105 Right=106 Enter=28 Esc=1.

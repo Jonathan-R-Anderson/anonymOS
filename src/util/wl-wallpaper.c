@@ -1097,7 +1097,8 @@ static void read_appgate(struct app *a)
     char sess[48];
     if (json_str(buf, "session", sess, sizeof sess)) copy_str(a->session, sizeof a->session, sess);
     free(a->appgate); a->appgate = strdup(buf);
-    free(a->doms); a->ndoms = hos_domains_load(&a->doms);
+    { struct hos_domain *nd = NULL; const int nn = hos_domains_load(&nd);   /* a failed read keeps the last */
+      if (nn > 0) { free(a->doms); a->doms = nd; a->ndoms = nn; } else free(nd); }
     char *k = strstr(buf, "\"desktop\"");
     char *br = k ? strchr(k, '[') : NULL;
     char *be = br ? strchr(br, ']') : NULL;

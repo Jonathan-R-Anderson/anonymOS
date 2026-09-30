@@ -28,8 +28,17 @@ __gshared ulong g_next_phys_alloc = 0x100000;
 // (alloc_slot deref of a NULL meta).  This crashed Hyprland (which forks dbus helpers)
 // at -m 2048 but not -m 512.  Sized for a 2 GiB guest (524288 pages); pages beyond
 // are still handled correctly, just left unattributed (harmless leak, no CoW share).
-enum size_t FREE_LIST_CAP = 1 << 19;          // 524288 entries — covers 2 GiB of RAM
-__gshared ulong[FREE_LIST_CAP] g_free_pages;
+//
+// So the tables are no longer fixed: init_mm() sizes them from the highest USABLE address in the
+// firmware memory map and carves them out of RAM.  The old fixed 2 GiB (1 << 19 pages) silently
+// stopped tracking the rest of a 4 GiB machine -- a VirtualBox guest with 4 GiB puts ~1 GiB of it
+// above 4 GiB -- and Firefox's forks landed there: copy-on-write pages looked exclusive, a child's
+// exec freed frames its parent still mapped, and the parent's thread-pointer page turned to garbage.
+// g_pfnCap is 0 until init_mm has run (every table access checks it, so early boot is untracked).
+__gshared size_t g_pfnCap = 0;                // pages tracked = highest usable PFN + 1
+__gshared ulong  g_tabResStart = 0;           // [start, end) of RAM holding the tables below
+__gshared ulong  g_tabResEnd   = 0;
+__gshared ulong* g_free_pages;
 __gshared size_t g_free_count = 0;
 __gshared ulong  g_free_calls = 0;            // diag counters
 __gshared ulong  g_reuse_hits = 0;
@@ -37,7 +46,7 @@ __gshared ulong  g_reuse_hits = 0;
 // Double-free guard: one "currently in the free list" bit per tracked page (PFN-indexed).
 // Without it, a page freed twice with no intervening alloc lands in g_free_pages TWICE and is
 // then handed to two owners → use-after-free → musl heap-metadata corruption (alloc_slot NULL-meta).
-__gshared ubyte[FREE_LIST_CAP / 8] g_physPageFreeBit;
+__gshared ubyte* g_physPageFreeBit;
 __gshared ulong g_doubleFreeCount = 0;
 
 // DIAGNOSTIC (Hyprland heap-corruption hunt): poison-on-free / verify-on-reuse.
@@ -53,7 +62,7 @@ __gshared ulong g_uafHits = 0;
 enum ulong UAF_POISON = 0xF00DDEAD00000000UL;
 private bool physFreeBitTestSet(ulong addr) {   // true iff it was ALREADY marked free
     size_t idx = pageAuditIndex(addr);
-    if (idx >= FREE_LIST_CAP) return false;      // untracked (page above table range) — no guard
+    if (idx >= g_pfnCap) return false;      // untracked (page above table range) — no guard
     size_t b = idx >> 3; ubyte m = cast(ubyte)(1 << (idx & 7));
     if (g_physPageFreeBit[b] & m) return true;
     g_physPageFreeBit[b] |= m;
@@ -61,14 +70,14 @@ private bool physFreeBitTestSet(ulong addr) {   // true iff it was ALREADY marke
 }
 private void physFreeBitClear(ulong addr) {      // called when a page is handed back out
     size_t idx = pageAuditIndex(addr);
-    if (idx >= FREE_LIST_CAP) return;
+    if (idx >= g_pfnCap) return;
     g_physPageFreeBit[idx >> 3] &= cast(ubyte)~(1 << (idx & 7));
 }
 // Is a page popped from the free list still free?  No when a multi-page run (physTakeRun) took it
 // after it was pushed: its stack entry is then stale and skipped.  Untracked pages have no bit.
 private bool physFreeBitLive(ulong addr) {
     size_t idx = pageAuditIndex(addr);
-    if (idx >= FREE_LIST_CAP) return true;
+    if (idx >= g_pfnCap) return true;
     return (g_physPageFreeBit[idx >> 3] & cast(ubyte)(1 << (idx & 7))) != 0;
 }
 
@@ -81,11 +90,11 @@ private bool physFreeBitLive(ulong addr) {
 private __gshared size_t g_runHint = 0;
 private __gshared size_t g_freeStale = 0;          // stale entries in g_free_pages
 private ulong physTakeRun(size_t n) {
-    if (n == 0 || n > FREE_LIST_CAP) return 0;
+    if (g_pfnCap == 0 || n == 0 || n > g_pfnCap) return 0;
     size_t runStart = 0, runLen = 0;
-    size_t idx = g_runHint % FREE_LIST_CAP;
-    for (size_t scanned = 0; scanned < FREE_LIST_CAP; ) {
-        if (idx >= FREE_LIST_CAP) { idx = 0; runLen = 0; }        // runs never wrap
+    size_t idx = g_runHint % g_pfnCap;
+    for (size_t scanned = 0; scanned < g_pfnCap; ) {
+        if (idx >= g_pfnCap) { idx = 0; runLen = 0; }        // runs never wrap
         if ((idx & 7) == 0 && g_physPageFreeBit[idx >> 3] == 0) { // a whole empty byte
             runLen = 0; idx += 8; scanned += 8; continue;
         }
@@ -114,10 +123,9 @@ private void physCompactFreeList() {
 // MemRegion currently mapping them and/or to a shared VMO backing object.
 // Direct-indexed for the 512 MiB guest size this kernel targets today; pages
 // outside the table are simply left unattributed.
-enum size_t PAGE_AUDIT_CAP = FREE_LIST_CAP;
-__gshared uint[PAGE_AUDIT_CAP] g_physPageMemObj;
-__gshared uint[PAGE_AUDIT_CAP] g_physPageVmoObj;
-__gshared uint[PAGE_AUDIT_CAP] g_physPageUntypedObj;
+__gshared uint* g_physPageMemObj;
+__gshared uint* g_physPageVmoObj;
+__gshared uint* g_physPageUntypedObj;
 
 // Per-physical-page reference count for copy-on-write fork.  0 or 1 means the
 // page is exclusively owned (fresh allocations are left at 0); fork() bumps it
@@ -125,13 +133,13 @@ __gshared uint[PAGE_AUDIT_CAP] g_physPageUntypedObj;
 // free_phys_page() only truly reclaims a page once the last reference drops, so
 // forking a large process (Hyprland + Mesa) no longer duplicates — and exhausts
 // — physical memory.  Same direct PFN indexing as the audit tables above.
-__gshared ushort[PAGE_AUDIT_CAP] g_physPageRef;
+__gshared ushort* g_physPageRef;
 
 // Add a reference (CoW share).  A previously-untracked page (count 0) is taken
 // to already have one implicit owner, so the first share lands at 2.
 void physPageRefInc(ulong phys) {
     size_t idx = pageAuditIndex(phys);
-    if (idx >= PAGE_AUDIT_CAP) return;
+    if (idx >= g_pfnCap) return;
     if (g_physPageRef[idx] < 1) g_physPageRef[idx] = 1;
     if (g_physPageRef[idx] < ushort.max) ++g_physPageRef[idx];
 }
@@ -139,7 +147,7 @@ void physPageRefInc(ulong phys) {
 // Current reference count (0/1 = exclusively owned).
 ushort physPageRefGet(ulong phys) {
     size_t idx = pageAuditIndex(phys);
-    if (idx >= PAGE_AUDIT_CAP) return 0;
+    if (idx >= g_pfnCap) return 0;
     return g_physPageRef[idx];
 }
 
@@ -147,7 +155,7 @@ ushort physPageRefGet(ulong phys) {
 // is now exclusively owned (count fell to 0), false if other references remain.
 bool physPageRefDec(ulong phys) {
     size_t idx = pageAuditIndex(phys);
-    if (idx >= PAGE_AUDIT_CAP) return true;
+    if (idx >= g_pfnCap) return true;
     if (g_physPageRef[idx] > 1) { --g_physPageRef[idx]; return false; }
     g_physPageRef[idx] = 0;
     return true;
@@ -170,7 +178,7 @@ private size_t pageAuditIndex(ulong phys) {
 
 void physPageSetOwner(ulong phys, uint memObjId, uint vmoObjId = 0) {
     size_t idx = pageAuditIndex(phys);
-    if (idx >= PAGE_AUDIT_CAP) return;
+    if (idx >= g_pfnCap) return;
     g_physPageMemObj[idx] = memObjId;
     g_physPageVmoObj[idx] = vmoObjId;
     ++g_pageOwnerSetCalls;
@@ -183,7 +191,7 @@ void physPagesSetOwner(ulong phys, size_t n, uint memObjId, uint vmoObjId = 0) {
 
 void physPageSetUntypedOwner(ulong phys, uint untypedObjId) {
     size_t idx = pageAuditIndex(phys);
-    if (idx >= PAGE_AUDIT_CAP) return;
+    if (idx >= g_pfnCap) return;
     g_physPageUntypedObj[idx] = untypedObjId;
 }
 
@@ -194,13 +202,13 @@ void physPagesSetUntypedOwner(ulong phys, size_t n, uint untypedObjId) {
 
 void physClearUntypedOwner(uint untypedObjId) {
     if (untypedObjId == 0) return;
-    foreach (ref owner; g_physPageUntypedObj)
-        if (owner == untypedObjId) owner = 0;
+    foreach (i; 0 .. g_pfnCap)
+        if (g_physPageUntypedObj[i] == untypedObjId) g_physPageUntypedObj[i] = 0;
 }
 
 private void physPageReleaseUntyped(ulong phys) {
     size_t idx = pageAuditIndex(phys);
-    if (idx >= PAGE_AUDIT_CAP) return;
+    if (idx >= g_pfnCap) return;
     uint untypedObjId = g_physPageUntypedObj[idx];
     if (untypedObjId != 0) {
         untypedRelease(untypedObjId, 1);
@@ -210,7 +218,7 @@ private void physPageReleaseUntyped(ulong phys) {
 
 void physPageClearOwner(ulong phys) {
     size_t idx = pageAuditIndex(phys);
-    if (idx >= PAGE_AUDIT_CAP) return;
+    if (idx >= g_pfnCap) return;
     g_physPageMemObj[idx] = 0;
     g_physPageVmoObj[idx] = 0;
     ++g_pageOwnerClearCalls;
@@ -218,7 +226,7 @@ void physPageClearOwner(ulong phys) {
 
 void physPageClearMemOwner(ulong phys) {
     size_t idx = pageAuditIndex(phys);
-    if (idx >= PAGE_AUDIT_CAP) return;
+    if (idx >= g_pfnCap) return;
     g_physPageMemObj[idx] = 0;
     ++g_pageOwnerClearCalls;
 }
@@ -249,14 +257,14 @@ private void free_phys_page_impl(ulong addr) {
     // (count <= 1) we fall through and actually reclaim it.
     {
         size_t idx = pageAuditIndex(addr);
-        if (idx < PAGE_AUDIT_CAP && g_physPageRef[idx] > 1) {
+        if (idx < g_pfnCap && g_physPageRef[idx] > 1) {
             --g_physPageRef[idx];
             return;
         }
-        if (idx < PAGE_AUDIT_CAP) g_physPageRef[idx] = 0;
+        if (idx < g_pfnCap) g_physPageRef[idx] = 0;
     }
-    if (g_free_count >= FREE_LIST_CAP && g_freeStale) physCompactFreeList();
-    if (g_free_count >= FREE_LIST_CAP) return; // list full — drop (leak)
+    if (g_free_count >= g_pfnCap && g_freeStale) physCompactFreeList();
+    if (g_free_count >= g_pfnCap) return; // list full — drop (leak)
     if (physFreeBitTestSet(addr)) {            // already in the free list → DOUBLE FREE: skip the re-add
         ++g_doubleFreeCount;
         if (g_doubleFreeCount <= 24) { klog("[mm] double-free prevented addr="); klog_hex(addr); klog("\n"); }
@@ -294,7 +302,7 @@ void memStats(out ulong totalBytes, out ulong freeBytes) {
         limine_memmap_entry* entry = mmap_resp.entries[i];
         if (entry.type != LIMINE_MEMMAP_USABLE) continue;
         const ulong start = (entry.base + 0xFFF) & ~0xFFF;
-        const ulong end   = entry.base + entry.length;
+        const ulong end   = usableEnd(entry);
         if (end <= start) continue;
         totalBytes += end - start;
         if (g_next_phys_alloc >= end) continue;               // wholly consumed
@@ -305,9 +313,52 @@ void memStats(out ulong totalBytes, out ulong freeBytes) {
     if (freeBytes > totalBytes) freeBytes = totalBytes;
 }
 
+// A usable region's end for allocation: the page tables' reservation is carved off its tail.
+private ulong usableEnd(limine_memmap_entry* e) {
+    ulong end = e.base + e.length;
+    if (g_tabResEnd != 0 && g_tabResStart >= e.base && g_tabResStart < end) end = g_tabResStart;
+    return end;
+}
+
+// Size the per-page tables for this machine and place them at the tail of the largest usable region.
+private void mmPlacePageTables() {
+    if (mmap_resp is null || hhdm_offset == 0) return;
+    ulong maxEnd = 0, bestLen = 0;
+    limine_memmap_entry* best = null;
+    for (size_t i = 0; i < mmap_resp.entry_count; i++) {
+        limine_memmap_entry* e = mmap_resp.entries[i];
+        if (e.type != LIMINE_MEMMAP_USABLE) continue;
+        if (e.base + e.length > maxEnd) maxEnd = e.base + e.length;
+        if (e.length > bestLen) { bestLen = e.length; best = e; }
+    }
+    const size_t cap = cast(size_t)((maxEnd + 0xFFF) >> 12);
+    static size_t up64(size_t b) { return (b + 63) & ~cast(size_t)63; }
+    const size_t bFree = up64(cap * 8), bBits = up64((cap + 7) / 8), bU32 = up64(cap * 4), bRef = up64(cap * 2);
+    const size_t total = (bFree + bBits + 3 * bU32 + bRef + 0xFFF) & ~cast(size_t)0xFFF;
+    if (best is null || total + (16UL << 20) > bestLen) {
+        klog("init_mm: no room for the page tables -- copy-on-write and free-page tracking are OFF\n");
+        return;
+    }
+    const ulong resStart = (best.base + best.length - total) & ~0xFFFUL;
+    ubyte* p = cast(ubyte*)(resStart + hhdm_offset);
+    foreach (k; 0 .. total) p[k] = 0;
+    g_free_pages          = cast(ulong*)p;           p += bFree;
+    g_physPageFreeBit     = p;                       p += bBits;
+    g_physPageMemObj      = cast(uint*)p;            p += bU32;
+    g_physPageVmoObj      = cast(uint*)p;            p += bU32;
+    g_physPageUntypedObj  = cast(uint*)p;            p += bU32;
+    g_physPageRef         = cast(ushort*)p;
+    g_tabResStart = resStart;
+    g_tabResEnd   = resStart + total;
+    g_pfnCap      = cap;
+    klog("init_mm: page tables track "); klog_dec(cap); klog(" pages ("); klog_dec(maxEnd >> 20);
+    klog(" MiB), "); klog_dec(total >> 10); klog(" KiB at "); klog_hex(resStart); klog("\n");
+}
+
 void init_mm(limine_memmap_response* r) {
     klog("init_mm: starting\n");
     mmap_resp = r;
+    mmPlacePageTables();
 
     if (hhdm_offset != 0) {
         import ldc.llvmasm;
@@ -426,7 +477,7 @@ private ulong alloc_phys_page_impl() {
                 }
         }
         physFreeBitClear(ret);   // no longer in the free list
-        { size_t ri = pageAuditIndex(ret); if (ri < PAGE_AUDIT_CAP) g_physPageRef[ri] = 0; }
+        { size_t ri = pageAuditIndex(ret); if (ri < g_pfnCap) g_physPageRef[ri] = 0; }
         physPageClearOwner(ret);
         physPageSetUntypedOwner(ret, chargedObj);
         if (hhdm_offset != 0) {
@@ -442,7 +493,7 @@ private ulong alloc_phys_page_impl() {
         if (entry.type == LIMINE_MEMMAP_USABLE) {
              // Align start to 4K
              ulong start = (entry.base + 0xFFF) & ~0xFFF;
-             ulong end   = entry.base + entry.length;
+             ulong end   = usableEnd(entry);
 
              // If g_next_phys_alloc is below this region, jump to it
              if (g_next_phys_alloc < start) g_next_phys_alloc = start;
@@ -488,7 +539,7 @@ private ulong alloc_phys_pages_impl(size_t n) {
         if (entry.type == LIMINE_MEMMAP_USABLE) {
              // Align start to 4K
              ulong start = (entry.base + 0xFFF) & ~0xFFF;
-             ulong end   = entry.base + entry.length;
+             ulong end   = usableEnd(entry);
 
              // If g_next_phys_alloc is below this region, jump to it
              if (g_next_phys_alloc < start) g_next_phys_alloc = start;
@@ -517,7 +568,7 @@ private ulong alloc_phys_pages_impl(size_t n) {
         if (ret != 0) {
             foreach (k; 0 .. n) {
                 const size_t ri = pageAuditIndex(ret + k * 4096);
-                if (ri < PAGE_AUDIT_CAP) g_physPageRef[ri] = 0;
+                if (ri < g_pfnCap) g_physPageRef[ri] = 0;
                 physPageClearOwner(ret + k * 4096);
             }
             physPagesSetOwner(ret, n, 0, 0);

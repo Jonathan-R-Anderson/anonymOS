@@ -104,8 +104,15 @@ long sys_mprotect(ulong addr, ulong len, ulong prot) {
     ulong clear_mask;
     wxProtectMasks(cast(uint)prot, g_activeCapTabId, &set_mask, &clear_mask);
 
+    // A copy-on-write page (fork-shared, or a file's shared page) must not become writable here: the
+    // write would land in the frame the other holders still use.  It stays read-only, and the first
+    // write faults and takes a private copy (handlePageFault), which restores write access.
+    import core.addrspace : activePteCow;
+    enum ulong PTE_RW_BIT = 1UL << 1;
     for (ulong i = 0; i < num_pages; i++) {
-        protect_page_hhdm(addr + (i * PAGE_SIZE), set_mask, clear_mask);
+        const ulong va = addr + (i * PAGE_SIZE);
+        const ulong sm = ((set_mask & PTE_RW_BIT) && activePteCow(va)) ? (set_mask & ~PTE_RW_BIT) : set_mask;
+        protect_page_hhdm(va, sm, clear_mask);
     }
     
     return 0;

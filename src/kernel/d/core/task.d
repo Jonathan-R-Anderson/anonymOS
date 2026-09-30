@@ -729,6 +729,23 @@ void removeRegionShared(int tid, ulong start, ulong end) {
         removeRegion(*t, start, end);
     }
 }
+// The region covering `vaddr` in ANY table of this address space.  Threads each keep a table but
+// share one address space, so a page one thread reserved and another first touches (Firefox's JS
+// helper threads commit the main thread's JIT reservation) is found only by looking in all of them.
+AddrRegion* findRegionShared(int tid, ulong vaddr) {
+    if (tid < 0 || tid >= MAX_TASKS) return null;
+    auto r = findRegion(g_tasks[tid], vaddr);
+    if (r !is null) return r;
+    const ulong pml4 = g_tasks[tid].pml4Phys;
+    if (pml4 == 0) return null;
+    foreach (i; 0 .. MAX_TASKS) {
+        auto t = &g_tasks[i];
+        if (i == tid || !t.active || t.exited || t.pml4Phys != pml4) continue;
+        r = findRegion(*t, vaddr);
+        if (r !is null) return r;
+    }
+    return null;
+}
 // Does any table of this address space own the pages at `vaddr` (safe to free on unmap)?
 bool regionOwnedAtShared(int tid, ulong vaddr) {
     if (tid < 0 || tid >= MAX_TASKS) return false;

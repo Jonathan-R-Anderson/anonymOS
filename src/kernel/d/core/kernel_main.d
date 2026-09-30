@@ -509,6 +509,7 @@ private void installTaskUntypedCap(int tid) {
                  CAP_RIGHT_RETYPE, CAP_INVALID);
 }
 
+private __gshared uint g_futexUnblockLogN = 0;
 private bool refreshFutexWaiter(int tid) {
     if (tid < 0 || tid >= MAX_TASKS || !g_futexWaitActive[tid]) return false;
 
@@ -528,30 +529,27 @@ private bool refreshFutexWaiter(int tid) {
     // re-parked and was re-cleared ~80,000×/s, monopolizing the core and starving the
     // compositor (Hyprland froze after its initial render burst).  The page-table walk is
     // the ground truth; the word was just read by userspace so it is faulted in.
-    if (t.pml4Phys == 0 || !userPageMapped(tid, uaddr)) {
+    //
+    // This runs for EVERY parked futex waiter on EVERY scheduleNext(), so it must be cheap.  It used
+    // to switch CR3 to the waiter's tables and back (two full TLB flushes) to read one int, and scan
+    // the waiter's whole region list for a capped diagnostic -- with Firefox's ~150 parked threads
+    // that was most of the machine's time (poll/epoll/futex calls averaging ~650k cycles each).
+    // Translate through the waiter's own page tables and read the frame through the HHDM instead.
+    const ulong wordPhys = (t.pml4Phys != 0) ? userVirtToPhys(tid, uaddr) : 0;
+    if (wordPhys == 0) {
         clearFutexWait(tid, -4);
         return false;
     }
-    if (findRegion(*t, uaddr) is null) {
-        // Mechanism confirmation (capped): region bookkeeping missed a mapped page.
-        if (g_futexRegionMiss < 12) {
-            ++g_futexRegionMiss;
-            klog("[futex-region-miss] t="); klog_hex(cast(ulong)tid);
-            klog(" u="); klog_hex(uaddr); klog(" (page mapped, region list missed it)\n");
-        }
-    }
-
-    ulong savedCr3 = x64ReadCR3();
-    bool switchedCr3 = savedCr3 != t.pml4Phys;
-    if (switchedCr3) x64WriteCR3(t.pml4Phys);
-    int cur = *cast(int*)uaddr;
-    if (switchedCr3) x64WriteCR3(savedCr3);
+    const int cur = *cast(const(int)*)(wordPhys + hhdm_offset);   // futex words are 4-aligned: one page
     if (cur != g_futexWaitVal[tid]) {
-        klog("[futex-unblock] t="); klog_hex(cast(ulong)tid);
-        klog(" u="); klog_hex(uaddr);
-        klog(" want="); klog_hex(cast(ulong)cast(uint)g_futexWaitVal[tid]);
-        klog(" now="); klog_hex(cast(ulong)cast(uint)cur);
-        klog("\n");
+        if (g_futexUnblockLogN < 16) {
+            ++g_futexUnblockLogN;
+            klog("[futex-unblock] t="); klog_hex(cast(ulong)tid);
+            klog(" u="); klog_hex(uaddr);
+            klog(" want="); klog_hex(cast(ulong)cast(uint)g_futexWaitVal[tid]);
+            klog(" now="); klog_hex(cast(ulong)cast(uint)cur);
+            klog("\n");
+        }
         clearFutexWait(tid, 0);
         return true;
     }
@@ -1011,6 +1009,7 @@ private int forkTask(int parentTid) {
         g_taskExecModPhys[childTid] = g_taskExecModPhys[parentTid];
         g_taskExecModSize[childTid] = g_taskExecModSize[parentTid];
         g_taskExecName[childTid]    = rtExecNameInherit(parentTid, childTid, g_taskExecName[parentTid]);
+        { import core.syscalls.posix : taskExecPathCopy; taskExecPathCopy(childTid, parentTid); }
         {   import core.task : g_taskPkg1;
             g_taskPkg1[childTid] = g_taskPkg1[parentTid]; }
         // NATIVE_OBJECT_ABI §3: the native personality is inherited across fork (native
@@ -1134,10 +1133,15 @@ private int cloneThread(int parentTid, ulong flags, ulong childStack,
     g_taskNativeAbi[childTid] = g_taskNativeAbi[parentTid]; // NATIVE_OBJECT_ABI §3: same personality
     g_taskNativeLaunch[childTid] = g_taskNativeLaunch[parentTid];   // L5.2: inherit the native-launch authorization
     g_taskExecName[childTid]  = g_taskExecName[parentTid];
+    { import core.syscalls.posix : taskExecPathCopy; taskExecPathCopy(childTid, parentTid); }
 
-    // Threads share one address space but keep separate mmap bump pointers; give
-    // each thread a disjoint 64 GiB window so concurrent mmap()s never collide.
-    child.mmapNext   = parent.mmapNext + cast(ulong)childTid * 0x1000000000UL;
+    // The address space has ONE mmap cursor, shared by its threads (asMmapReserve).  The per-thread
+    // "parent.mmapNext + childTid * 64 GiB" windows this replaced were not disjoint: offsets summed
+    // along the creation chain (thread 91 -> 97 landed where the leader's thread 188 would), a
+    // recycled task slot reused its predecessor's window while that thread's mappings were still in
+    // use, and deep chains left the canonical range.  A new mapping then silently replaced live
+    // memory -- musl's malloc metadata in Firefox's content processes (#GP in alloc_slot).
+    child.mmapNext   = parent.mmapNext;
 
     // TLS (FS base): use the supplied tls for CLONE_SETTLS, else inherit.
     if (flags & CLONE_SETTLS)
@@ -1417,6 +1421,7 @@ private long execveTask(int tid, ulong pathPtr, ulong argvPtr, ulong envpPtr) {
         g_taskExecModPhys[tid] = modPhys;
         g_taskExecModSize[tid] = modSize;
         g_taskExecName[tid]    = execName;
+        { import core.syscalls.posix : taskExecPathSet; taskExecPathSet(tid, path); }   // /proc/self/exe
         {   import core.task : g_taskStoreApp1, g_taskPkg1;
             g_taskStoreApp1[tid] = (storeIdx >= 0) ? cast(ushort)(storeIdx + 1) : 0;
             g_taskPkg1[tid]      = cast(ushort)pkg1; }
@@ -1491,12 +1496,29 @@ private long execveTask(int tid, ulong pathPtr, ulong argvPtr, ulong envpPtr) {
     // wl_client connection instead of being denied. (envp==0 → keep fixed env.)
     g_execEnvCount = 0;
     {
+        // A program placed in a user domain can write only under /Domains/<name>/Home; the
+        // inherited HOME=/home/user is outside its namespace, so every "save to ~" (Firefox's
+        // profile, a shell's history) failed.  Hand it the domain's home instead.
+        char[80] domHome = 0;
+        {
+            import core.domain : domainById, domainSystemId;
+            const uint dId = g_tasks[tid].domainObjId;
+            auto dr = (dId != 0 && dId != domainSystemId()) ? domainById(dId) : null;
+            if (dr !is null && dr.nameLen > 0) {
+                size_t k = 0;
+                foreach (c; "HOME=/Domains/") domHome[k++] = c;
+                foreach (j; 0 .. dr.nameLen) if (k + 6 < domHome.length) domHome[k++] = dr.name[j];
+                foreach (c; "/Home") domHome[k++] = c;
+                domHome[k] = 0;
+            }
+        }
         size_t strOff = 0;
         if (envpPtr != 0) {
             auto envArr = cast(const(ulong)*)envpPtr;
             for (size_t i = 0; i < EXEC_ENV_MAX && envArr[i] != 0; ++i) {
                 auto s = cast(const(char)*)envArr[i];
                 if (s is null) continue;
+                if (domHome[0] != 0 && cstrEqK(s, "HOME=/home/user")) s = domHome.ptr;
                 size_t len = 0;
                 while (s[len] != 0 && len < 4095) ++len;
                 if (strOff + len + 1 >= EXEC_ENV_STR_CAP) break;
@@ -1517,6 +1539,18 @@ private long execveTask(int tid, ulong pathPtr, ulong argvPtr, ulong envpPtr) {
     // truly private pages instead of leaking them.  Shared (device/memfd) maps
     // are left intact.  Page-table pages and the old PML4 are left mapped (a
     // small, pre-existing leak) since CR3 still points at them until the switch.
+    //
+    // NOT when another live task still runs on these page tables.  posix_spawn's child is a
+    // CLONE_VM|CLONE_VFORK clone: its region table is a copy of its PARENT's, and the pages are the
+    // parent's own -- releasing them freed the parent's whole memory the moment the child exec'd,
+    // and the parent crashed on resume (Firefox died starting its first content process).
+    bool asShared = false;
+    foreach (i; 0 .. MAX_TASKS) {
+        if (i == tid) continue;
+        auto o = &g_tasks[i];
+        if (o.active && !o.exited && o.pml4Phys == task.pml4Phys) { asShared = true; break; }
+    }
+    if (!asShared)
     for (int ri = 0; ri < task.regionCount; ri++) {
         auto r = &task.regions[ri];
         if (!r.owned) continue;
@@ -1613,7 +1647,13 @@ private long execveTask(int tid, ulong pathPtr, ulong argvPtr, ulong envpPtr) {
     // gets its arguments + the right argv[0]; fall back to execfn-as-argv[0] only for
     // kernel-internal execs that supply no argv (e.g. /idle).
     ulong rsp;
-    if (g_execArgCount > 0 || g_execEnvCount > 0) {
+    if (g_execArgCount > 0 && g_execEnvCount == 0 && envpPtr == 0) {
+        // A kernel-side spawn with arguments but no environment (AUTORUN, wl-vmm's autostart):
+        // the arguments plus the boot environment.  The execve path below would seed an EMPTY
+        // environment -- Firefox, started that way, found no WAYLAND_DISPLAY and gave up.
+        rsp = linux_seed_initial_stack(
+            stackPhys, stackSize, stackBase, infoWords.ptr, 4096, &g_execArgPtrs[0]);
+    } else if (g_execArgCount > 0 || g_execEnvCount > 0) {
         rsp = linux_seed_initial_stack_with_args(
             stackPhys, stackSize, stackBase, infoWords.ptr, 4096,
             (g_execArgCount > 0) ? cast(ulong)&g_execArgPtrs[0] : 0,
@@ -1972,16 +2012,68 @@ private void maybeAutoPkg() {
 private __gshared bool g_autoRunDone = false;
 private __gshared char[1024] g_autoRunCmd;
 private __gshared immutable(char)*[4] g_autoRunArgv = [ "sh", "-c", null, null ];
+// DIAGNOSTIC (Firefox bring-up): 150 s and 300 s after AUTORUN starts its program, list what every
+// thread of it is doing -- its last syscall and whether it is parked on a futex or in poll -- and
+// how full the fixed kernel tables are.  A program that stops drawing without crashing is waiting
+// on something; this says what.
+private __gshared ulong g_autoRunMs = 0;
+private __gshared int   g_autoRunDumps = 0;
+private void maybeAutoRunDump() {
+    if (g_autoRunMs == 0 || g_autoRunDumps >= 20) return;
+    if (pitMs() < g_autoRunMs + 120_000UL * cast(ulong)(g_autoRunDumps + 1)) return;
+    ++g_autoRunDumps;
+    klog("[tdump] ---- threads of the AUTORUN program, t+"); klog_dec((pitMs() - g_autoRunMs) / 1000); klog(" s ----\n");
+    foreach (t; 0 .. MAX_TASKS) {
+        auto tk = &g_tasks[t];
+        if (!tk.active || tk.exited) continue;
+        const(char)* nm = g_taskExecName[t];
+        if (nm is null || !(nm[0] == 'f' && nm[1] == 'i' && nm[2] == 'r' && nm[3] == 'e')) continue;
+        klog("[tdump] t"); klog_dec(cast(ulong)t);
+        klog(" pid="); klog_dec(cast(ulong)linuxPidForTask(t));
+        klog(" sys="); klog_dec(g_lastSysNr[t]);
+        klog(" a="); klog_hex(g_lastSysA[t]); klog(" b="); klog_hex(g_lastSysB[t]);
+        if (g_futexWaitActive[t]) { klog(" FUTEX u="); klog_hex(g_futexWaitUaddr[t]); }
+        if (g_pollBlocked[t]) klog(" POLL");
+        if (tk.waiting) klog(" WAITING");
+        klog(" rip="); klog_hex(tk.regs[REG_RIP]);
+        klog("\n");
+    }
+    import core.syscalls.posix : resourceUsageDump;
+    resourceUsageDump();
+    arProfDump();
+}
+
 private void maybeAutoRun() {
+    maybeAutoRunDump();
     if (g_autoRunDone || !g_autoPkgDone) return;
     import core.software : g_swStatus, g_swStatusLen, g_swPendActive;
     if (g_swPendActive || g_swStatusLen < 3) return;
     g_autoRunDone = true;
     if (!(g_swStatus[0] == 'o' && g_swStatus[1] == 'k' && g_swStatus[2] == ' ')) return;
+    // The package goes to the session domain, as a user would delegate it in Domains -> Applications,
+    // so a test image can start it from the desktop unattended.
+    {
+        import core.syscalls.posix : softwareAutoPkg;
+        import core.appport : appPortAdd;
+        import core.domain : domainSessionId, domainById;
+        char[64] name = 0;
+        auto sd = domainById(domainSessionId());
+        if (sd !is null && softwareAutoPkg(name.ptr, name.length)) {
+            char[80] key = 0; size_t k = 0;
+            foreach (c; "pkg:") key[k++] = c;
+            for (size_t i = 0; name[i] != 0 && k + 1 < key.length; ++i) key[k++] = name[i];
+            char[40] dn = 0;
+            for (size_t i = 0; i < sd.nameLen && i + 1 < dn.length && sd.name[i] != 0; ++i) dn[i] = sd.name[i];
+            const int r = appPortAdd(key.ptr, dn.ptr);
+            klog("[software] TEST: delegated "); klog(key.ptr); klog(" to "); klog(dn.ptr);
+            klog(r == 0 ? " -> OK\n" : " -> FAIL\n");
+        }
+    }
     import core.syscalls.posix : softwareAutoRun;
     if (!softwareAutoRun(g_autoRunCmd.ptr, g_autoRunCmd.length)) return;
     g_autoRunArgv[2] = cast(immutable(char)*)g_autoRunCmd.ptr;
     klog("[software] TEST: AUTORUN "); klog(g_autoRunCmd.ptr); klog("\n");
+    g_autoRunMs = pitMs();
     spawnWaylandProgram("busybox\0".ptr, "[autorun]\0".ptr, cast(ulong)g_autoRunArgv.ptr);
 }
 
@@ -3338,6 +3430,46 @@ private void maybeSpawnGlTest() {
 // wait4
 // ------------------------------------------------------------------
 
+// MAP_FIXED's implicit munmap of [va, va+len) in task `tid`'s (loaded) address space: every present
+// page is unmapped, and freed when the region listing it owns its frames (private memory -- never a
+// device or shared memfd frame); then the range leaves every thread's region table.
+private void mmapFixedEvict(int tid, ulong va, ulong len) {
+    import core.addrspace : userPageMapped;
+    AddrRegion* r = null;
+    for (ulong off = 0; off < len; off += 4096) {
+        const ulong a = va + off;
+        if (!userPageMapped(tid, a)) continue;
+        if (r is null || a < r.start || a >= r.end) r = findRegionShared(tid, a);
+        sys_munmap(a, 4096, r !is null && r.owned);
+    }
+    removeRegionShared(tid, va, va + len);
+}
+
+// Reserve `len` bytes of fresh address space in task `tid`'s address space for a non-fixed mmap: the
+// cursor is the highest any live thread of the space holds, and every one of them moves past the
+// reservation, so the cursor survives any single thread exiting.
+private ulong asMmapReserve(int tid, ulong len) {
+    const ulong pml4 = g_tasks[tid].pml4Phys;
+    ulong hi = g_tasks[tid].mmapNext;
+    foreach (i; 0 .. MAX_TASKS) {
+        auto t = &g_tasks[i];
+        if (t.active && !t.exited && t.pml4Phys == pml4 && t.mmapNext > hi) hi = t.mmapNext;
+    }
+    foreach (i; 0 .. MAX_TASKS) {
+        auto t = &g_tasks[i];
+        if (i == tid || (t.active && !t.exited && t.pml4Phys == pml4)) t.mmapNext = hi + len;
+    }
+    return hi;
+}
+// Hand back the reservation just made (the mapping failed within the same syscall, under the BKL).
+private void asMmapUndo(int tid, ulong va, ulong len) {
+    const ulong pml4 = g_tasks[tid].pml4Phys;
+    foreach (i; 0 .. MAX_TASKS) {
+        auto t = &g_tasks[i];
+        if ((i == tid || (t.active && !t.exited && t.pml4Phys == pml4)) && t.mmapNext == va + len) t.mmapNext = va;
+    }
+}
+
 private long wait4Task(int tid, int waitPid, ulong statusPtr, ulong options) {
     auto task = &g_tasks[tid];
 
@@ -4325,8 +4457,7 @@ private void dispatchSyscall(int tid) {
                 if (rdi == 0 || (rdi & 0xFFF) != 0) { ret = -22; break; }
                 vaddr = rdi;
             } else {
-                vaddr = task.mmapNext;
-                task.mmapNext += alignedLen;
+                vaddr = asMmapReserve(tid, alignedLen);
             }
             if (x64ReadCR3() != task.pml4Phys) x64WriteCR3(task.pml4Phys);  // redundant in-syscall (CR3==task); map_page_hhdm invlpg's new pages
             ulong numPgs = alignedLen >> 12;
@@ -4368,20 +4499,48 @@ private void dispatchSyscall(int tid) {
 
             ulong regionPhysBase = useObjectBacking ? backingPhys : 0;
 
+            // A reservation -- anonymous PROT_NONE, or MAP_NORESERVE -- takes address space, not
+            // memory: its pages are zero-filled on first touch (handlePageFault).  Firefox's JS
+            // engine reserves 1 GiB for JIT code in every process and commits it piecemeal; eager
+            // backing made that 1 GiB of RAM per process.
+            enum MAP_NORESERVE = 0x4000;
+            const bool reserveOnly = !useObjectBacking && !useFile && (mflags & MAP_ANONYMOUS) != 0
+                              && (rdx == 0 || (mflags & MAP_NORESERVE) != 0);
+
+            // MAP_FIXED REPLACES whatever it covers (Linux unmaps it first).  Mapping over the old
+            // pages leaked them and stacked a second region entry on the range -- musl's loader maps
+            // a library's whole span and then each segment MAP_FIXED on top, and a JIT commits and
+            // decommits its reservation this way thousands of times.
+            if (mflags & MAP_FIXED) mmapFixedEvict(tid, vaddr, alignedLen);
+
             auto mappedRegion = addRegion(*task, vaddr, vaddr + alignedLen,
-                                           RegionType.Mapped,
+                                           reserveOnly ? RegionType.AllocateOnDemand : RegionType.Mapped,
                                            RegionPerms.ReadWrite,
                                            regionPhysBase,
                                            !useObjectBacking,
                                            vmoObjId);
             if (mappedRegion is null) {
-                if ((mflags & MAP_FIXED) == 0) task.mmapNext -= alignedLen;
+                if ((mflags & MAP_FIXED) == 0) asMmapUndo(tid, vaddr, alignedLen);
                 ret = -12;
                 break;
             }
+            if (reserveOnly) { ret = cast(long)vaddr; break; }
 
             ulong mappedPgs = 0;
+            // A read-only private map of an installed file shares the file's own frames (copy-on-write)
+            // instead of copying them: every Firefox process used to carry its own ~130 MB libxul.
+            const bool shareFile = useFile && (rdx & 2) == 0;
             for (ulong pg = 0; pg < numPgs; pg++) {
+                if (shareFile) {
+                    import core.syscalls.posix : rtfsMmapPagePhys;
+                    import core.addrspace : mapSharedCowPage;
+                    const ulong sp = rtfsMmapPagePhys(cast(int)mfd, moffset + pg * 4096);
+                    if (sp != 0) {
+                        mapSharedCowPage(sp, vaddr + pg * 4096);
+                        ++mappedPgs;
+                        continue;
+                    }
+                }
                 ulong phys = useObjectBacking ? (backingPhys + pg * 4096)
                            : alloc_phys_page();
                 if (phys == 0) { mmapOk = false; break; }
@@ -4412,7 +4571,7 @@ private void dispatchSyscall(int tid) {
                 if (mappedPgs != 0)
                     sys_munmap(vaddr, mappedPgs * 4096, mappedRegion.owned);
                 removeRegion(*task, vaddr, vaddr + alignedLen);
-                if ((mflags & MAP_FIXED) == 0) task.mmapNext -= alignedLen;
+                if ((mflags & MAP_FIXED) == 0) asMmapUndo(tid, vaddr, alignedLen);
                 ret = -12;
             }
             break;
@@ -4448,12 +4607,11 @@ private void dispatchSyscall(int tid) {
             if ((mrFlags & MREMAP_MAYMOVE) == 0) { ret = -12; break; }  // ENOMEM
             if (mrNewAligned > mfSize) { ret = -22; break; }      // backing too small
             if (x64ReadCR3() != task.pml4Phys) x64WriteCR3(task.pml4Phys);  // redundant in-syscall (CR3==task); map_page_hhdm invlpg's new pages
-            ulong mrVa = task.mmapNext;
-            task.mmapNext += mrNewAligned;
+            ulong mrVa = asMmapReserve(tid, mrNewAligned);
             auto mrNew = addRegion(*task, mrVa, mrVa + mrNewAligned,
                                    RegionType.Mapped, RegionPerms.ReadWrite,
                                    mfPhys, false, mrVmo);
-            if (mrNew is null) { task.mmapNext -= mrNewAligned; ret = -12; break; }
+            if (mrNew is null) { asMmapUndo(tid, mrVa, mrNewAligned); ret = -12; break; }
             ulong mrPgs = mrNewAligned >> 12;
             for (ulong pg = 0; pg < mrPgs; pg++) {
                 map_page_hhdm(mfPhys + pg * 4096, mrVa + pg * 4096,
@@ -5040,7 +5198,7 @@ private void dispatchSyscall(int tid) {
     // DENDRITIC_NETWORK_ROADMAP P1 (Go-runtime bring-up).  clock_nanosleep with TIMER_ABSTIME
     // (flags bit 0 in rsi) is left as the no-op — its timespec is an absolute clock value, not a
     // duration, so parsing it as one would sleep for decades.
-    if (ret == 0 && (rax == 35 || (rax == 230 && (rsi & 1) == 0)) && tid >= 0 && tid < MAX_TASKS) {
+    if (ret == 0 && (rax == 35 || rax == 230) && tid >= 0 && tid < MAX_TASKS) {
         if (!g_pollBlocked[tid]) {
             // First entry: parse the request timespec (nanosleep req=rdi, clock_nanosleep req=rdx).
             const ulong reqPtr = (rax == 35) ? rdi : rdx;
@@ -5059,6 +5217,18 @@ private void dispatchSyscall(int tid) {
                 if (tvSec > 0 || tvNsec > 0)                    // any non-zero duration rounds up to >= 1 ms
                     ms = (tvSec > 0 ? cast(ulong)tvSec * 1000 : 0)
                        + (cast(ulong)(tvNsec > 0 ? tvNsec : 0) + 999_999) / 1_000_000;
+                // clock_nanosleep(TIMER_ABSTIME): the timespec is a DEADLINE on clock rdi, not a
+                // duration.  It used to return at once, so every thread sleeping until an absolute
+                // time spun on clock_gettime instead (one of Firefox's burned a core).  Sleep for
+                // what is left, read on the same clock the caller used.
+                if (rax == 230 && (rsi & 1) != 0) {
+                    ulong nowMs = pitMs();
+                    if (cast(int)rdi == 0 /*CLOCK_REALTIME*/) {
+                        import network.ntp : ntpSynced, ntpNowSec;
+                        if (ntpSynced()) nowMs = cast(ulong)ntpNowSec() * 1000 + nowMs % 1000;
+                    }
+                    ms = (ms > nowMs) ? ms - nowMs : 0;
+                }
             }
             if (ms == 0) {
                 // Never park.  RAX MUST be written here: a bare `return` skipped the dispatcher's
@@ -5255,12 +5425,99 @@ private bool gtkTaskNow() {
     if (nm is null) return false;
     return nm[0] == 'g' && nm[1] == 't' && nm[2] == 'k';
 }
+// DIAGNOSTIC: the failing calls of a traced program (Firefox) -- number, error and, for a call
+// that takes a path, the path: "Couldn't load XPCOM" names no file, this does.
+private __gshared int g_failTraceN = 0;
+// DIAGNOSTIC (test images): where the AUTORUN program's time goes -- kernel cycles per syscall, and
+// user instruction pointers sampled on the timer tick (4 KiB pages; map them with the [mmap-so] bases).
+private __gshared ulong[512] g_arScCyc;
+private __gshared uint[512]  g_arScN;
+private enum int AR_RIP_SLOTS = 512;
+private __gshared ulong[AR_RIP_SLOTS] g_arRipPage;
+private __gshared uint[AR_RIP_SLOTS]  g_arRipN;
+private __gshared uint g_arUserTicks;
+private bool isAutoRunTask(int tid) {
+    if (g_autoRunMs == 0 || tid < 0 || tid >= MAX_TASKS) return false;
+    const(char)* nm = g_taskExecName[tid];
+    return nm !is null && nm[0] == 'f' && nm[1] == 'i' && nm[2] == 'r' && nm[3] == 'e';
+}
+private void arProfSyscall(int tid, ulong nr, ulong cyc) {
+    if (!isAutoRunTask(tid) || nr >= 512) return;
+    g_arScCyc[cast(size_t)nr] += cyc; ++g_arScN[cast(size_t)nr];
+}
+private void arProfTick(int tid, ulong rip) {
+    if (!isAutoRunTask(tid)) return;
+    ++g_arUserTicks;
+    const ulong pg = rip >> 12;
+    size_t h = cast(size_t)((pg * 0x9E3779B97F4A7C15UL) >> 55) % AR_RIP_SLOTS;
+    foreach (k; 0 .. AR_RIP_SLOTS) {
+        const size_t i = (h + k) % AR_RIP_SLOTS;
+        if (g_arRipN[i] == 0) { g_arRipPage[i] = pg; g_arRipN[i] = 1; return; }
+        if (g_arRipPage[i] == pg) { ++g_arRipN[i]; return; }
+    }
+}
+private void arProfDump() {
+    klog("[prof] user ticks="); klog_dec(g_arUserTicks); klog(" hot pages:");
+    foreach (r; 0 .. 16) {
+        int best = -1;
+        foreach (i; 0 .. AR_RIP_SLOTS) if (g_arRipN[i] != 0 && (best < 0 || g_arRipN[i] > g_arRipN[best])) best = cast(int)i;
+        if (best < 0) break;
+        klog(" "); klog_hex(g_arRipPage[best] << 12); klog("="); klog_dec(g_arRipN[best]);
+        g_arRipN[best] = 0;
+    }
+    klog("\n[prof] kernel by syscall (nr=calls/kcycles):");
+    ulong tot = 0; foreach (i; 0 .. 512) tot += g_arScCyc[i];
+    klog(" total_kcyc="); klog_dec(tot / 1000);
+    foreach (r; 0 .. 12) {
+        int best = -1;
+        foreach (i; 0 .. 512) if (g_arScCyc[i] != 0 && (best < 0 || g_arScCyc[i] > g_arScCyc[best])) best = cast(int)i;
+        if (best < 0) break;
+        klog(" "); klog_dec(cast(ulong)best); klog("="); klog_dec(g_arScN[best]); klog("/"); klog_dec(g_arScCyc[best] / 1000);
+        g_arScCyc[best] = 0;
+    }
+    klog("\n");
+    foreach (i; 0 .. 512) { g_arScCyc[i] = 0; g_arScN[i] = 0; }
+    foreach (i; 0 .. AR_RIP_SLOTS) { g_arRipN[i] = 0; g_arRipPage[i] = 0; }
+    g_arUserTicks = 0;
+}
+
+// TEST IMAGES ONLY: nothing is traced unless an AUTORUN program has been started.
+private bool failTraceTask() {
+    if (g_autoRunMs == 0) return false;
+    const int tid = cast(int)g_current_task_id;
+    if (tid < 0 || tid >= MAX_TASKS) return false;
+    const(char)* nm = g_taskExecName[tid];
+    return nm !is null && nm[0] == 'f' && nm[1] == 'i' && nm[2] == 'r' && nm[3] == 'e';
+}
+
+// DIAGNOSTIC (Firefox bring-up): each task's most recent syscall, for the stall dump below.
+private __gshared ulong[MAX_TASKS] g_lastSysNr, g_lastSysA, g_lastSysB;
 
 // Every descriptor a call creates takes that call's close-on-exec flag (posix.d fdNoteCreated).
 private long dispatchLinuxSyscall(ulong n, ulong a, ulong b, ulong c,
                                    ulong d, ulong e, ulong f) {
+    {   const int ct = cast(int)g_current_task_id;
+        if (ct >= 0 && ct < MAX_TASKS) { g_lastSysNr[ct] = n; g_lastSysA[ct] = a; g_lastSysB[ct] = b; } }
     const long r = dispatchLinuxSyscallCall(n, a, b, c, d, e, f);
     if (r >= 0) fdNoteCreated(n, a, b, c, d, r);
+    // (a lookup that finds nothing is the normal outcome of a search path: not logged)
+    const bool pathMiss = (r == -2 && (n == 2 || n == 4 || n == 6 || n == 21 || n == 257 || n == 262 || n == 439))
+                          || (n == 89 && r == -22) || n == 187;
+    if (r < 0 && !pathMiss && g_failTraceN < 600 && failTraceTask()) {
+        ++g_failTraceN;
+        klog("[scfail] "); klog_dec(n); klog(" -> -"); klog_dec(cast(ulong)(-r));
+        ulong pa = 0;
+        if (n == 2 || n == 4 || n == 6 || n == 21 || n == 89 || n == 83 || n == 87 || n == 82) pa = a;  // open stat lstat access readlink mkdir unlink rename
+        else if (n == 257 || n == 262 || n == 267 || n == 439 || n == 258 || n == 263 || n == 264 || n == 316) pa = b;  // openat newfstatat readlinkat faccessat2 mkdirat unlinkat renameat renameat2
+        if (pa >= 0x1000 && pa < 0x0000_8000_0000_0000UL) { klog(" "); klog(cast(const(char)*)pa); }
+        if (n == 42 || n == 44 || n == 46 || n == 45 || n == 47) {    // connect sendto sendmsg recvfrom recvmsg
+            klog(" fd="); klog_dec(a);
+            if (n == 42 && b >= 0x1000 && b < 0x0000_8000_0000_0000UL && *cast(const(ushort)*)b == 1) {
+                klog(" unix:"); klog(cast(const(char)*)(b + 2));
+            }
+        }
+        klog("\n");
+    }
     return r;
 }
 private long dispatchLinuxSyscallCall(ulong n, ulong a, ulong b, ulong c,
@@ -5400,6 +5657,14 @@ private long dispatchLinuxSyscallCall(ulong n, ulong a, ulong b, ulong c,
         case 186: return linux_sys_gettid();
         case 200: return linux_sys_tkill(a, b);
         case 202: return linux_sys_futex(a, b, c, d, e, f);
+        case 204: {   // sched_getaffinity(pid, len, mask): user tasks run on the boot CPU only
+            if (c == 0) return -14;                        // EFAULT
+            if (b < 8) return -22;                         // EINVAL: smaller than the kernel's mask
+            auto m = cast(ubyte*)c;
+            foreach (i; 0 .. 8) m[i] = 0;
+            m[0] = 1;
+            return 8;                                      // bytes written, as Linux returns
+        }
         case 78:  return linux_sys_getdents(a, b, c);
         case 217: return linux_sys_getdents64(a, b, c);
         case 218: return linux_sys_set_tid_address(a);
@@ -5425,6 +5690,7 @@ private long dispatchLinuxSyscallCall(ulong n, ulong a, ulong b, ulong c,
         case 263: return linux_sys_unlinkat(a, b, c);
         case 264: return linux_sys_renameat(a, b, c, d);
         case 265: return linux_sys_linkat(a, b, c, d, e);
+        case 88:  return linux_sys_symlinkat(a, cast(ulong)-100L, b);   // symlink = symlinkat(AT_FDCWD)
         case 266: return linux_sys_symlinkat(a, b, c);
         case 267: return linux_sys_readlinkat(a, b, c, d);
         case 268: return linux_sys_fchmodat(a, b, c, d);
@@ -6071,11 +6337,13 @@ private void kernelLoop() {
             // Measures time in the HANDLER, not time blocked: a park (poll/futex) returns from
             // dispatchSyscall immediately with the task marked waiting, so this stays a cost.
             noteSyscallCost(cast(uint)tid, scNr, rdtsc() - scT0);
+            if (g_autoRunMs != 0) arProfSyscall(tid, scNr, rdtsc() - scT0);
         } else if ((reason & 0x80) != 0) {
             // Hardware IRQ — irq0 pushes 0x80, irq1 → 0x81, …, irq12 → 0x8C
             uint irqIdx = cast(uint)(reason - 0x80);
 
             if (irqIdx == 0) {
+                if (g_autoRunMs != 0) arProfTick(tid, task.regs[REG_RIP]);
                 // Local-APIC timer, TICK_HZ (4000 Hz).  The i8042 output buffer is ONLY
                 // 1 byte deep and a PS/2 byte arrives every ~0.7-1.1 ms, so a 1000 Hz
                 // drain falls behind and LOSES bytes → 3-byte mouse packets desync → the

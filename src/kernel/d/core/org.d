@@ -47,7 +47,7 @@ private bool kindIsStrong(EdgeKind k) {
     return k == EdgeKind.StrongOwn || k == EdgeKind.StrongRef || k == EdgeKind.Cap;
 }
 
-enum int ORG_EDGE_MAX = 16384;
+enum int ORG_EDGE_MAX = 65536;   // edges between objects; scaled with OBJ_MAX
 
 struct OrgEdge {
     bool     inUse;

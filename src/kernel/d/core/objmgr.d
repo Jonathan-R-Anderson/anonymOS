@@ -73,7 +73,9 @@ struct ObjHeader {
     void*   impl;      // subsystem payload
 }
 
-enum int OBJ_MAX = 8192;
+// Every descriptor, memory region, task, socket and VMO is an object, so this bounds what the whole
+// system can hold open at once.  8192 was half used by Firefox's first window alone (4613 live).
+enum int OBJ_MAX = 32768;
 __gshared ObjHeader[OBJ_MAX] g_objects;
 
 // Free-list stack of available slot indices (ids 1..OBJ_MAX-1; id 0 is the
@@ -137,7 +139,7 @@ public uint objAlloc(ObjType t, void* impl) {
         static __gshared bool told = false;
         if (!told) {
             told = true;
-            klog("[objmgr] OBJECT TABLE EXHAUSTED (OBJ_MAX=8192) -- fds will fail EBADF\n");
+            klog("[objmgr] OBJECT TABLE EXHAUSTED (OBJ_MAX) -- fds will fail EBADF\n");
             // Name the leak: whichever type dominates is the one not being released.
             for (uint ty = 1; ty < cast(uint)ObjType.Count; ++ty) {
                 const uint c = objCountType(cast(ObjType)ty);

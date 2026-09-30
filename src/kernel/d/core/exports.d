@@ -930,12 +930,17 @@ public __gshared char[32] g_spawnEnvShell  = 0;
 // staged environment is the established way to reach a program launched from the kernel.
 public __gshared char[48] g_spawnEnvExtra  = 0;
 
+// argvKernel: optional NULL-terminated array of KERNEL string pointers -- a kernel-side spawn that
+// passes arguments (AUTORUN's `sh -c <cmd>`, wl-vmm's autostart flags) but no environment.  It
+// gets these arguments AND the boot environment below; the execve path for a caller's own envp
+// is linux_seed_initial_stack_with_args.
 ulong linux_seed_initial_stack(
     ulong stackPhys,
     ulong stackSize,
     ulong stackVirtBase,
     const(ulong)* infoWords,
-    ulong pg)
+    ulong pg,
+    const(ulong)* argvKernel = null)
 {
     ulong stackPhysVirt = phys_to_virt(stackPhys);
 
@@ -984,7 +989,7 @@ ulong linux_seed_initial_stack(
     // 46 fixed entries + up to 2 staged per-spawn ones (EPIN_DOMAIN / EPIN_SHELL) + the NULL
     // terminator.  Raised from 48 so adding a spawn var cannot silently overrun the array --
     // at 48 the fixed list was already within two slots of the ceiling.
-    enum bootEnvCount = 64;
+    enum bootEnvCount = 72;
     ulong[bootEnvCount] envVirts;
     ulong envc = 0;
 
@@ -1264,6 +1269,19 @@ ulong linux_seed_initial_stack(
     // any driver ("Unable to find a GPU").  /usr/lib/dri is inside every namespace's /usr.
     envVirt = _copyKernelStrToStack(stackPhysVirt, stackVirtBase, strCursor, "LIBGL_DRIVERS_PATH=/usr/lib/dri\0".ptr);
     if (envVirt != 0) envVirts[envc++] = envVirt;
+    // Firefox (Software Center): draw through Wayland (115 ESR still defaults to X11, and there
+    // is no X server), and leave its process sandboxes off -- they are built on seccomp-bpf and
+    // user namespaces, which this kernel does not provide, so a sandboxed content process dies at
+    // start.  The isolation it would give comes from the domain the browser is confined to.
+    {
+        static immutable string[6] MOZ = [
+            "MOZ_ENABLE_WAYLAND=1\0", "MOZ_DISABLE_CONTENT_SANDBOX=1\0", "MOZ_DISABLE_RDD_SANDBOX=1\0",
+            "MOZ_DISABLE_SOCKET_PROCESS_SANDBOX=1\0", "MOZ_DISABLE_GMP_SANDBOX=1\0", "MOZ_DISABLE_UTILITY_SANDBOX=1\0" ];
+        foreach (m; MOZ) {
+            envVirt = _copyKernelStrToStack(stackPhysVirt, stackVirtBase, strCursor, m.ptr);
+            if (envVirt != 0) envVirts[envc++] = envVirt;
+        }
+    }
     // libXcursor's baked default XCURSOR_PATH has several host/sysroot entries.
     // Collapse it to the guest asset theme root mounted from cursors/icons blobs.
     envVirt = _copyKernelStrToStack(stackPhysVirt, stackVirtBase, strCursor, "XCURSOR_PATH=/usr/share/icons\0".ptr);
@@ -1327,7 +1345,19 @@ ulong linux_seed_initial_stack(
     ulong drmDeviceVirt  = 0;
     ulong rendererVirt   = 0;
 
-    if (isHyprland) {
+    enum MAXKARGS = 128;
+    ulong[MAXKARGS] kargVirts;
+    ulong kargc = 0;
+    if (argvKernel !is null && !isHyprland && !isWeston) {
+        while (kargc < MAXKARGS && argvKernel[kargc] != 0) ++kargc;
+        for (long i = cast(long)kargc - 1; i >= 0; --i)
+            kargVirts[i] = _copyKernelStrToStack(stackPhysVirt, stackVirtBase, strCursor,
+                                                 cast(const(char)*)argvKernel[i]);
+    }
+
+    if (kargc > 0) {
+        frameWords = 1 + kargc + 1 + envc + 1 + 40;
+    } else if (isHyprland) {
         stupidFlagVirt =
             _copyKernelStrToStack(
                 stackPhysVirt,
@@ -1362,7 +1392,11 @@ ulong linux_seed_initial_stack(
 
     int idx = 0;
 
-    if (isHyprland) {
+    if (kargc > 0) {
+        p[idx++] = kargc;
+        foreach (i; 0 .. kargc) p[idx++] = kargVirts[i];
+        p[idx++] = 0;
+    } else if (isHyprland) {
         p[idx++] = 2;
         p[idx++] = execFnVirt;
         p[idx++] = stupidFlagVirt;

@@ -109,9 +109,44 @@ public ulong activeVirtToPhys(ulong va) {
 
 // Walk PML4 entries 0..255 (user space) and deep-copy every mapped page
 // from srcPml4Phys into dstPml4Phys.  Called during fork.
+// The region that decides how fork() copies the page at `va` into `child`.  The child's table starts as
+// a copy of the FORKING thread's, but threads keep separate tables: a mapping another thread made after
+// this one was created (a malloc arena, a thread stack) is not in it.  Such a page was treated as
+// "not private" and SHARED live between parent and child -- Firefox's launcher thread forks, and its
+// child read the fd-remap list out of heap memory the parent was already freeing, so some content
+// processes started with no IPC socket.  Look in every table of the parent's address space and adopt
+// what is found into the child's table.  Consecutive pages hit the one-entry cache.
+private __gshared AddrRegion* g_forkRegionCache;
+private AddrRegion* forkRegionFor(ulong srcPml4, Task* child, ulong va) {
+    if (child is null) return null;
+    auto c = g_forkRegionCache;
+    if (c !is null && va >= c.start && va < c.end) return c;
+    auto r = findRegion(*child, va);
+    if (r is null) {
+        foreach (i; 0 .. MAX_TASKS) {
+            auto t = &g_tasks[i];
+            if (!t.active || t.exited || t.pml4Phys != srcPml4 || t is child) continue;
+            auto src = findRegion(*t, va);
+            if (src is null) continue;
+            if (child.regionCount < MAX_REGIONS) {
+                r = &child.regions[child.regionCount++];
+                *r = *src;
+                r.objId = 0;
+                r.vmoRetained = false;
+            } else {
+                r = src;                        // table full: still copy the page correctly
+            }
+            break;
+        }
+    }
+    g_forkRegionCache = r;
+    return r;
+}
+
 void walkAndCopyUserPages(ulong srcPml4, ulong dstPml4, Task* dstTask = null) {
     auto src4 = cast(ulong*)(srcPml4 + hhdm_offset);
     auto dst4 = cast(ulong*)(dstPml4 + hhdm_offset);
+    g_forkRegionCache = null;
 
     for (int a = 0; a < 256; a++) {
         if (!(src4[a] & PTE_PRESENT)) continue;
@@ -167,7 +202,7 @@ void walkAndCopyUserPages(ulong srcPml4, ulong dstPml4, Task* dstTask = null) {
                                (cast(ulong)b << 30) |
                                (cast(ulong)c << 21) |
                                (cast(ulong)d << 12);
-                    AddrRegion* region = (dstTask !is null) ? findRegion(*dstTask, va) : null;
+                    AddrRegion* region = forkRegionFor(srcPml4, dstTask, va);
 
                     // Only exclusively-owned private RAM (anonymous / private
                     // file maps, allocated from the bump pool) may be shared
@@ -214,7 +249,7 @@ void walkAndCopyUserPages(ulong srcPml4, ulong dstPml4, Task* dstTask = null) {
 // Returns true if handled, false for a fatal fault.
 bool handlePageFault(int taskId, ulong virtAddr, bool isWrite) {
     auto task   = &g_tasks[taskId];
-    auto region = findRegion(*task, virtAddr);
+    auto region = findRegionShared(taskId, virtAddr);
     ulong page  = virtAddr & ~0xFFFUL;
 
     // Copy-on-write (fork): a write to a frame that fork() shared read-only is
@@ -256,6 +291,14 @@ bool handlePageFault(int taskId, ulong virtAddr, bool isWrite) {
             return false;
 
         case RegionType.Mapped:
+            // Private anonymous memory (owned, no backing frame): an absent page reads as zeros,
+            // as after MADV_DONTNEED.  Re-mapping "physBase + offset" here would hand the task the
+            // PHYSICAL page at that offset from 0.  A fault on a PRESENT page is a protection fault
+            // (a write to read-only, a PROT_NONE page): no fresh page may replace it.
+            if (region.owned && region.physBase == 0) {
+                if (activePagePresent(page)) return presentPageFault(page, isWrite);
+                return demandZeroPage(taskId, region, page);
+            }
             // Already eagerly mapped; re-map in case PTE was lost
             ulong offset  = page - region.start;
             ulong phys    = region.physBase + offset;
@@ -287,13 +330,53 @@ bool handlePageFault(int taskId, ulong virtAddr, bool isWrite) {
             return true;
 
         case RegionType.AllocateOnDemand:
-            // Demand-zero: alloc_phys_page already zeroes the page
-            ulong newPhys = alloc_phys_page();
-            if (newPhys == 0) return false;
-            ulong flags = PTE_PRESENT | PTE_USER;
-            if (region.perms == RegionPerms.ReadWrite) flags |= PTE_RW;
-            map_page_hhdm(newPhys, page, flags, &alloc_phys_page);
-            physPageSetOwner(newPhys, region.objId, region.vmoObjId);
-            return true;
+            if (activePagePresent(page)) return presentPageFault(page, isWrite);
+            return demandZeroPage(taskId, region, page);
     }
+}
+
+// Map `phys` -- a frame shared with a file's page cache (an installed library's text) -- at `va` in the
+// loaded address space: read-only and copy-on-write, holding a reference.  A write (after an mprotect,
+// which never grants write to such a page) takes a private copy in handlePageFault; the file and every
+// other process keep the original.  Sharing is what stops each Firefox process from copying libxul.
+public void mapSharedCowPage(ulong phys, ulong va) {
+    physPageRefInc(phys);
+    map_page_hhdm(phys, va, PTE_PRESENT | PTE_USER | PTE_COW, &alloc_phys_page);
+}
+// Is the page at `va` in the loaded address space copy-on-write?
+public bool activePteCow(ulong va) {
+    auto pte = leafPTEPtr(x64ReadCR3() & PTE_ADDR_MASK, va & ~0xFFFUL);
+    return pte !is null && (*pte & PTE_PRESENT) && (*pte & PTE_COW);
+}
+
+// Is `page` present in the LOADED address space?  The fault being resolved happened there (a user
+// fault in its own task; a kernel-mode one in whatever CR3 the syscall had loaded).
+private bool activePagePresent(ulong page) {
+    auto pte = leafPTEPtr(x64ReadCR3() & PTE_ADDR_MASK, page);
+    return pte !is null && (*pte & PTE_PRESENT) != 0;
+}
+// A fault on a page that IS present: a real protection fault (fatal), unless the PTE already allows
+// the access -- a stale TLB entry from before an mprotect/CoW upgrade -- which a flush resolves.
+private bool presentPageFault(ulong page, bool isWrite) {
+    auto pte = leafPTEPtr(x64ReadCR3() & PTE_ADDR_MASK, page);
+    if (pte is null || !(*pte & PTE_PRESENT) || !(*pte & PTE_USER)) return false;
+    if (isWrite && !(*pte & PTE_RW)) return false;
+    x64Invlpg(page);
+    return true;
+}
+
+// Back `page` of a demand-zero region with a fresh zeroed frame (alloc_phys_page zeroes it),
+// mapped into the loaded address space, where the faulting access will be retried.  The frame is
+// the faulting task's memory: charge ITS untyped quota, not whichever task last made a syscall.
+private bool demandZeroPage(int taskId, AddrRegion* region, ulong page) {
+    const uint savedUntyped = physActiveUntyped();
+    if (g_tasks[taskId].untypedObjId != 0) physSetActiveUntyped(g_tasks[taskId].untypedObjId);
+    ulong newPhys = alloc_phys_page();
+    physSetActiveUntyped(savedUntyped);
+    if (newPhys == 0) return false;
+    ulong flags = PTE_PRESENT | PTE_USER;
+    if (region.perms == RegionPerms.ReadWrite) flags |= PTE_RW;
+    map_page_hhdm(newPhys, page, flags, &alloc_phys_page);
+    physPageSetOwner(newPhys, region.objId, region.vmoObjId);
+    return true;
 }

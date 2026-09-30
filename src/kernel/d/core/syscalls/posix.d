@@ -236,7 +236,7 @@ public void fdInstanceRef(File* f) @nogc nothrow {
         if (eid >= 0 && eid < EVENTFD_MAX && g_eventfd_inUse[eid]) ++g_eventfd_refs[eid];
     } else if (f.type == FileType.FD_MEMFD) {
         int mid = cast(int)cast(size_t)f.backend;
-        if (mid >= 0 && mid < MEMFD_MAX && g_memfds[mid].inUse) ++g_memfds[mid].refs;
+        if (mid >= 0 && mid < g_memfdCap && memfdAt(mid).inUse) ++memfdAt(mid).refs;
     } else if (f.type == FileType.FD_TIMERFD) {
         int tid = cast(int)cast(size_t)f.backend;
         if (tid >= 0 && tid < TIMERFD_MAX && g_timerfds[tid].inUse) ++g_timerfds[tid].refs;
@@ -2982,6 +2982,9 @@ private int namespaceCheckOpen(const(char)* path, int flags) {
     int tid = cast(int)g_current_task_id;
     if (tid < 0 || tid >= MAX_TASKS) return negErrno(ENOENT);
     uint need = openRightsForFlags(flags);
+    // A process's OWN /proc entry (/proc/self/stat, status, ...), read-only: it describes only the
+    // caller, and runtimes read it (Firefox, glib) -- a domain's namespace otherwise has no /proc.
+    if ((need & CAP_RIGHT_WRITE) == 0 && cstrEqPrefix(path, "/proc/self/")) return 0;
     {   const int v = nsPathVerdict(path, need);
         if (v != 0) return v; }
 
@@ -3439,9 +3442,22 @@ private int procParsePid(const(char)* path, out const(char)* sub, out size_t sub
     static immutable string pre = "/proc/";
     foreach (i; 0 .. pre.length) if (path[i] != pre[i]) return -1;
     const(char)* p = path + pre.length;
-    if (*p < '0' || *p > '9') return -1;
     int pid = 0;
-    while (*p >= '0' && *p <= '9') { pid = pid * 10 + (*p - '0'); ++p; }
+    // /proc/self/... is the caller's own entry, and /proc/self/task/<tid>/... one of its threads
+    // (Firefox reads both) -- the same data as /proc/<pid>/...
+    if (p[0] == 's' && p[1] == 'e' && p[2] == 'l' && p[3] == 'f' && (p[4] == '/' || p[4] == 0)) {
+        pid = linuxPidForTask(cast(int)g_current_task_id);
+        p += 4;
+        if (p[0] == '/' && p[1] == 't' && p[2] == 'a' && p[3] == 's' && p[4] == 'k' && p[5] == '/'
+            && p[6] >= '0' && p[6] <= '9') {
+            p += 6;
+            while (*p >= '0' && *p <= '9') ++p;           // a thread: its process's data
+        }
+        if (pid <= 0) return -1;
+    } else {
+        if (*p < '0' || *p > '9') return -1;
+        while (*p >= '0' && *p <= '9') { pid = pid * 10 + (*p - '0'); ++p; }
+    }
     if (*p == 0) return pid;            // /proc/<pid>
     if (*p != '/') return -1;
     ++p;
@@ -3449,6 +3465,21 @@ private int procParsePid(const(char)* path, out const(char)* sub, out size_t sub
     sub = p;
     while (p[subLen] != 0) ++subLen;
     return pid;
+}
+
+// "/proc/self/fd/<n>" or "/proc/<the caller's pid>/fd/<n>" -> n; -1 for any other path.
+private int procSelfFdNum(const(char)* path) {
+    if (path is null || path[0] != '/' || path[1] != 'p') return -1;
+    const(char)* sub; size_t subLen;
+    const int pid = procParsePid(path, sub, subLen);
+    if (pid <= 0 || pid != linuxPidForTask(cast(int)g_current_task_id)) return -1;
+    if (sub is null || subLen < 4 || sub[0] != 'f' || sub[1] != 'd' || sub[2] != '/') return -1;
+    int n = 0;
+    foreach (i; 3 .. subLen) {
+        if (sub[i] < '0' || sub[i] > '9' || n > 100_000) return -1;
+        n = n * 10 + (sub[i] - '0');
+    }
+    return n;
 }
 
 private bool subEq(const(char)* sub, size_t subLen, string lit) {
@@ -4085,11 +4116,36 @@ public int sys_open(const(char)* path, int flags) {
     if (cstrEq(path, "/usr/lib/NetworkManager/1.44.2/libnm-device-plugin-wifi.so"))
         path = "/libnm-device-plugin-wifi.so".ptr;
 
+    // /proc/self/fd/<n> (or /proc/<own pid>/fd/<n>): a new descriptor on what fd <n> refers to, as
+    // Linux's procfs reopen gives -- at most the access fd <n> itself has.  Firefox makes the
+    // read-only half of every IPC shared-memory segment this way (a memfd reopened O_RDONLY) and
+    // gives up on memfd without it.
+    {
+        const int rfd = procSelfFdNum(path);
+        if (rfd >= 0) {
+            if (rfd >= 1024 || g_fdTable[rfd].type == FileType.FD_NONE) return negErrno(ENOENT);
+            const int want = flags & 3;
+            if (want != O_RDONLY && (g_fdTable[rfd].flags & 3) == O_RDONLY) return negErrno(EACCES);
+            const long nfd = linux_sys_dup(cast(ulong)rfd);
+            if (nfd < 0) return cast(int)nfd;
+            g_fdTable[cast(int)nfd].flags  = (g_fdTable[rfd].flags & ~3) | want;
+            g_fdTable[cast(int)nfd].offset = 0;
+            return cast(int)nfd;
+        }
+    }
+
+    // A system program gets the system's library, by the name it ASKED for (before symlinks: a
+    // package's libgdk-3.so.0 is a link to its own libgdk-3.so.0.2409.32).  rtfs files win over the
+    // boot modules further down, and packages do install libraries under system names -- Alpine's
+    // zlib and libcrypto go in /lib, which the loader searches first.
+    ulong sysLibPhys = 0, sysLibSize = 0;
+    const bool sysLib = libServedFromModule(path, sysLibPhys, sysLibSize);
+
     // Track A A2: resolve a leading RT-overlay symlink chain so open() follows
     // symlinks (e.g. /bin/ls -> /busybox).  No-op unless the path ends at an RT_LNK.
     char[1024] _lnkA = void;
     char[1024] _lnkB = void;
-    path = rtFollowSymlinks(path, _lnkA.ptr, _lnkB.ptr, 1024);
+    if (!sysLib) path = rtFollowSymlinks(path, _lnkA.ptr, _lnkB.ptr, 1024);
 
     int nsOpen = namespaceCheckOpen(path, flags);
     if (nsOpen < 0) return nsOpen;
@@ -4107,6 +4163,15 @@ public int sys_open(const(char)* path, int flags) {
         }
     }
     if (fd == -1) return negErrno(EMFILE);
+
+    if (sysLib) {
+        g_fdTable[fd].type = FileType.FD_BOOT_MODULE;
+        g_fdTable[fd].flags = flags;
+        g_fdTable[fd].offset = 0;
+        g_fdTable[fd].backend = cast(void*)sysLibPhys;
+        g_fdTable[fd].fileSize = sysLibSize;
+        return publishActiveFdReturn(fd);
+    }
 
     if (cstrEq(path, "/dev/null")) {
         g_fdTable[fd].type = FileType.FD_NULL;
@@ -4821,6 +4886,11 @@ public int sys_open(const(char)* path, int flags) {
     }
 
     if ((flags & O_CREAT) != 0) {
+        // No parent directory to create the file in.  An installed program gets ENOENT, as POSIX
+        // says, so it makes the directory and retries (Firefox builds its profile tree that way);
+        // a descriptor that silently discards everything written to it lost the profile instead.
+        // System programs keep the old lenient descriptor, which some of them rely on for logs.
+        if (rtPackageProgramNow()) return negErrno(ENOENT);
         initPlainFileFd(fd, flags);
         return publishActiveFdReturn(fd);
     }
@@ -4898,20 +4968,20 @@ private long fileObjClose(ObjHeader* oh) {
         // as-is (their pages are bump-allocated and never freed anyway).
         // Refcounted like epoll above: only the last fd copy reclaims.
         int mid = cast(int)cast(size_t)f.backend;
-        if (mid >= 0 && mid < MEMFD_MAX && g_memfds[mid].inUse && g_memfds[mid].refs > 1) {
-            --g_memfds[mid].refs;
-        } else if (mid >= 0 && mid < MEMFD_MAX && g_memfds[mid].inUse && g_memfds[mid].aliased) {
-            if (g_memfds[mid].vmoObjId != 0 && objGet(g_memfds[mid].vmoObjId) !is null)
-                objRelease(g_memfds[mid].vmoObjId);
-            if (g_memfds[mid].vgemHandle != 0)   // release the export ref this alias held
-                drmGemFreeHandle(g_memfds[mid].vgemHandle);
-            g_memfds[mid].inUse      = false;
-            g_memfds[mid].refs       = 0;
-            g_memfds[mid].physBase   = 0;
-            g_memfds[mid].size       = 0;
-            g_memfds[mid].vmoObjId   = 0;
-            g_memfds[mid].aliased    = false;
-            g_memfds[mid].vgemHandle = 0;  // R3: clear the virgl-alias mark on reuse
+        if (mid >= 0 && mid < g_memfdCap && memfdAt(mid).inUse && memfdAt(mid).refs > 1) {
+            --memfdAt(mid).refs;
+        } else if (mid >= 0 && mid < g_memfdCap && memfdAt(mid).inUse && memfdAt(mid).aliased) {
+            if (memfdAt(mid).vmoObjId != 0 && objGet(memfdAt(mid).vmoObjId) !is null)
+                objRelease(memfdAt(mid).vmoObjId);
+            if (memfdAt(mid).vgemHandle != 0)   // release the export ref this alias held
+                drmGemFreeHandle(memfdAt(mid).vgemHandle);
+            memfdAt(mid).inUse      = false;
+            memfdAt(mid).refs       = 0;
+            memfdAt(mid).physBase   = 0;
+            memfdAt(mid).size       = 0;
+            memfdAt(mid).vmoObjId   = 0;
+            memfdAt(mid).aliased    = false;
+            memfdAt(mid).vgemHandle = 0;  // R3: clear the virgl-alias mark on reuse
         }
     }
 
@@ -5145,6 +5215,7 @@ private long fileObjStat(ObjHeader* oh, ulong _statBuf) {
             const uint gid = (idx >= 0 && idx < g_rtNodes) ? g_rt[idx].gid : userCurrentGid();
             const uint dmode = (idx >= 0 && idx < g_rtNodes) ? g_rt[idx].mode : 0x1ED;
             writeLinuxStatOwned(_statBuf, 0x4000 | dmode, 0, uid, gid); // S_IFDIR | mode
+            *cast(ulong*)(_statBuf + 0) = 3; *cast(ulong*)(_statBuf + 8) = cast(ulong)idx + 1;   // rtfs (dev, ino)
         } else if (fileIsDevNull(f) || f.type == FileType.FD_CONSOLE) {
             clearLinuxStat(_statBuf);
             *cast(uint*)(_statBuf + 24) = 0x2000 | 0x0190; // S_IFCHR | 0620
@@ -5189,6 +5260,11 @@ private long fileObjStat(ObjHeader* oh, ulong _statBuf) {
             const uint ftype = (idx >= 0 && idx < g_rtNodes && g_rt[idx].kind == RT_LNK)
                                ? 0xA000 : 0x8000;          // S_IFLNK : S_IFREG
             writeLinuxStatOwned(_statBuf, ftype | fmode, sz, uid, gid);
+            // A unique (st_dev, st_ino) per file, as the boot modules have: musl's dynamic linker treats
+            // two files with the same pair as ONE library already loaded.  Every rtfs file reported
+            // (0, 0), so each library Firefox dlopen()ed after the first came back as that first one --
+            // nothing was mapped, and it stopped at "Couldn't load XPCOM".
+            *cast(ulong*)(_statBuf + 0) = 3; *cast(ulong*)(_statBuf + 8) = cast(ulong)idx + 1;   // rtfs (dev, ino)
         } else if (f.type == FileType.FD_KLOG) {
             import core.io : g_klogHead;
             writeLinuxStat(_statBuf, 0x8000 | 0x0124, g_klogHead); // S_IFREG | 0444 (live-growing size)
@@ -5203,8 +5279,8 @@ private long fileObjStat(ObjHeader* oh, ulong _statBuf) {
             // nothing (a Hyprland-forked child has no console), and never mapped a window.
             // A length belongs to the object; every fd referring to it must see the same value.
             const int mid = cast(int)cast(size_t)f.backend;
-            const ulong len = (mid >= 0 && mid < MEMFD_MAX && g_memfds[mid].inUse)
-                              ? g_memfds[mid].exactLen : f.fileSize;
+            const ulong len = (mid >= 0 && mid < g_memfdCap && memfdAt(mid).inUse)
+                              ? memfdAt(mid).exactLen : f.fileSize;
             writeLinuxStat(_statBuf, 0x8000 | 0x01a4, len); // S_IFREG | 0644
         } else {
             writeLinuxStat(_statBuf, 0x8000 | 0x01a4, f.fileSize); // S_IFREG | 0644
@@ -5314,6 +5390,14 @@ private bool cstrEqC(const(char)* a, const(char)* b, size_t maxLen) {
 // /lib, /usr/lib, …) to a bundled boot module by basename.  Without this, a
 // request like "/lib/libfoo.so" would not match a module named
 // "boot():/libfoo.so".  Restricted to .so paths so ordinary files are unaffected.
+// Does open(path) by the CALLING task resolve to a system library (boot module)?  True for a system
+// program asking for any library name the image ships; never for an installed program (see below).
+private bool libServedFromModule(const(char)* path, out ulong physStart, out ulong size) {
+    physStart = 0; size = 0;
+    if (path is null || !cstrLooksLikeSo(path) || rtPackageProgramNow()) return false;
+    return findBootModuleLib(path, physStart, size);
+}
+
 private bool findBootModuleLib(const(char)* path, out ulong physStart, out ulong size) {
     physStart = 0;
     size = 0;
@@ -5321,6 +5405,13 @@ private bool findBootModuleLib(const(char)* path, out ulong physStart, out ulong
     if (!cstrLooksLikeSo(path)) return false;
 
     const(char)* wantBase = cstrLastComponent(path, 4096);
+    // An installed program takes the libraries its packages installed.  This fallback makes every
+    // system library answer in EVERY directory, and musl searches /lib before /usr/lib -- so
+    // Firefox asked for /lib/libgdk-3.so.0 and got the system's Wayland-only GTK, not the X11-
+    // capable one its package set had placed in /usr/lib, and failed to load (musl binds every
+    // symbol at load: "Couldn't load XPCOM").  A system program is unaffected: it still gets the
+    // system's library, never a package's.
+    if (rtPackageProgramNow() && rtPackageLibExists(wantBase)) return false;
     auto records = cast(BootModuleRecord*)g_mboot_modules;
     foreach (i; 0 .. cast(size_t)g_module_count) {
         auto rec = &records[i];
@@ -5347,6 +5438,24 @@ private long bootModuleRead(ulong physBase, ulong fileSize, ulong readOffset, vo
         dst[i] = src[i];
     }
     return cast(long)toRead;
+}
+
+// The physical frame holding the WHOLE page at `off` of rtfs file `fd`, for a read-only mapping to
+// share instead of copying (page-cache style); 0 when it cannot be shared (not an rtfs file, a
+// disk-backed one, a partial last page, an unaligned offset).
+public ulong rtfsMmapPagePhys(int fd, ulong off) {
+    import core.addrspace : activeVirtToPhys;
+    if (fd < 0 || fd >= 1024 || (off & 0xFFF) != 0) return 0;
+    File* f = &g_fdTable[fd];
+    if (f.type != FileType.FD_RTFILE) return 0;
+    const int idx = cast(int)cast(size_t)f.backend;
+    if (idx <= 0 || idx >= g_rtNodes || g_rt[idx].kind != RT_REG || g_rt[idx].data is null) return 0;
+    if (off + 4096 > g_rt[idx].size) return 0;
+    { ulong dbLen; if (diskFileLbaForNode(idx, dbLen) != 0) return 0; }
+    const ulong va = cast(ulong)(g_rt[idx].data + off);
+    if ((va & 0xFFF) != 0) return 0;
+    const ulong ph = activeVirtToPhys(va);
+    return (ph & 0xFFF) == 0 ? ph : 0;
 }
 
 // File-backed mmap helper: copy `len` bytes of file `fd`'s content starting at
@@ -8450,9 +8559,10 @@ public int softwareApkTryComplete(const(char)* name, uint dom) @nogc nothrow {
 //   - never the loader, its search-path file, shell start-up files, accounts, credentials, network
 //     secrets or the compositor's config -- files every program or the compositor would load;
 //   - never an existing file (no overwriting what the system or another package put there);
-//   - never a file named like a boot module (the loader searches /lib before the boot modules'
-//     /usr/lib, so libwayland-client.so.0 in lib/ would replace the system library for EVERY
-//     program, the Domain Manager included).
+//   - never a file named like a boot module -- except a shared library: open() serves a system
+//     program the boot module for any library name the image ships (libServedFromModule), so a
+//     package's libwayland-client.so.0 in lib/ reaches only installed programs, never the Domain
+//     Manager.
 // Returns null if allowed, else a short reason.
 // ── installed packages (Software Center) ──────────────────────────────────────────────────────
 // One record per package a verified install placed; rtfs nodes point back at it (RtNode.pkgIdx).
@@ -8541,6 +8651,30 @@ public const(char)* rtExecNameInherit(int parentTid, int childTid, const(char)* 
     if (nm !is g_rtExecNames[parentTid].ptr) return nm;
     g_rtExecNames[childTid] = g_rtExecNames[parentTid];
     return g_rtExecNames[childTid].ptr;
+}
+
+// Is the calling task an installed (package) program?
+private bool rtPackageProgramNow() @nogc nothrow {
+    import core.task : g_taskPkg1;
+    const int tid = cast(int)g_current_task_id;
+    return tid >= 0 && tid < MAX_TASKS && g_taskPkg1[tid] != 0;
+}
+// Did a package install a library of this name in /usr/lib or /lib?
+private bool rtPackageLibExists(const(char)* base) @nogc nothrow {
+    if (base is null || !g_rtInitialized) return false;
+    static immutable string[2] DIRS = [ "/usr/lib/", "/lib/" ];
+    char[320] p;
+    foreach (d; DIRS) {
+        size_t k = 0;
+        foreach (c; d) p[k++] = c;
+        for (size_t i = 0; base[i] != 0 && k + 1 < p.length; ++i) p[k++] = base[i];
+        p[k] = 0;
+        int par; const(char)* lf; size_t ll;
+        const int idx = rtResolve(p.ptr, par, lf, ll);
+        if (idx > 0 && idx < g_rtNodes &&
+            ((g_rt[idx].kind == RT_REG && g_rt[idx].pkgIdx != 0) || g_rt[idx].kind == RT_LNK)) return true;   // a soname link
+    }
+    return false;
 }
 
 /// exec of an INSTALLED SCRIPT: `path` names an rtfs file a verified package install placed whose
@@ -8666,10 +8800,13 @@ private const(char)* softwarePlacementRefusal(const(ubyte)* rel, uint rlen) @nog
     abs[1 + rlen] = 0;
     { int par; const(char)* lf; size_t ll;
       if (rtResolve(abs.ptr, par, lf, ll) >= 0) return "already exists".ptr; }
-    // a boot module's name anywhere: it would shadow the system copy
+    // a boot module's name anywhere: it would shadow the system copy.  Shared libraries are the
+    // exception: open() answers a system program's library from the boot modules before it looks
+    // at rtfs (findBootModuleLib), so a package's libgdk-3.so.0 is seen only by installed programs,
+    // which need their own package set (Firefox needs GTK's X11 half; the system's is Wayland-only).
     uint bs = 0;
     foreach (i; 0 .. rlen) if (rel[i] == '/') bs = i + 1;
-    if (g_mboot_modules !is null && g_module_count > 0) {
+    if (g_mboot_modules !is null && g_module_count > 0 && !cstrLooksLikeSo(abs.ptr + 1 + bs)) {
         auto records = cast(BootModuleRecord*)g_mboot_modules;
         foreach (i; 0 .. cast(size_t)g_module_count) {
             const(char)* mb = cstrLastComponent(records[i].name.ptr, records[i].name.length);
@@ -8679,6 +8816,20 @@ private const(char)* softwarePlacementRefusal(const(ubyte)* rel, uint rlen) @nog
         }
     }
     return null;
+}
+
+// One line per refused file; the first 32 per boot, but "already exists" (a package re-shipping a
+// data file the system has, e.g. every xkb keymap) never uses up the budget for the rest.
+private void softwareLogRefusal(const(ubyte)* rel, uint rlen, const(char)* why) @nogc nothrow {
+    static __gshared uint g_swRefuseN = 0;
+    static __gshared uint g_swExistsN = 0;
+    const bool exists = why[0] == 'a' && why[1] == 'l';
+    if (exists ? g_swExistsN >= 8 : g_swRefuseN >= 32) return;
+    if (exists) ++g_swExistsN; else ++g_swRefuseN;
+    char[420] shown = void; uint k = 0;
+    for (; k < rlen && k + 1 < shown.length; ++k) shown[k] = cast(char)rel[k];
+    shown[k] = 0;
+    klog("[software] refused to place "); klog(shown.ptr); klog(": "); klog(why); klog("\n");
 }
 
 private int softwareApkInstallDoneInner(const(char)* name) @nogc nothrow {
@@ -8754,7 +8905,7 @@ private int softwareApkInstallDoneInner(const(char)* name) @nogc nothrow {
             const uint plen = tab - (start + 1);
             const(ubyte)* lp = md + start + 1;
             {   const(char)* why = softwarePlacementRefusal(lp, plen);
-                if (why !is null) { ++refused; continue; } }
+                if (why !is null) { softwareLogRefusal(lp, plen, why); ++refused; continue; } }
             const int li = rtAddSymlink(cast(const(char)*)lp, plen,
                                         cast(const(char)*)(md + tab + 1), start + rlen - (tab + 1));
             if (li > 0) { g_rt[li].pkgIdx = cast(uint)pkgRec; ++placed; }
@@ -8771,18 +8922,7 @@ private int softwareApkInstallDoneInner(const(char)* name) @nogc nothrow {
         int si = rtResolve(src.ptr, par, lf, ll);
         if (si < 0 || g_rt[si].kind != RT_REG) continue;
         {   const(char)* why = softwarePlacementRefusal(md + start, rlen);
-            if (why !is null) {
-                static __gshared uint g_swRefuseN = 0;
-                if (g_swRefuseN < 32) {
-                    ++g_swRefuseN;
-                    char[420] shown = void; uint k = 0;
-                    for (; k < rlen && k + 1 < shown.length; ++k) shown[k] = cast(char)md[start + k];
-                    shown[k] = 0;
-                    klog("[software] refused to place "); klog(shown.ptr); klog(": "); klog(why); klog("\n");
-                }
-                ++refused;
-                continue;
-            } }
+            if (why !is null) { softwareLogRefusal(md + start, rlen, why); ++refused; continue; } }
         // rtAddFile takes a RELATIVE path (no leading '/'); the manifest paths are already relative.
         rtAddFile(cast(const(char)*)(md + start), rlen, g_rt[si].data, g_rt[si].size);
         ++placed;
@@ -8833,9 +8973,10 @@ public void softwareApkInstallSelfTest() @nogc nothrow {
 
     enum string CONTENT  = "#!/bin/sh\necho hos-apk-selftest\n";
     enum string STAGED   = "var/cache/apk/hosselftest.files/usr/bin/hosselftest";
-    // Integrity: a verified package still may not replace system files -- stage three it must NOT
-    // be able to place: a library named like a boot module (would shadow it for every program), a
-    // shell start-up file, and a path outside the software trees.
+    // Integrity: a verified package still may not replace system files -- stage a shell start-up
+    // file and a path outside the software trees, which it must NOT be able to place, and a library
+    // named like a boot module, which it may place (its own programs load it) but which a system
+    // program must never be served in place of the system's copy.
     enum string EVIL1    = "var/cache/apk/hosselftest.files/lib/libwayland-client.so.0";
     enum string EVIL2    = "var/cache/apk/hosselftest.files/etc/zshenv";
     enum string EVIL3    = "var/cache/apk/hosselftest.files/home/user/planted";
@@ -8855,16 +8996,24 @@ public void softwareApkInstallSelfTest() @nogc nothrow {
 
     int par; const(char)* lf; size_t ll;
     int idx = rtResolve("/usr/bin/hosselftest\0".ptr, par, lf, ll);
-    bool ok = (placed == 1) && (idx >= 0) && (g_rt[idx].kind == RT_REG) && (g_rt[idx].size == cast(uint)CONTENT.length);
+    // placed: the command and the module-named library (the shell rc and the stray path are refused)
+    bool ok = (placed == 2) && (idx >= 0) && (g_rt[idx].kind == RT_REG) && (g_rt[idx].size == cast(uint)CONTENT.length);
     if (ok) foreach (k; 0 .. cast(uint)CONTENT.length) if (g_rt[idx].data[k] != cast(ubyte)CONTENT[k]) { ok = false; break; }
-    const bool refusedAll = rtResolve("/lib/libwayland-client.so.0\0".ptr, par, lf, ll) < 0
-                         && rtResolve("/etc/zshenv\0".ptr, par, lf, ll) < 0
+    const bool refusedAll = rtResolve("/etc/zshenv\0".ptr, par, lf, ll) < 0
                          && rtResolve("/home/user/planted\0".ptr, par, lf, ll) < 0;
     ok = ok && refusedAll;
+    // the package's library was placed, and a system program (this boot proof runs as one) opening
+    // that very path still gets the system module -- the check sys_open makes
+    {
+        const int shadow = rtResolve("/lib/libwayland-client.so.0\0".ptr, par, lf, ll);
+        ulong mp, ms;
+        ok = ok && shadow > 0 && libServedFromModule("/lib/libwayland-client.so.0\0".ptr, mp, ms) && mp != 0;
+        if (shadow > 0 && g_rt[shadow].kind == RT_REG) { rtFreeData(g_rt[shadow]); g_rt[shadow].kind = RT_FREE; g_rt[shadow].parent = -1; }
+    }
 
     // provenance: the placed file is tagged with its package and, as a command, executable
     ok = ok && g_rt[idx].pkgIdx != 0 && (g_rt[idx].mode & 0x40) != 0;
-    klog(ok ? "[software] apk-install self-test PASS (placed /usr/bin/hosselftest; refused a module shadow, a shell rc, a path outside the software trees)\n"
+    klog(ok ? "[software] apk-install self-test PASS (placed /usr/bin/hosselftest; a module-named library stays the system's for system programs; refused a shell rc, a path outside the software trees)\n"
             : "[software] apk-install self-test FAIL\n");
     // leave no trace: the synthetic package is neither a file nor an installed package afterwards
     if (idx > 0 && g_rt[idx].kind == RT_REG) { rtFreeData(g_rt[idx]); g_rt[idx].kind = RT_FREE; g_rt[idx].parent = -1; }
@@ -10852,11 +11001,32 @@ private bool isSyntheticSocketPath(const(char)* path) {
            cstrEq(path, "/run/dbus/system_bus_socket");
 }
 
+// Each task's executable, as /proc/self/exe names it: set by a successful exec (the canonical
+// path the image was found at), inherited by fork and threads.  Programs find their own files from
+// it -- Firefox loads libxul.so from the directory of /proc/self/exe, and with the fixed answer
+// "/init.elf" it looked in / and stopped with "Couldn't load XPCOM".
+public __gshared char[256][MAX_TASKS] g_taskExecPath = '\0';
+public void taskExecPathSet(int tid, const(char)* path) @nogc nothrow {
+    if (tid < 0 || tid >= MAX_TASKS || path is null) return;
+    size_t k = 0;
+    if (path[0] != '/') g_taskExecPath[tid][k++] = '/';
+    for (size_t i = 0; path[i] != 0 && k + 1 < g_taskExecPath[tid].length; ++i) g_taskExecPath[tid][k++] = path[i];
+    g_taskExecPath[tid][k] = 0;
+}
+public void taskExecPathCopy(int dst, int src) @nogc nothrow {
+    if (dst < 0 || dst >= MAX_TASKS || src < 0 || src >= MAX_TASKS) return;
+    g_taskExecPath[dst] = g_taskExecPath[src];
+}
+
 private bool getSyntheticReadlinkTarget(const(char)* path, out string target) {
     if (cstrEq(path, "/proc/self/exe")) {
-        // Until the kernel tracks each task's executable path, return a stable
-        // boot image target instead of failing every procfs probe.
-        target = "/init.elf";
+        const int tid = cast(int)g_current_task_id;
+        if (tid >= 0 && tid < MAX_TASKS && g_taskExecPath[tid][0] == '/') {
+            size_t n = 0; while (n < g_taskExecPath[tid].length && g_taskExecPath[tid][n] != 0) ++n;
+            target = cast(string)g_taskExecPath[tid][0 .. n];
+            return true;
+        }
+        target = "/init.elf";                        // a task with no recorded exec (kernel-built)
         return true;
     }
     // /sys/dev/char/<maj:min> are symlinks to the real device dir (so the udev
@@ -14096,20 +14266,20 @@ public long linux_sys_fcntl(ulong fd, ulong cmd, ulong arg) {
             if ((cast(int)arg & ~F_SEAL_VALID_MASK) != 0) return negErrno(EINVAL);
             {
                 int mid = cast(int)cast(size_t)g_fdTable[ifd].backend;
-                if (mid < 0 || mid >= MEMFD_MAX || !g_memfds[mid].inUse)
+                if (mid < 0 || mid >= g_memfdCap || !memfdAt(mid).inUse)
                     return negErrno(EBADF);
-                if ((g_memfds[mid].seals & F_SEAL_SEAL) != 0)
+                if ((memfdAt(mid).seals & F_SEAL_SEAL) != 0)
                     return negErrno(EPERM);
-                g_memfds[mid].seals |= cast(int)arg;
+                memfdAt(mid).seals |= cast(int)arg;
             }
             return 0;
         case F_GET_SEALS:
             if (g_fdTable[ifd].type != FileType.FD_MEMFD) return negErrno(EINVAL);
             {
                 int mid = cast(int)cast(size_t)g_fdTable[ifd].backend;
-                if (mid < 0 || mid >= MEMFD_MAX || !g_memfds[mid].inUse)
+                if (mid < 0 || mid >= g_memfdCap || !memfdAt(mid).inUse)
                     return negErrno(EBADF);
-                return g_memfds[mid].seals;
+                return memfdAt(mid).seals;
             }
         default: return negErrno(EINVAL);
     }
@@ -15417,19 +15587,52 @@ public long linux_sys_execveat(ulong dfd, ulong path, ulong argv, ulong envp, ul
 
 // --- Filesystem modification stubs (read-only image) ---
 private enum int EROFS = 30;
-// mkdir/mkdirat: create a directory in the writable runtime overlay (rtfs).
-// dirfd is ignored — Hyprland and friends pass absolute XDG_RUNTIME_DIR paths.
-private long rtMkdirSyscall(const(char)* path, ushort mode) {
+// mkdir/mkdirat: create a directory in the writable runtime overlay (rtfs).  A relative path is
+// taken against the calling process's cwd (AT_FDCWD) or the directory fd's path, as openat does.
+private long rtMkdirSyscall(int dirfd, const(char)* path, ushort mode) {
     initFdTable();
     if (path is null) return negErrno(EFAULT);
-    if (path[0] != '/') return negErrno(ENOENT);   // only absolute paths supported
+    if (path[0] == 0) return negErrno(ENOENT);
+    char[1024] abs = void;
+    if (path[0] != '/') {
+        enum int AT_FDCWD = -100;
+        const(char)* base;
+        size_t bl = 0;
+        if (dirfd == AT_FDCWD) {
+            const cwd = cwdNow();
+            for (; bl < cwd.length && bl < 600; ++bl) abs[bl] = cwd[bl];
+        } else if (dirfd >= 0 && dirfd < 1024 && g_activeFdTabId >= 0 && g_activeFdTabId < FDTAB_COUNT
+                   && g_fdPath[g_activeFdTabId][dirfd][0] == '/') {
+            base = g_fdPath[g_activeFdTabId][dirfd].ptr;
+            while (bl < 600 && base[bl] != 0) { abs[bl] = base[bl]; ++bl; }
+        } else {
+            return negErrno(EBADF);
+        }
+        if (bl == 0 || abs[bl - 1] != '/') abs[bl++] = '/';
+        for (size_t i = 0; path[i] != 0 && bl + 1 < abs.length; ++i) abs[bl++] = path[i];
+        abs[bl] = 0;
+        path = abs.ptr;
+    }
     { const int g = nsWriteGate(path); if (g != 0) return g; }   // appgate: the domain's view
 
     int parent; const(char)* leaf; size_t leafLen;
     const int idx = rtResolve(path, parent, leaf, leafLen);
     if (idx >= 0) return negErrno(EEXIST);          // already exists in overlay
     if (isSyntheticDirectoryPath(path)) return negErrno(EEXIST); // exists read-only
-    if (parent < 0 || leaf is null) return negErrno(EROFS);      // parent not writable
+    if (parent < 0 || leaf is null) {
+        // No such parent: ENOENT, which is what tells a recursive creator (mkdir -p, Firefox's
+        // profile setup) to make the ancestors first -- EROFS here made it give up.  EROFS only when
+        // the parent is one of the image's read-only (synthetic) directories.
+        char[1024] par = void;
+        size_t pl = 0, lastSlash = 0;
+        while (path[pl] != 0 && pl + 1 < par.length) { par[pl] = path[pl]; if (path[pl] == '/') lastSlash = pl; ++pl; }
+        while (lastSlash > 0 && lastSlash + 1 == pl) {             // "a/b/" -> look at "a"
+            --pl; lastSlash = 0;
+            foreach (i; 0 .. pl) if (par[i] == '/') lastSlash = i;
+        }
+        par[lastSlash == 0 ? 1 : lastSlash] = 0;
+        return negErrno(isSyntheticDirectoryPath(par.ptr) ? EROFS : ENOENT);
+    }
     if (g_rt[parent].kind != RT_DIR) return negErrno(ENOTDIR);
     const int created = rtCreate(parent, leaf, leafLen, RT_DIR, mode,
                                  userCurrentUid(), userCurrentGid());
@@ -15438,10 +15641,10 @@ private long rtMkdirSyscall(const(char)* path, ushort mode) {
 }
 
 public long linux_sys_mkdir(ulong p, ulong m) {
-    return rtMkdirSyscall(cast(const(char)*)p, cast(ushort)(m & 0xFFF));
+    return rtMkdirSyscall(-100 /*AT_FDCWD*/, cast(const(char)*)p, cast(ushort)(m & 0xFFF));
 }
 public long linux_sys_mkdirat(ulong d, ulong p, ulong m) {
-    return rtMkdirSyscall(cast(const(char)*)p, cast(ushort)(m & 0xFFF));
+    return rtMkdirSyscall(cast(int)d, cast(const(char)*)p, cast(ushort)(m & 0xFFF));
 }
 
 private long rtUnlinkSyscall(const(char)* path, bool dirOnly) {
@@ -15591,7 +15794,6 @@ public long linux_sys_creat(ulong p, ulong m)     { return negErrno(EROFS); }
 // sized by ftruncate, and mapped with mmap.  Because the fd can be passed to
 // another process via SCM_RIGHTS, two processes can mmap the same physical pages
 // and share a pixel buffer.
-private enum int MEMFD_MAX = 32;
 private struct MemFdRec {
     bool  inUse;
     ulong physBase;  // 0 until ftruncate allocates backing pages
@@ -15618,11 +15820,42 @@ private struct MemFdRec {
                       // can hand the importer back a g_drmGems handle (not a dumb one).
     uint  refs;       // fd-copy refcount (fork/dup); reclaim the record only at 0
 }
-__gshared MemFdRec[MEMFD_MAX] g_memfds;
+// memfds: no fixed limit.  Every Wayland client's wl_shm pools are memfds and Firefox makes one per
+// IPC shared-memory segment; the old 32-slot table ran out as soon as Firefox opened its window
+// ("failed to create memfd: No file descriptors available", then a deliberate crash).  Records live
+// in pages allocated as needed and NEVER move -- a memfd's VMO object points at its record -- so the
+// table grows by chunks behind a directory instead of by reallocation.
+private enum int MEMFD_PER_CHUNK = cast(int)(4096 / MemFdRec.sizeof);
+private enum int MEMFD_CHUNKS    = 4096;
+private __gshared MemFdRec*[MEMFD_CHUNKS] g_memfdChunks;
+private __gshared int g_memfdCap = 0;            // records available: allocated chunks x MEMFD_PER_CHUNK
+private ref MemFdRec memfdAt(int mid) @nogc nothrow {
+    return g_memfdChunks[mid / MEMFD_PER_CHUNK][mid % MEMFD_PER_CHUNK];
+}
+// A free record's index, growing the table when every one is in use; -1 when out of memory.
+private int memfdFreeSlot() @nogc nothrow {
+    foreach (i; 0 .. g_memfdCap) if (!memfdAt(i).inUse) return i;
+    const int first = g_memfdCap;
+    return memfdGrow() ? first : -1;
+}
+// One more chunk of zeroed records.  Kernel bookkeeping, so charged to the kernel, not the caller.
+private bool memfdGrow() @nogc nothrow {
+    import memory.mm : alloc_phys_page, physActiveUntyped, physSetActiveUntyped;
+    const int c = g_memfdCap / MEMFD_PER_CHUNK;
+    if (c >= MEMFD_CHUNKS) return false;
+    const uint saved = physActiveUntyped();
+    physSetActiveUntyped(g_tasks[0].untypedObjId);
+    const ulong ph = alloc_phys_page();
+    physSetActiveUntyped(saved);
+    if (ph == 0) return false;
+    g_memfdChunks[c] = cast(MemFdRec*)phys_to_virt(ph);
+    g_memfdCap += MEMFD_PER_CHUNK;
+    return true;
+}
 
 private uint ensureMemfdVmo(int mid) {
-    if (mid < 0 || mid >= MEMFD_MAX || !g_memfds[mid].inUse) return 0;
-    auto rec = &g_memfds[mid];
+    if (mid < 0 || mid >= g_memfdCap || !memfdAt(mid).inUse) return 0;
+    auto rec = &memfdAt(mid);
     auto h = objGet(rec.vmoObjId);
     if (h is null || h.type != ObjType.Vmo || h.impl !is cast(void*)rec) {
         if (h !is null && h.impl is cast(void*)rec && h.type == ObjType.Vmo)
@@ -15639,9 +15872,9 @@ public uint memfdVmoObj(ulong fd) {
     File* f = &g_fdTable[ifd];
     if (f.type != FileType.FD_MEMFD) return 0;
     int mid = cast(int)cast(size_t)f.backend;
-    if (mid < 0 || mid >= MEMFD_MAX || !g_memfds[mid].inUse) return 0;
-    if (g_memfds[mid].vmoObjId != 0 && objGet(g_memfds[mid].vmoObjId) !is null)
-        return g_memfds[mid].vmoObjId;
+    if (mid < 0 || mid >= g_memfdCap || !memfdAt(mid).inUse) return 0;
+    if (memfdAt(mid).vmoObjId != 0 && objGet(memfdAt(mid).vmoObjId) !is null)
+        return memfdAt(mid).vmoObjId;
     return ensureMemfdVmo(mid);
 }
 
@@ -15652,52 +15885,52 @@ public long linux_sys_ftruncate(ulong fd, ulong length) {
     File* f = &g_fdTable[ifd];
     if (f.type != FileType.FD_MEMFD) return negErrno(EINVAL);
     int mid = cast(int)cast(size_t)f.backend;
-    if (mid < 0 || mid >= MEMFD_MAX || !g_memfds[mid].inUse) return negErrno(EBADF);
+    if (mid < 0 || mid >= g_memfdCap || !memfdAt(mid).inUse) return negErrno(EBADF);
 
     ulong aligned = (length + 0xFFF) & ~0xFFFUL;
-    if (aligned > g_memfds[mid].size && (g_memfds[mid].seals & F_SEAL_GROW))
+    if (aligned > memfdAt(mid).size && (memfdAt(mid).seals & F_SEAL_GROW))
         return negErrno(EPERM);
-    if (aligned < g_memfds[mid].size && (g_memfds[mid].seals & F_SEAL_SHRINK))
+    if (aligned < memfdAt(mid).size && (memfdAt(mid).seals & F_SEAL_SHRINK))
         return negErrno(EPERM);
-    if (g_memfds[mid].physBase != 0) {
+    if (memfdAt(mid).physBase != 0) {
         // A resize within the current contiguous allocation is free — the wl_shm
         // / toytoolkit cursor allocator grows its pool in steps and re-ftruncates.
-        if (aligned <= g_memfds[mid].size) { f.fileSize = length; g_memfds[mid].exactLen = length; return 0; }
+        if (aligned <= memfdAt(mid).size) { f.fileSize = length; memfdAt(mid).exactLen = length; return 0; }
         // Grow.  A borrowed (PRIME/GEM-aliased) backing must not be moved.
-        if (g_memfds[mid].aliased) return negErrno(EINVAL);
+        if (memfdAt(mid).aliased) return negErrno(EINVAL);
         // Allocate a larger contiguous region with geometric headroom (so a pool
         // that resizes repeatedly doesn't reallocate every step), copy the live
         // bytes, and repoint.  Callers growing a live wl_shm pool re-map both ends
         // afterward — the client via munmap+mmap, the compositor via mremap — so
         // moving the backing is safe; the old pages are leaked by the bump pool.
         ulong newSize = aligned;
-        ulong dbl = g_memfds[mid].size * 2;
+        ulong dbl = memfdAt(mid).size * 2;
         if (dbl > newSize) newSize = dbl;
         size_t newPages = cast(size_t)(newSize >> 12);
         ulong newPhys = alloc_phys_pages(newPages);
         if (newPhys == 0) return negErrno(ENOMEM);
-        auto gsrc = cast(ubyte*)phys_to_virt(g_memfds[mid].physBase);
+        auto gsrc = cast(ubyte*)phys_to_virt(memfdAt(mid).physBase);
         auto gdst = cast(ubyte*)phys_to_virt(newPhys);
-        foreach (i; 0 .. cast(size_t)g_memfds[mid].size) gdst[i] = gsrc[i];
-        foreach (i; cast(size_t)g_memfds[mid].size .. cast(size_t)newSize) gdst[i] = 0;
+        foreach (i; 0 .. cast(size_t)memfdAt(mid).size) gdst[i] = gsrc[i];
+        foreach (i; cast(size_t)memfdAt(mid).size .. cast(size_t)newSize) gdst[i] = 0;
         uint growVmo = ensureMemfdVmo(mid);
-        g_memfds[mid].physBase = newPhys;
-        g_memfds[mid].size     = newSize;
+        memfdAt(mid).physBase = newPhys;
+        memfdAt(mid).size     = newSize;
         physPagesSetOwner(newPhys, newPages, 0, growVmo);
         f.fileSize             = length;
-        g_memfds[mid].exactLen = length;   // shared: every fd on this memfd must agree
+        memfdAt(mid).exactLen = length;   // shared: every fd on this memfd must agree
         return 0;
     }
-    if (aligned == 0) { f.fileSize = 0; g_memfds[mid].exactLen = 0; return 0; }
+    if (aligned == 0) { f.fileSize = 0; memfdAt(mid).exactLen = 0; return 0; }
     size_t pages = cast(size_t)(aligned >> 12);
     ulong phys = alloc_phys_pages(pages);
     if (phys == 0) return negErrno(ENOMEM);
     uint vmoObjId = ensureMemfdVmo(mid);
-    g_memfds[mid].physBase = phys;
-    g_memfds[mid].size     = aligned;
+    memfdAt(mid).physBase = phys;
+    memfdAt(mid).size     = aligned;
     physPagesSetOwner(phys, pages, 0, vmoObjId);
     f.fileSize             = length;
-    g_memfds[mid].exactLen = length;   // shared: every fd on this memfd must agree
+    memfdAt(mid).exactLen = length;   // shared: every fd on this memfd must agree
     return 0;
 }
 
@@ -15734,10 +15967,10 @@ public long linux_sys_fallocate(ulong fd, ulong mode, ulong offset, ulong len) {
 public ulong memfdPhysByVmo(uint vmoObjId, ulong* sizeOut) {
     initFdTable();
     if (vmoObjId == 0) return 0;
-    for (int i = 0; i < MEMFD_MAX; ++i) {
-        if (g_memfds[i].inUse && g_memfds[i].vmoObjId == vmoObjId) {
-            if (sizeOut !is null) *sizeOut = g_memfds[i].size;
-            return g_memfds[i].physBase;
+    for (int i = 0; i < g_memfdCap; ++i) {
+        if (memfdAt(i).inUse && memfdAt(i).vmoObjId == vmoObjId) {
+            if (sizeOut !is null) *sizeOut = memfdAt(i).size;
+            return memfdAt(i).physBase;
         }
     }
     return 0;
@@ -15752,9 +15985,9 @@ public ulong memfdResolve(ulong fd, ulong* sizeOut) {
     File* f = &g_fdTable[ifd];
     if (f.type != FileType.FD_MEMFD) return 0;
     int mid = cast(int)cast(size_t)f.backend;
-    if (mid < 0 || mid >= MEMFD_MAX || !g_memfds[mid].inUse) return 0;
-    if (sizeOut !is null) *sizeOut = g_memfds[mid].size;
-    return g_memfds[mid].physBase;
+    if (mid < 0 || mid >= g_memfdCap || !memfdAt(mid).inUse) return 0;
+    if (sizeOut !is null) *sizeOut = memfdAt(mid).size;
+    return memfdAt(mid).physBase;
 }
 
 private long fileObjMmap(ObjHeader* oh, ulong offset, ulong* physOut,
@@ -15815,11 +16048,11 @@ private long fileObjMmap(ObjHeader* oh, ulong offset, ulong* physOut,
 
     if (f.type == FileType.FD_MEMFD) {
         int mid = cast(int)cast(size_t)f.backend;
-        if (mid < 0 || mid >= MEMFD_MAX || !g_memfds[mid].inUse) return 0;
-        if (g_memfds[mid].physBase == 0) return 0;
-        if (offset >= g_memfds[mid].size) return 0;   // no backing at/past EOF
-        if (physOut !is null)   *physOut = g_memfds[mid].physBase + offset;
-        if (sizeOut !is null)   *sizeOut = g_memfds[mid].size - offset;
+        if (mid < 0 || mid >= g_memfdCap || !memfdAt(mid).inUse) return 0;
+        if (memfdAt(mid).physBase == 0) return 0;
+        if (offset >= memfdAt(mid).size) return 0;   // no backing at/past EOF
+        if (physOut !is null)   *physOut = memfdAt(mid).physBase + offset;
+        if (sizeOut !is null)   *sizeOut = memfdAt(mid).size - offset;
         if (vmoOut !is null)    *vmoOut = ensureMemfdVmo(mid);
         if (sharedOut !is null) *sharedOut = true;
         return 1;
@@ -16320,6 +16553,53 @@ private const(char)* fdTypeName(uint t) @nogc nothrow {
 // DIAG: dump every live epoll instance's watch list (fd numbers + IN/OUT), plus every
 // listening unix socket's pending-accept count.  Called from the periodic task census to
 // answer "is the compositor's wayland listener actually watched by any epoll?".
+// DIAGNOSTIC (Firefox bring-up): how full every fixed system-wide table is.  A table that runs out
+// fails its syscall with EMFILE/ENOSPC deep inside a program that then just stops making progress.
+public void resourceUsageDump() @nogc nothrow {
+    uint socks = 0, eps = 0, pipes = 0, mfds = 0, watchesMax = 0;
+    foreach (ref sk; g_localSockets) if (sk.inUse) ++socks;
+    foreach (ref ep; g_epollTable) if (ep.inUse) {
+        ++eps;
+        uint w = 0;
+        foreach (i; 0 .. EPOLL_MAX_WATCHES) if (ep.watches[i].active) ++w;
+        if (w > watchesMax) watchesMax = w;
+    }
+    foreach (ref pb; g_pipes) if (pb.inUse) ++pipes;
+    foreach (i; 0 .. g_memfdCap) if (memfdAt(i).inUse) ++mfds;
+    foreach (i, ref sk; g_localSockets) {
+        if (!sk.inUse || sk.domain != AF_UNIX) continue;
+        const size_t pend = socketBufferReadable(sk.rx);
+        klog("[sock] #"); klog_dec(cast(ulong)i);
+        klog(" type="); klog_dec(cast(ulong)sk.type);
+        klog(" st="); klog_dec(cast(ulong)sk.state);
+        klog(" peer="); klog_dec(cast(ulong)cast(uint)sk.peerId);
+        klog(sk.peerClosed ? " PEERCLOSED" : "");
+        klog(" pid="); klog_dec(cast(ulong)sk.ownerPid);
+        klog(" refs="); klog_dec(cast(ulong)sk.refCount);
+        klog(" rx="); klog_dec(pend);
+        klog(" fds="); klog_dec((sk.passedHead + scmRightsCapacity - sk.passedTail) % scmRightsCapacity);
+        if (sk.pathLength) { klog(" path="); foreach (k; 0 .. sk.pathLength) { char[2] c; c[0] = sk.path[k]; c[1] = 0; klog(c.ptr); } }
+        // who holds it: "<fd table>:<fd>" for every descriptor on this socket
+        klog(" held:");
+        foreach (tab; 0 .. FDTAB_COUNT) foreach (fdn; 0 .. 1024) {
+            auto hf = &g_fdTabs[tab][fdn];
+            if (hf.type != FileType.FD_SOCKET || fileSocket(hf) !is &sk) continue;
+            klog(" "); klog_dec(cast(ulong)tab); klog(":"); klog_dec(cast(ulong)fdn);
+        }
+        klog("\n");
+    }
+    klog("[res] sockets "); klog_dec(socks); klog("/"); klog_dec(localSocketMax);
+    klog(" epoll "); klog_dec(eps); klog("/"); klog_dec(EPOLL_MAX_INSTANCES);
+    klog(" (fullest "); klog_dec(watchesMax); klog("/"); klog_dec(EPOLL_MAX_WATCHES); klog(")");
+    klog(" pipes "); klog_dec(pipes); klog("/"); klog_dec(PIPE_MAX);
+    klog(" memfds "); klog_dec(mfds); klog("/"); klog_dec(cast(ulong)g_memfdCap);
+    { import core.objmgr : g_objFreeTop, OBJ_MAX;
+      klog(" objects "); klog_dec(cast(ulong)(OBJ_MAX - 1 - (g_objFreeTop + 1))); klog("/"); klog_dec(OBJ_MAX); }
+    { import core.org : g_orgEdgesLive, ORG_EDGE_MAX;
+      klog(" edges "); klog_dec(g_orgEdgesLive); klog("/"); klog_dec(ORG_EDGE_MAX); }
+    klog("\n");
+}
+
 public void epollDumpAll() @nogc nothrow {
     foreach (eid; 0 .. EPOLL_MAX_INSTANCES) {
         if (!g_epollTable[eid].inUse) continue;
@@ -16968,18 +17248,16 @@ public void itimerClear(int tid) {
 public long linux_sys_memfd_create(ulong name, ulong flags) {
     initFdTable();
     if ((flags & ~MFD_SUPPORTED_MASK) != 0) return negErrno(EINVAL);
-    int mid = -1;
-    for (int i = 0; i < MEMFD_MAX; i++)
-        if (!g_memfds[i].inUse) { mid = i; break; }
-    if (mid < 0) return negErrno(EMFILE);
+    const int mid = memfdFreeSlot();
+    if (mid < 0) return negErrno(ENOMEM);
     int fd = allocFd();
     if (fd < 0) return negErrno(EMFILE);
-    g_memfds[mid].inUse    = true;
-    g_memfds[mid].refs     = 1;
-    g_memfds[mid].physBase = 0;
-    g_memfds[mid].size     = 0;
-    g_memfds[mid].seals    = (flags & MFD_ALLOW_SEALING) != 0 ? 0 : F_SEAL_SEAL;
-    g_memfds[mid].vmoObjId = 0;
+    memfdAt(mid).inUse    = true;
+    memfdAt(mid).refs     = 1;
+    memfdAt(mid).physBase = 0;
+    memfdAt(mid).size     = 0;
+    memfdAt(mid).seals    = (flags & MFD_ALLOW_SEALING) != 0 ? 0 : F_SEAL_SEAL;
+    memfdAt(mid).vmoObjId = 0;
     g_fdTable[fd].type     = FileType.FD_MEMFD;
     g_fdTable[fd].backend  = cast(void*)cast(size_t)mid;
     g_fdTable[fd].fileSize = 0;
@@ -19902,22 +20180,21 @@ private long handleDrmIoctl(int ifd, ulong request, ulong arg) {
             DrmGem* g = drmGemGet(handle);
             if (!g) return negErrno(EINVAL);
 
-            int vslot = -1;
-            foreach (i, ref m; g_memfds) { if (!m.inUse) { vslot = cast(int)i; break; } }
+            const int vslot = memfdFreeSlot();
             if (vslot < 0) return negErrno(ENOSPC);
             int vnfd = -1;
             for (int i = 3; i < 1024; ++i)
                 if (g_fdTable[i].type == FileType.FD_NONE) { vnfd = i; break; }
             if (vnfd < 0) return negErrno(EMFILE);
 
-            g_memfds[vslot].inUse      = true;
-            g_memfds[vslot].refs       = 1;
-            g_memfds[vslot].physBase   = g.phys;
-            g_memfds[vslot].size       = g.size;
-            g_memfds[vslot].seals      = 0;
-            g_memfds[vslot].vmoObjId   = 0;       // virgl GEMs carry no VMO identity
-            g_memfds[vslot].aliased    = true;    // borrowed pages → reclaim on close
-            g_memfds[vslot].vgemHandle = handle;  // mark as a virgl PRIME alias
+            memfdAt(vslot).inUse      = true;
+            memfdAt(vslot).refs       = 1;
+            memfdAt(vslot).physBase   = g.phys;
+            memfdAt(vslot).size       = g.size;
+            memfdAt(vslot).seals      = 0;
+            memfdAt(vslot).vmoObjId   = 0;       // virgl GEMs carry no VMO identity
+            memfdAt(vslot).aliased    = true;    // borrowed pages → reclaim on close
+            memfdAt(vslot).vgemHandle = handle;  // mark as a virgl PRIME alias
             ++g.refs;                             // the memfd alias holds a reference to the resource
 
             g_fdTable[vnfd].type     = FileType.FD_MEMFD;
@@ -19933,8 +20210,7 @@ private long handleDrmIoctl(int ifd, ulong request, ulong arg) {
         GemBuf* gem = findGem(handle);
         if (!gem) return negErrno(EINVAL);
 
-        int slot = -1;
-        foreach (i, ref m; g_memfds) { if (!m.inUse) { slot = cast(int)i; break; } }
+        const int slot = memfdFreeSlot();
         if (slot < 0) return negErrno(ENOSPC);
 
         int nfd = -1;
@@ -19942,16 +20218,16 @@ private long handleDrmIoctl(int ifd, ulong request, ulong arg) {
             if (g_fdTable[i].type == FileType.FD_NONE) { nfd = i; break; }
         if (nfd < 0) return negErrno(EMFILE);
 
-        g_memfds[slot].inUse      = true;
-        g_memfds[slot].refs       = 1;
-        g_memfds[slot].physBase   = gem.physAddr;
-        g_memfds[slot].size       = gem.size;
-        g_memfds[slot].seals      = 0;
-        g_memfds[slot].vmoObjId   = ensureGemVmo(gem);
-        if (g_memfds[slot].vmoObjId != 0)
-            objRetain(g_memfds[slot].vmoObjId);
-        g_memfds[slot].aliased    = true;
-        g_memfds[slot].vgemHandle = 0;   // dumb-buffer alias, not virgl
+        memfdAt(slot).inUse      = true;
+        memfdAt(slot).refs       = 1;
+        memfdAt(slot).physBase   = gem.physAddr;
+        memfdAt(slot).size       = gem.size;
+        memfdAt(slot).seals      = 0;
+        memfdAt(slot).vmoObjId   = ensureGemVmo(gem);
+        if (memfdAt(slot).vmoObjId != 0)
+            objRetain(memfdAt(slot).vmoObjId);
+        memfdAt(slot).aliased    = true;
+        memfdAt(slot).vgemHandle = 0;   // dumb-buffer alias, not virgl
 
         g_fdTable[nfd].type     = FileType.FD_MEMFD;
         g_fdTable[nfd].flags    = 0;
@@ -19980,7 +20256,7 @@ private long handleDrmIoctl(int ifd, ulong request, ulong arg) {
             return negErrno(EINVAL);
         }
         int mid = cast(int)cast(size_t)pf.backend;
-        if (mid < 0 || mid >= MEMFD_MAX || !g_memfds[mid].inUse) {
+        if (mid < 0 || mid >= g_memfdCap || !memfdAt(mid).inUse) {
             if (g_primeDbgN < 16) { ++g_primeDbgN; klog("[prime] fd="); klog_hex(infd); klog(" FAIL memfd-not-inuse mid="); klog_hex(cast(uint)mid); klog("\n"); }
             return negErrno(EINVAL);
         }
@@ -19988,17 +20264,17 @@ private long handleDrmIoctl(int ifd, ulong request, ulong arg) {
         // R3: a virgl PRIME alias — hand back the originating g_drmGems handle so the
         // importer's RESOURCE_INFO resolves to the same device-global virgl resource
         // (the dumb-buffer physBase reverse-map below is only for KMS dumb buffers).
-        if (g_memfds[mid].vgemHandle != 0) {
+        if (memfdAt(mid).vgemHandle != 0) {
             // Cross-node import: the returned handle is a fresh reference on the same
             // device-global resource. Bump refs so a later GEM_CLOSE of the exporter's
             // handle doesn't free the buffer while this node still scans it out.
-            DrmGem* ig = drmGemGet(g_memfds[mid].vgemHandle);
+            DrmGem* ig = drmGemGet(memfdAt(mid).vgemHandle);
             if (ig !is null) ++ig.refs;
-            userWrite!uint(arg + 0, g_memfds[mid].vgemHandle);
+            userWrite!uint(arg + 0, memfdAt(mid).vgemHandle);
             return 0;
         }
 
-        ulong phys = g_memfds[mid].physBase;
+        ulong phys = memfdAt(mid).physBase;
         uint handle = 0;
         foreach (ref gb; g_gemBufs) {
             if (gb.inUse && gb.physAddr == phys) { handle = gb.handle; break; }
@@ -20038,7 +20314,7 @@ private long handleDrmIoctl(int ifd, ulong request, ulong arg) {
                 g_gemBufs[gslot].height   = 0;
                 g_gemBufs[gslot].pitch    = 0;
                 g_gemBufs[gslot].bpp      = 32;
-                g_gemBufs[gslot].size     = g_memfds[mid].size;
+                g_gemBufs[gslot].size     = memfdAt(mid).size;
                 g_gemBufs[gslot].vmoObjId = 0;
                 handle = nh;
                 if (g_primeDbgN < 16) { ++g_primeDbgN; klog("[prime] fd="); klog_hex(infd); klog(" CPU-alias handle="); klog_hex(nh); klog(" phys="); klog_hex(phys); klog("\n"); }

@@ -13,6 +13,7 @@
 //   LBA 1..32    app directory  (ObjAppEntry, 256B each → 2/sector, 64 entries)
 //   LBA 33..48   domain directory (DomainEntry, 256B each, 32 entries)  [DM5]
 //   LBA 49..62   application-delegation table, two 7-sector slots  [appgate]
+//   LBA 63       per-domain network routes, one self-checking sector  [vnet]
 //   LBA 64..     blob region (manifest / permissions / executable / storage),
 //                allocated sequentially, sector-granular.
 //
@@ -221,6 +222,42 @@ private uint grantsFnv(const(ubyte)* p, uint len) {
     uint h = 2166136261u;
     foreach (i; 0 .. len) { h ^= p[i]; h *= 16777619u; }
     return h;
+}
+
+// vnet: the per-domain network routes (network/vnet.d) in the one sector left between the
+// delegation table and the blob region.  The magic, length and FNV-1a live IN the sector, so a save
+// is a single sector write with nothing else to commit, and a store that never saved routes (older
+// stores, and whatever the disk held there before) reads as "none".
+enum ulong ROUTES_LBA   = 63;
+enum uint  ROUTES_BYTES = SECTOR - 16;
+immutable char[8] ROUTES_MAGIC = ['H','O','S','R','O','U','T','1'];
+static assert(ROUTES_LBA == GRANTS_LBA + 2 * GRANTS_SLOT_SECS, "routes sector must follow the grants slots");
+static assert(ROUTES_LBA < BLOB_LBA_BASE, "routes sector would overlap the blob region");
+private __gshared ubyte[SECTOR] g_routeSec;
+
+// Save the route table (vnet's text form; len 0 = every domain direct).  false = not mounted / too
+// large / I/O error.
+public bool objstoreSaveRoutes(const(ubyte)* data, uint len) {
+    if (!g_mounted || len > ROUTES_BYTES || (len != 0 && data is null)) return false;
+    memset(g_routeSec.ptr, 0, SECTOR);
+    memcpy(g_routeSec.ptr, ROUTES_MAGIC.ptr, 8);
+    *cast(uint*)(g_routeSec.ptr + 8)  = len;
+    *cast(uint*)(g_routeSec.ptr + 12) = grantsFnv(data, len);
+    if (len != 0) memcpy(g_routeSec.ptr + 16, data, len);
+    return stWrite(ROUTES_LBA, 1, g_routeSec.ptr);
+}
+
+// Load the route table into dst.  Returns its length, 0 if none was ever saved, or -1 if the sector
+// is unreadable or fails its checksum (the caller fails closed).
+public int objstoreLoadRoutes(ubyte* dst, uint cap) {
+    if (!g_mounted || dst is null) return 0;
+    if (!stRead(ROUTES_LBA, 1, g_routeSec.ptr)) return -1;
+    foreach (i; 0 .. 8) if (g_routeSec[i] != ROUTES_MAGIC[i]) return 0;
+    const uint len = *cast(uint*)(g_routeSec.ptr + 8);
+    if (len > ROUTES_BYTES || len > cap) return -1;
+    if (grantsFnv(g_routeSec.ptr + 16, len) != *cast(uint*)(g_routeSec.ptr + 12)) return -1;
+    if (len != 0) memcpy(dst, g_routeSec.ptr + 16, len);
+    return cast(int)len;
 }
 
 // Save the delegation table (appport's text form).  false = not mounted / too large / I/O error.
@@ -658,6 +695,9 @@ public void objstoreMount(const(void)* sampleExec = null, uint sampleExecLen = 0
         memset(g_apps.ptr, 0, MAX_APPS * ObjAppEntry.sizeof);
         memset(g_domEntries.ptr, 0, DOM_MAX_PERSIST * DomainEntry.sizeof);   // DM5
         flushMeta();
+        // vnet: a new store starts with no routes -- never with a previous install's.
+        memset(g_routeSec.ptr, 0, SECTOR);
+        stWrite(ROUTES_LBA, 1, g_routeSec.ptr);
         seedSampleApp(sampleExec, sampleExecLen);
     } else {
         // load the app directory

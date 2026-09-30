@@ -1069,6 +1069,7 @@ public bool domainDelete(uint domObjId) {
     // appgate: forget what the domain was delegated, and tombstone its private files, before the
     // objId goes back to the allocator (objIds are reused LIFO).
     appGrantsScrubDomain(domObjId);
+    { import network.vnet : vnetDomainGone; vnetDomainGone(domObjId); }   // and its network route
     if (g_domainGoneHook !is null) g_domainGoneHook(domObjId);
     // DM5: forget any persisted definition first, so a domain deleted at runtime does not reappear
     // on the next boot via domainRehydrateFromDisk.  No-op for a seed/manifest/clone domain that was

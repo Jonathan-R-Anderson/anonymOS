@@ -1828,7 +1828,9 @@ private bool appgateAuditOnly() {
 private void appgateBootInit() {
     import core.appport : appGrantsInit;
     import core.appreg : appgateSelfTestCases, appRegLookup;
+    import network.vnet : vnetRoutesInit;
     appGrantsInit();
+    vnetRoutesInit();                  // the domains' network routes: saved policy, same moment
     const uint bad = appgateSelfTestCases(&appgateSelfTestFail);
     if (bad == 0) klog("[appgate] selftest PASS (decision table + delegation keys)\n");
     uint unclassified = 0;

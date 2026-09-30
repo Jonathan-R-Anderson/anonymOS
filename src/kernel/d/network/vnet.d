@@ -23,7 +23,8 @@
  *     unresolved next hop wait in a small queue flushed by the ARP reply.
  *   - ROUTES: per domain, "direct" (the host network), "vm:<segment>" (through the gateway VM on
  *     that segment, its .1), or "domain:<name>" (whatever that domain's route is -- chains resolve,
- *     loops fail closed).  Set by the Domain Manager's `route` verb.
+ *     loops fail closed), or "blocked" (no way out).  Set by the Domain Manager's `route` verb, and
+ *     saved in the object store so they survive reboot (vnetRoutesInit).
  *
  * Offloads are off end to end: the VMM is started with offload_tso/ufo/csum=off, so every frame on
  * a segment carries finished checksums and no GSO.
@@ -85,7 +86,7 @@ private struct VSeg {
 }
 
 private struct Route { bool used; uint dom; ubyte kind; int seg; uint viaDom; int domIf; }
-enum : ubyte { RT_DIRECT = 0, RT_SEG = 1, RT_DOMAIN = 2 }
+enum : ubyte { RT_DIRECT = 0, RT_SEG = 1, RT_DOMAIN = 2, RT_BLOCKED = 3 }
 
 private struct NatEnt {
     bool   used;
@@ -693,14 +694,35 @@ private Route* routeOf(uint dom, bool create) {
     return null;
 }
 
-/// `route <domain> direct | vm:<segment> | domain:<name>` (the Domain Manager's verb).
+/// `route <domain> direct | vm:<segment> | domain:<name> | blocked` (the Domain Manager's verb).
+/// The change is saved before it is reported done; one the store has no room for is refused and
+/// leaves the table as it was, so a route never silently disappears at the next boot.
 public bool vnetSetRoute(uint dom, const(char)* arg) {
+    g_routeUndo = g_route;
+    if (!routeApply(dom, arg)) return false;
+    if (!routesPersist()) {
+        g_route = g_routeUndo;
+        klog("[vnet] route: too many routes to save; unchanged\n");
+        return false;
+    }
+    return true;
+}
+private __gshared Route[VNET_MAX_ROUTES] g_routeUndo;
+
+private bool routeApply(uint dom, const(char)* arg) {
     import core.domain : domainByName;
     if (dom == 0 || arg is null) return false;
     if (cstrEqN(arg, "direct", 7)) {
         auto r = routeOf(dom, false);
         if (r !is null) r.used = false;
         klog("[vnet] route: domain 0x"); klog_hex(dom); klog(" -> direct\n");
+        return true;
+    }
+    if (cstrEqN(arg, "blocked", 8)) {
+        auto r = routeOf(dom, true);
+        if (r is null) return false;
+        r.kind = RT_BLOCKED; r.seg = -1; r.viaDom = 0;
+        klog("[vnet] route: domain 0x"); klog_hex(dom); klog(" -> blocked\n");
         return true;
     }
     if (arg[0] == 'v' && arg[1] == 'm' && arg[2] == ':') {
@@ -724,6 +746,101 @@ public bool vnetSetRoute(uint dom, const(char)* arg) {
     return false;
 }
 
+// ── persistence ──────────────────────────────────────────────────────────────────────────────
+// Routes are policy, so they survive reboot in the object store (core/objstore.d, one sector) and
+// only the Domain Manager's verb changes them.  Keyed by domain NAME: objIds are not stable across
+// boots.  Text, one "<Domain>\t<route>\n" per domain that does not go direct, the route in the
+// verb's own form.  Nothing is saved before vnetRoutesInit() runs: the boot proofs create and
+// delete throwaway domains first.
+enum uint ROUTES_BUF_MAX = 496;                    // == objstore ROUTES_BYTES
+private __gshared char[ROUTES_BUF_MAX] g_routesBuf;
+private __gshared bool g_routesReady = false;
+
+private void rput(ref uint p, ref bool over, const(char)* s) {
+    for (; *s; ++s) { if (p < ROUTES_BUF_MAX) g_routesBuf[p++] = *s; else over = true; }
+}
+
+// Save the table.  false only when it does not fit; an I/O error is logged and the live table kept.
+private bool routesPersist() {
+    import core.domain : domainNameOf;
+    import core.objstore : objstoreMounted, objstoreSaveRoutes;
+    if (!g_routesReady || !objstoreMounted()) return true;
+    uint p = 0; bool over = false;
+    foreach (ref r; g_route) {
+        if (!r.used) continue;
+        const(char)* dn = domainNameOf(r.dom);
+        if (dn is null) continue;
+        rput(p, over, dn); rput(p, over, "\t");
+        if (r.kind == RT_SEG) { rput(p, over, "vm:"); rput(p, over, g_seg[r.seg].name.ptr); }
+        else if (r.kind == RT_DOMAIN && domainNameOf(r.viaDom) !is null) { rput(p, over, "domain:"); rput(p, over, domainNameOf(r.viaDom)); }
+        else rput(p, over, "blocked");
+        rput(p, over, "\n");
+    }
+    if (over) return false;
+    if (!objstoreSaveRoutes(cast(const(ubyte)*)g_routesBuf.ptr, p)) klog("[vnet] routes: save FAILED\n");
+    return true;
+}
+
+/// Boot: restore the saved routes.  Called with the delegation table, after the last boot-time
+/// domain change and before the first user program.  A route that no longer resolves (the domain
+/// it went through is gone) and every domain of a corrupt table come back BLOCKED, never direct:
+/// a domain meant to leave through the firewall must not quietly bypass it.
+public void vnetRoutesInit() {
+    import core.domain : domainByName, domainSystemId, g_domains, DOM_NAME_MAX;
+    import core.objstore : objstoreMounted, objstoreLoadRoutes;
+    if (g_routesReady) return;
+    foreach (ref r; g_route) r = Route.init;       // anything the boot proofs set is stale
+    uint loaded = 0, blocked = 0, gone = 0;
+    bool corrupt = false;
+    if (objstoreMounted()) {
+        const int n = objstoreLoadRoutes(cast(ubyte*)g_routesBuf.ptr, ROUTES_BUF_MAX);
+        if (n < 0) corrupt = true;
+        uint p = 0;
+        while (n > 0 && p < cast(uint)n) {
+            char[DOM_NAME_MAX + 1] name = 0; char[48] arg = 0;
+            uint nl = 0, al = 0;
+            while (p < cast(uint)n && g_routesBuf[p] != '\t' && g_routesBuf[p] != '\n') {
+                if (nl < DOM_NAME_MAX) name[nl++] = g_routesBuf[p];
+                ++p;
+            }
+            if (p < cast(uint)n && g_routesBuf[p] == '\t') ++p;
+            while (p < cast(uint)n && g_routesBuf[p] != '\n') {
+                if (al < arg.length - 1) arg[al++] = g_routesBuf[p];
+                ++p;
+            }
+            ++p;                                        // NL
+            if (nl == 0 || al == 0) continue;
+            const uint dom = domainByName(name.ptr);
+            if (dom == 0) { ++gone; continue; }         // the domain itself is gone
+            if (routeApply(dom, arg.ptr)) ++loaded;
+            else if (routeApply(dom, "blocked")) ++blocked;
+        }
+    }
+    if (corrupt) {
+        const uint sys = domainSystemId();
+        foreach (ref d; g_domains)
+            if (d.inUse && !d.isTemplate && d.objId != sys && routeApply(d.objId, "blocked")) ++blocked;
+    }
+    g_routesReady = true;
+    klog("[vnet] routes: "); klog_dec(loaded); klog(" restored, "); klog_dec(blocked);
+    klog(corrupt ? " blocked (saved table CORRUPT: failing closed)" : " blocked (route no longer resolves)");
+    klog(", "); klog_dec(gone); klog(" for deleted domains dropped\n");
+    if (corrupt || blocked != 0 || gone != 0) routesPersist();
+}
+
+/// A domain is being deleted (its objId will be reused): forget its route, and block every domain
+/// that went through it rather than letting them fall back to direct.
+public void vnetDomainGone(uint dom) {
+    if (dom == 0) return;
+    bool changed = false;
+    foreach (ref r; g_route) {
+        if (!r.used) continue;
+        if (r.dom == dom) { r.used = false; changed = true; }
+        else if (r.kind == RT_DOMAIN && r.viaDom == dom) { r.kind = RT_BLOCKED; r.viaDom = 0; changed = true; }
+    }
+    if (changed) routesPersist();
+}
+
 /// Resolve a domain's route: 0 = the host network, > 0 = the domain interface to use, -1 = no way
 /// out (a loop, or too deep): fail closed.
 public int vnetIfForDomain(uint dom) {
@@ -733,6 +850,7 @@ public int vnetIfForDomain(uint dom) {
         if (r is null) return 0;
         if (r.kind == RT_SEG) return domIfFor(dom, r.seg);
         if (r.kind == RT_DOMAIN) { cur = r.viaDom; if (cur == dom) return -1; continue; }
+        if (r.kind == RT_BLOCKED) return -1;
         return 0;
     }
     return -1;
@@ -793,6 +911,7 @@ public size_t vnetRenderJson(char* buf, size_t cap) {
         const(char)* dn = domainNameOf(g_route[i].dom);
         js(b, "{\"domain\":\""); js(b, dn !is null ? dn : "?"); js(b, "\",\"via\":\"");
         if (g_route[i].kind == RT_SEG) { js(b, "vm:"); js(b, g_seg[g_route[i].seg].name.ptr); }
+        else if (g_route[i].kind == RT_BLOCKED) js(b, "blocked");
         else { const(char)* vn = domainNameOf(g_route[i].viaDom); js(b, "domain:"); js(b, vn !is null ? vn : "?"); }
         js(b, "\"}");
     }

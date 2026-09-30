@@ -1740,9 +1740,10 @@ static void tab_network(struct app *app, cairo_t *cr) {
     char path[256]; size_t pl = 0;
     pl += (size_t)snprintf(path + pl, sizeof path - pl, "%s", self);
     const char *at = self;
-    int hops = 0, loop = 0;
+    int hops = 0, loop = 0, blocked = 0;
     for (;;) {
         const char *via = vnet_route_of(&v, at);
+        if (!strcmp(via, "blocked")) { blocked = 1; break; }   // the kernel failed it closed
         if (!strncmp(via, "domain:", 7)) {
             at = via + 7;
             if (!strcmp(at, self) || ++hops > 8) { loop = 1; break; }
@@ -1758,8 +1759,10 @@ static void tab_network(struct app *app, cairo_t *cr) {
     }
     const int py = TAB_Y + 60 + vis * 32;
     draw_text(app, "Path", LABEL_X, py, 80, 13, 0xffb7c1d0u);
-    draw_text(app, loop ? "a routing loop: this domain's traffic is blocked (fail closed)" : path, LABEL_X + 60, py,
-              app->width - LABEL_X - 60 - PAD, 13, loop ? 0xffe08a8au : 0xff7fe0a0u);
+    const char *why = loop    ? "a routing loop: this domain's traffic is blocked (fail closed)"
+                    : blocked ? "blocked: the route it had no longer resolves - pick one above" : path;
+    draw_text(app, why, LABEL_X + 60, py, app->width - LABEL_X - 60 - PAD, 13,
+              (loop || blocked) ? 0xffe08a8au : 0xff7fe0a0u);
     if (!strncmp(cur, "vm:", 3) || v.myip[0]) {
         char st[160];
         snprintf(st, sizeof st, "Interface on the firewall LAN: %s   frames in %lu, out %lu%s", v.myip[0] ? v.myip : "not up yet",

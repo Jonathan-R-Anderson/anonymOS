@@ -342,6 +342,8 @@ public uint domainBuildNamespace(uint domObjId) {
     nsBind(ns, "/compat\0".ptr,    root, RO);
     nsBind(ns, "/system\0".ptr,    root, RO);   // the shell's function library (/system/shell/...)
     nsBind(ns, "/var/cache\0".ptr, root, RO);   // font caches
+    nsBind(ns, "/vm-alpine.vmlinuz\0".ptr, root, RO);  // the Virtual Machines app's bundled guest
+    nsBind(ns, "/vm-alpine.initrd\0".ptr,  root, RO);
     nsBind(ns, "/libnshim.so\0".ptr, root, RO); // the network shim (LD_PRELOAD) -- TCP/IP is the LKL's
     // ...minus the secrets that live in /etc (explicit deny overrides the shorter allow).
     nsBindDeny(ns, "/etc/shadow\0".ptr);

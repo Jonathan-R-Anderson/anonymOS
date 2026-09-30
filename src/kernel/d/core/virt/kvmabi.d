@@ -64,6 +64,8 @@ enum ulong KVM_SET_SREGS        = 0x4138ae84; // _IOW(AE,0x84,size=312)
 enum ulong KVM_GET_MSRS         = 0xc008ae88; // _IOWR(AE,0x88,size=8)
 enum ulong KVM_SET_MSRS         = 0x4008ae89; // _IOW(AE,0x89,size=8)
 enum ulong KVM_SET_CPUID2       = 0x4008ae90; // _IOW(AE,0x90,size=8)
+enum ulong KVM_GET_CPUID2       = 0xc008ae91; // _IOWR(AE,0x91,size=8): what SET_CPUID2 installed
+enum ulong KVM_GET_NESTED_STATE = 0xc080aebe; // _IOWR(AE,0xbe,size=128): kvm_nested_state header
 enum ulong KVM_GET_FPU          = 0x81a0ae8c; // _IOR(AE,0x8c,size=416)
 enum ulong KVM_SET_FPU          = 0x41a0ae8d; // _IOW(AE,0x8d,size=416)
 enum ulong KVM_GET_LAPIC        = 0x8400ae8e; // _IOR(AE,0x8e,size=1024)

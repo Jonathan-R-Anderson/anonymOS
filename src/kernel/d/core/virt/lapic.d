@@ -389,6 +389,24 @@ bool lapicSetBase(VcpuHv* hv, ulong val) @nogc nothrow {
     return true;
 }
 
+/// IA32_APIC_BASE set by the VMM (KVM_SET_SREGS.apic_base, e.g. restoring a snapshot): host-initiated,
+/// so any transition is allowed -- KVM's kvm_set_apic_base(host_initiated=true).  0 is ignored
+/// (never a state a VMM means to restore).
+void lapicSetBaseHost(VcpuHv* hv, ulong val) @nogc nothrow {
+    if (val == 0) return;
+    auto l = &hv.lapic;
+    const bool wasX2 = lapicX2(l);
+    const bool x2 = (val & APIC_BASE_EXTD) != 0;
+    const uint id = lapicId(l);
+    l.apicBase = (val & 0xFFFF_F000UL) | (val & (APIC_BASE_EN | APIC_BASE_EXTD | APIC_BASE_BSP));
+    if (x2 && !wasX2) {
+        *reg(l, APIC_ID) = id;
+        *reg(l, APIC_LDR) = ((id >> 4) << 16) | (1u << (id & 15));
+    } else if (!x2 && wasX2) {
+        *reg(l, APIC_ID) = id << 24;
+    }
+}
+
 /// The xAPIC MMIO page this vCPU decodes (0 = none: x2APIC mode or APIC disabled).
 ulong lapicMmioBase(VcpuHv* hv) @nogc nothrow {
     auto l = &hv.lapic;

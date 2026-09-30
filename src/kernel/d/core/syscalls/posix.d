@@ -5733,7 +5733,16 @@ private const(char)[] displayInfoContent() {
 // payload pages are now freed on grow/unlink (no more leak) with byte accounting.
 private enum int    RT_MAX_NODES = 12288;   // Z8: +~1018 zsh function/completion nodes
 private enum size_t RT_NAME_MAX  = 96;
-private enum ulong  RT_MAX_BYTES = 64UL * 1024 * 1024;   // tmpfs soft cap (ENOSPC past it)
+private enum ulong  RT_MIN_CAP_BYTES = 64UL * 1024 * 1024;   // tmpfs soft cap floor (ENOSPC past it)
+// The cap: a quarter of RAM, at least 64 MiB.  It was a flat 64 MiB, which a VM snapshot (the guest's
+// whole memory image) or a large package could not fit in on any machine.
+private ulong rtMaxBytes() {
+    import memory.mm : memStats;
+    ulong totalB, freeB;
+    memStats(totalB, freeB);
+    const ulong q = totalB / 4;
+    return q > RT_MIN_CAP_BYTES ? q : RT_MIN_CAP_BYTES;
+}
 
 private enum ubyte RT_FREE = 0;
 private enum ubyte RT_DIR  = 1;
@@ -6183,11 +6192,27 @@ private int rtResolve(const(char)* path, out int outParent,
 // RT_MAX_BYTES cap and `df` reflect reality.
 private bool rtEnsureCap(ref RtNode n, uint need) {
     if (need <= n.cap) return true;
-    const size_t pages = (need + 4095) / 4096;
-    const uint newCap = cast(uint)(pages * 4096);
-    // Enforce the tmpfs soft cap on the *additional* bytes this grow would commit.
-    if (g_rtBytes + (newCap - n.cap) > RT_MAX_BYTES) return false;
-    const ulong phys = alloc_phys_pages(pages);
+    // Grow geometrically (doubling, at most +64 MiB per step) so a file written in chunks is copied
+    // O(n) times, not once per write -- a 128 MB VM snapshot written 1 MB at a time was 128 copies.
+    // Falls back to the exact size when the larger block is over the cap or not available.
+    const ulong maxBytes = rtMaxBytes();
+    ulong want = need;
+    if (n.cap > 0) {
+        ulong dbl = cast(ulong)n.cap * 2;
+        if (dbl > cast(ulong)n.cap + 64UL * 1024 * 1024) dbl = cast(ulong)n.cap + 64UL * 1024 * 1024;
+        if (dbl > want && dbl <= 0xFFFF_F000UL) want = dbl;
+    }
+    size_t pages = cast(size_t)((want + 4095) / 4096);
+    uint newCap = cast(uint)(pages * 4096);
+    ulong phys = 0;
+    if (g_rtBytes + (newCap - n.cap) <= maxBytes) phys = alloc_phys_pages(pages);
+    if (phys == 0 && want != need) {                     // the exact size instead
+        pages = (need + 4095) / 4096;
+        newCap = cast(uint)(pages * 4096);
+        // Enforce the tmpfs soft cap on the *additional* bytes this grow would commit.
+        if (g_rtBytes + (newCap - n.cap) > maxBytes) return false;
+        phys = alloc_phys_pages(pages);
+    } else if (phys == 0 && g_rtBytes + (newCap - n.cap) > maxBytes) return false;
     if (phys == 0) return false;
     ubyte* nd = cast(ubyte*)phys_to_virt(phys);
     // Copy only bytes that actually exist in RAM: min(size, cap), and none when data is null
@@ -8002,7 +8027,7 @@ private void rtAddFile(const(char)* rel, size_t relLen, const(ubyte)* data, uint
             }
             if (!rtEnsureCap(g_rt[fidx], dataLen)) {
                 ++g_xkbAllocFails;
-                rtAddFileFail(rel, relLen, "no room for the payload (RT_MAX_BYTES)\0".ptr);
+                rtAddFileFail(rel, relLen, "no room for the payload (the rtfs cap)\0".ptr);
                 return;
             }
             foreach (k; 0 .. dataLen) g_rt[fidx].data[k] = data[k];
@@ -10370,6 +10395,19 @@ private long fileObjIoctl(ObjHeader* oh, ulong cmd, ulong arg) {
     if (f.type == FileType.FD_INPUT_EVENT) {
         return handleInputEvioc(cast(int)cast(size_t)f.backend, cmd, arg);
     }
+
+    // The generic file ioctls Linux answers for every fd (do_vfs_ioctl), before any per-kind
+    // handler.  FIONBIO is how Rust's set_nonblocking() works -- not fcntl -- so without it a
+    // socket fd answered ENOTTY: Cloud Hypervisor's serial console accept()s its client, calls
+    // set_nonblocking(), gets the error, and its serial thread exits, leaving a connected but
+    // silent console.  FIOCLEX/FIONCLEX: this kernel has no close-on-exec to toggle; accepted.
+    if (cmd == 0x5421 /*FIONBIO*/) {
+        if (arg == 0 || !isUserRange(arg, 4)) return negErrno(EFAULT);
+        smapBegin(); const int on = *cast(const(int)*)arg; smapEnd();
+        if (on) f.flags |= 0x800; else f.flags &= ~0x800;          // O_NONBLOCK
+        return 0;
+    }
+    if (cmd == 0x5451 /*FIOCLEX*/ || cmd == 0x5450 /*FIONCLEX*/) return 0;
 
     // Socket interface ioctls (SIOC*, magic byte 0x89).  Note this sits AFTER the DRM
     // magic test above, which is fine: 0x89 != 0x64, so SIOC never reaches it.

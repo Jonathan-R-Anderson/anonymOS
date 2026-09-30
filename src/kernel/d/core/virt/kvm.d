@@ -1180,6 +1180,12 @@ long kvmVcpuIoctl(int tid, uint vcpuObj, uint vcpuGen, ulong cmd, ulong arg) {
             // "usable" LDTR and VM entry fails.
             if (c !is null && vc.sregsSet) s = c.sregs;
             else kvmResetSRegs(&s, vc.index == 0);
+            {   // apic_base is the in-kernel LAPIC's (the guest moves it with WRMSR, no exit to here)
+                import core.virt.lapic : hvFor;
+                Vm* vmS = vmCheck(vc.vmObj, vc.vmGen);
+                auto hv = vmS !is null ? hvFor(vmS, vc, false) : null;
+                if (hv !is null && hv.inited) s.apicBase = hv.lapic.apicBase;
+            }
             kvmUserCopyOut(arg, &s, KvmSRegs.sizeof);
             return 0;
         }
@@ -1194,6 +1200,13 @@ long kvmVcpuIoctl(int tid, uint vcpuObj, uint vcpuGen, ulong cmd, ulong arg) {
             if (c is null) return E_NOMEM;
             c.sregs = tmp;
             vc.sregsSet = true;
+            {   // restoring a snapshot: the guest may have switched its LAPIC to x2APIC -- without
+                // this its x2APIC EOI writes #GP after the restore and interrupts stop.
+                import core.virt.lapic : hvFor, lapicSetBaseHost;
+                Vm* vmS = vmCheck(vc.vmObj, vc.vmGen);
+                auto hv = vmS !is null ? hvFor(vmS, vc, true) : null;
+                if (hv !is null) lapicSetBaseHost(hv, tmp.apicBase);
+            }
             return 0;
         }
         case KVM_GET_FPU: {
@@ -1290,6 +1303,33 @@ long kvmVcpuIoctl(int tid, uint vcpuObj, uint vcpuGen, ulong cmd, ulong arg) {
             if (p is null) return E_NOMEM;
             p.count = nent;
             kvmUserCopyIn(p.entries.ptr, arg + 8, cast(size_t)(nent * 40));
+            return 0;
+        }
+        case KVM_GET_CPUID2: {
+            // The table SET_CPUID2 installed (Cloud Hypervisor saves it in a snapshot).  nent in:
+            // the caller's capacity; out: the count, or E2BIG with the count when it is too small.
+            if (!kvmUserOk(tid, arg, 8, true)) return E_FAULT;
+            const uint cap = kvmUserRead!uint(arg);
+            auto p = kvmCpuidFor(vc, false);
+            const uint cnt = p !is null ? p.count : 0;
+            kvmUserWrite!uint(arg, cnt);
+            if (cap < cnt) return E_BIG;
+            if (!kvmUserOk(tid, arg, 8 + cast(ulong)cnt * 40, true)) return E_FAULT;
+            if (cnt) kvmUserCopyOut(arg + 8, p.entries.ptr, cast(size_t)(cnt * 40));
+            return 0;
+        }
+        case KVM_GET_NESTED_STATE: {
+            // Guests are never offered VMX (CPUID.1:ECX.VMX is cleared), so there is no nested
+            // state: answer the bare 128-byte header -- format VMX, size = the header, VMXON and
+            // VMCS12 pointers -1 -- which a VMM (Cloud Hypervisor's snapshot) records as "none".
+            if (!kvmUserOk(tid, arg, 128, true)) return E_FAULT;
+            const uint cap = kvmUserRead!uint(arg + 4);
+            if (cap < 128) return E_INVAL;
+            ubyte[128] hdr = 0;
+            *cast(uint*)&hdr[4] = 128;                 // size: header only
+            *cast(ulong*)&hdr[8] = ulong.max;          // vmx.vmxon_pa
+            *cast(ulong*)&hdr[16] = ulong.max;         // vmx.vmcs12_pa
+            kvmUserCopyOut(arg, hdr.ptr, 128);
             return 0;
         }
         case KVM_SET_MSRS: {

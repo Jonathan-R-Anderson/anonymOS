@@ -649,6 +649,19 @@ $(WLSOFTWARE_BIN): src/util/wl-software.c $(XDG_SHELL_HEADER) $(XDG_SHELL_CODE)
 		-lm \
 		-pthread
 
+# Virtual Machines (the VirtualBox-style manager): cairo + FreeType like the Software Center.
+$(WLVMM_BIN): src/util/wl-vmm.c src/util/wl-deco.h $(XDG_SHELL_HEADER) $(XDG_SHELL_CODE)
+	@echo "==== Building wl-vmm (Virtual Machines) ===="
+	@CAIRO_CFLAGS="$$(PKG_CONFIG_LIBDIR='$(WAYLAND_SYSROOT)/lib/pkgconfig:$(WAYLAND_SYSROOT)/share/pkgconfig' PKG_CONFIG_PATH='' PKG_CONFIG_SYSROOT_DIR='' pkg-config --cflags cairo wayland-client)" ; \
+	CAIRO_LIBS="$$(PKG_CONFIG_LIBDIR='$(WAYLAND_SYSROOT)/lib/pkgconfig:$(WAYLAND_SYSROOT)/share/pkgconfig' PKG_CONFIG_PATH='' PKG_CONFIG_SYSROOT_DIR='' pkg-config --libs cairo wayland-client)" ; \
+	$(MUSL_CC) -O2 -Wall -Wextra -L$(WAYLAND_SYSROOT)/lib \
+		-I$(WAYLAND_SYSROOT)/include -I$(WAYLAND_SYSROOT)/include/freetype2 -Ibuild $$CAIRO_CFLAGS \
+		-o $@ src/util/wl-vmm.c $(XDG_SHELL_CODE) \
+		-lfreetype \
+		$$CAIRO_LIBS \
+		-lm \
+		-pthread
+
 # The Software Center's fetcher: the kernel approves an install and writes the request; this
 # carries it out over the LKL socket shim.  Dynamic musl (it needs LD_PRELOAD=/libnshim.so to
 # reach the network), like the other net clients here.
@@ -929,7 +942,7 @@ $(WLWALLPAPER_BIN): src/util/wl-wallpaper.c $(XDG_SHELL_HEADER) $(XDG_SHELL_CODE
 # GNOME toolbar popovers + utility programs — all share the wl-wifi-menu link line
 # (freetype + png/bz2/z + wayland-client).  Static pattern rule scoped to exactly
 # these targets, so it never shadows the explicit wl-* rules above.
-$(WLOVERVIEW_BIN) $(WLCALENDAR_BIN) $(WLQUICKSET_BIN) $(WLCALC_BIN) $(WLCLOCKS_BIN) $(WLVMM_BIN) $(WLIMGVIEW_BIN) $(WLCHARS_BIN) $(WLSYSMON_BIN) $(WLEDITOR_BIN) $(WLSCREENSHOT_BIN): build/wl-%: src/util/wl-%.c $(XDG_SHELL_HEADER) $(XDG_SHELL_CODE)
+$(WLOVERVIEW_BIN) $(WLCALENDAR_BIN) $(WLQUICKSET_BIN) $(WLCALC_BIN) $(WLCLOCKS_BIN) $(WLIMGVIEW_BIN) $(WLCHARS_BIN) $(WLSYSMON_BIN) $(WLEDITOR_BIN) $(WLSCREENSHOT_BIN): build/wl-%: src/util/wl-%.c $(XDG_SHELL_HEADER) $(XDG_SHELL_CODE)
 	@echo "==== Building wl-$* (GNOME utility) ===="
 	@WL_LIBS="$$(PKG_CONFIG_LIBDIR='$(WAYLAND_SYSROOT)/lib/pkgconfig:$(WAYLAND_SYSROOT)/share/pkgconfig' PKG_CONFIG_PATH='' PKG_CONFIG_SYSROOT_DIR='' pkg-config --libs wayland-client)" ; \
 	$(MUSL_CC) -O2 -Wall -Wextra -L$(WAYLAND_SYSROOT)/lib \
@@ -1110,6 +1123,20 @@ stage-iso-tree: kernel.elf $(WLSOFTWARE_BIN) $(PKGFETCH_BIN) $(SOFTWARE_CATALOG)
 		echo "Included Cloud Hypervisor (VMM; needs a domain with DEVCLASS_VIRT / dev/kvm)"; \
 	else \
 		echo "Cloud Hypervisor NOT staged (run scripts/build-cloud-hypervisor.sh)"; \
+	fi
+
+	@# Virtual Machines' bundled guest: Alpine's linux-virt kernel + a busybox initramfs
+	@# (tests/vmm/linux-guest/build.sh), boot modules /vm-alpine.vmlinuz + /vm-alpine.initrd that every
+	@# domain may read (core/domain.d).  Staged with Cloud Hypervisor; skipped if it cannot be built.
+	@if [ -f $(CLOUD_HYPERVISOR_BIN) ]; then \
+		if [ ! -f tests/vmm/linux-guest/vmlinuz-virt ] || [ ! -f tests/vmm/linux-guest/initramfs.cpio.gz ]; then \
+			tests/vmm/linux-guest/build.sh || true; fi; \
+		if [ -f tests/vmm/linux-guest/vmlinuz-virt ] && [ -f tests/vmm/linux-guest/initramfs.cpio.gz ]; then \
+			cp tests/vmm/linux-guest/vmlinuz-virt cd/vm-alpine.vmlinuz; \
+			cp tests/vmm/linux-guest/initramfs.cpio.gz cd/vm-alpine.initrd; \
+			printf '    module_path: boot():/vm-alpine.vmlinuz\n    module_path: boot():/vm-alpine.initrd\n' >> cd/boot/limine/limine.conf; \
+			echo "Included the bundled VM guest (Alpine linux-virt + busybox initramfs)"; \
+		else echo "Bundled VM guest NOT staged (tests/vmm/linux-guest/build.sh failed)"; fi; \
 	fi
 
 	@# VMM: the pfSense installer ISO as an install-media boot module -> Limine loads it into RAM

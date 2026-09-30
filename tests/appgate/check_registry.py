@@ -82,7 +82,8 @@ for rel in ("src/boot/limine.conf", "Makefile", "scripts/mk-install-iso.sh"):
 DATA_SUFFIX = (".blob", ".conf", ".bin", ".json", ".png", ".iso", ".ext4", ".pem", ".key", ".sh",
                ".img", ".hosupd", ".txt", ".cfg", ".sig", ".pub", ".tar", ".gz", ".xz", ".zst")
 DATA_NAMES = {"hiddeninstall-test", "epin-debug-ssh-key", "test.hosupd", "install.json", "anos.key",
-              "manifest.blob", "guest-vmlinuz", "guest-initrd"}
+              "manifest.blob", "guest-vmlinuz", "guest-initrd",
+              "vm-alpine.vmlinuz", "vm-alpine.initrd"}
 DATA_PATTERN = re.compile(r'^esp-[a-z-]*image$')      # ESP / hidden-volume disk images
 
 def is_library(name):

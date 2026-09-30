@@ -55,7 +55,22 @@ enum MAX_TASKS   = 256;   // bumped from 64: LKL+desktop+dbus+NM exhaust 64 (exi
 // which overflowed the old 512 cap ("addRegion: full") before the first frame.
 // munmap now reclaims entries (removeRegion), but the steady-state working set is
 // still large, so keep a generous ceiling. Cost: MAX_TASKS(64) * 4096 * ~32B ≈ 8MB.
-enum MAX_REGIONS = 4096;
+// An address space's regions live in ONE table shared by all its threads, grown a page-sized chunk
+// at a time.  It used to be a fixed 4096-entry array inside every task, each thread holding its own
+// copy: Firefox's parent (~3,700 live mappings, like on Linux) filled every new thread's copy
+// ("addRegion: full", then a NULL malloc), a mapping made by one thread was unknown to the others'
+// tables, munmap had to walk every thread's copy, and the arrays alone took ~50 MB of kernel memory.
+// Chunks never move, so an AddrRegion* stays valid for as long as its entry does.
+enum int RT_PER_CHUNK  = cast(int)(4096 / AddrRegion.sizeof);
+enum int RT_MAX_CHUNKS = 508;                        // the header fits one page
+enum MAX_REGIONS = RT_PER_CHUNK * RT_MAX_CHUNKS;     // ~43k regions per address space
+struct RegionTable {
+    int count;
+    int nchunks;
+    int refs;                                        // tasks (threads) sharing it
+    AddrRegion*[RT_MAX_CHUNKS] chunks;
+}
+static assert(RegionTable.sizeof <= 4096);
 
 enum RegionType : ubyte {
     None             = 0,
@@ -116,9 +131,9 @@ struct Task {
     // Physical address of this task's PML4 page table
     ulong pml4Phys;
 
-    // Virtual address space regions
-    AddrRegion[MAX_REGIONS] regions;
-    int regionCount;
+    // Virtual address space regions: ONE table per address space, shared by its threads (see
+    // RegionTable below).  null until the task maps something.
+    RegionTable* rtab;
 
     // Linux heap (brk)
     ulong brkStart;   // lowest valid brk address
@@ -602,7 +617,7 @@ void releaseTask(int tid) {
     if (tid > 0 && tid < MAX_TASKS) {
         objReleaseTask(tid);
         objReleaseUntyped(tid);
-        clearRegions(g_tasks[tid]);
+        rtabDetach(g_tasks[tid]);
         g_tasks[tid] = Task.init;
     }
 }
@@ -633,15 +648,84 @@ private void objReleaseRegion(AddrRegion* r) {
     r.vmoRetained = false;
 }
 
+// --- region table plumbing --------------------------------------------------------------------
+// Table pages are kernel bookkeeping: charged to the kernel, not to whichever task asked.
+private ulong rtabPage() {
+    const uint saved = physActiveUntyped();
+    physSetActiveUntyped(g_tasks[0].untypedObjId);
+    const ulong ph = alloc_phys_page();              // zeroed
+    physSetActiveUntyped(saved);
+    return ph;
+}
+private RegionTable* rtabAlloc() {
+    const ulong ph = rtabPage();
+    if (ph == 0) return null;
+    auto t = cast(RegionTable*)(ph + hhdm_offset);
+    t.refs = 1;
+    return t;
+}
+private bool rtabGrow(RegionTable* t) {
+    if (t.nchunks >= RT_MAX_CHUNKS) return false;
+    const ulong ph = rtabPage();
+    if (ph == 0) return false;
+    t.chunks[t.nchunks++] = cast(AddrRegion*)(ph + hhdm_offset);
+    return true;
+}
+// Room for one more entry.
+private bool rtabRoom(RegionTable* t) {
+    return t.count < t.nchunks * RT_PER_CHUNK || rtabGrow(t);
+}
+int regionCountOf(ref Task task) { return task.rtab is null ? 0 : task.rtab.count; }
+ref AddrRegion regionAt(ref Task task, int i) {
+    return task.rtab.chunks[i / RT_PER_CHUNK][i % RT_PER_CHUNK];
+}
+bool rtabEnsure(ref Task task) {
+    if (task.rtab is null) task.rtab = rtabAlloc();
+    return task.rtab !is null;
+}
+// A thread (CLONE_VM) shares its creator's table.
+void rtabShare(ref Task child, ref Task parent) {
+    rtabDetach(child);
+    if (!rtabEnsure(parent)) return;
+    child.rtab = parent.rtab;
+    ++child.rtab.refs;
+}
+// fork: the child gets its own copy (its own region objects, made lazily).
+bool rtabCopy(ref Task child, ref Task parent) {
+    rtabDetach(child);
+    const int n = regionCountOf(parent);
+    if (n == 0) return true;
+    if (!rtabEnsure(child)) return false;
+    foreach (i; 0 .. n) {
+        if (!rtabRoom(child.rtab)) return false;
+        auto d = &regionAt(child, child.rtab.count++);
+        *d = regionAt(parent, i);
+        d.objId = 0;
+        d.vmoRetained = false;
+    }
+    return true;
+}
+// Drop this task's reference; the last one frees the table and its region objects.  (The frames the
+// regions map are the caller's business -- exit/exec release them before detaching.)
+void rtabDetach(ref Task task) {
+    auto t = task.rtab;
+    task.rtab = null;
+    if (t is null || --t.refs > 0) return;
+    foreach (i; 0 .. t.count)
+        objReleaseRegion(&t.chunks[i / RT_PER_CHUNK][i % RT_PER_CHUNK]);
+    foreach (c; 0 .. t.nchunks) free_phys_page(cast(ulong)t.chunks[c] - hhdm_offset);
+    free_phys_page(cast(ulong)t - hhdm_offset);
+}
+
 // Add a virtual address region to a task.
 AddrRegion* addRegion(ref Task task, ulong start, ulong end,
                       RegionType type, RegionPerms perms, ulong physBase = 0,
                       bool owned = false, uint vmoObjId = 0) {
-    if (task.regionCount >= MAX_REGIONS) {
+    if (!rtabEnsure(task) || !rtabRoom(task.rtab)) {
         klog("[task] addRegion: full\n");
         return null;
     }
-    auto r          = &task.regions[task.regionCount++];
+    auto r          = &regionAt(task, task.rtab.count++);
     r.start         = start;
     r.end           = end;
     r.type          = type;
@@ -669,15 +753,16 @@ bool regionOwnedAt(ref Task task, ulong vaddr) {
 // wholly-contained entries leaked one per such allocation until "addRegion: full" failed the
 // next mmap (ratty died "memory allocation of 118272 bytes failed" a minute after start).
 void removeRegion(ref Task task, ulong start, ulong end) {
-    if (end <= start) return;
-    int n = task.regionCount;
+    if (end <= start || task.rtab is null) return;
+    auto tab = task.rtab;
+    int n = tab.count;
     int i = 0;
     while (i < n) {
-        auto r = &task.regions[i];
+        auto r = &regionAt(task, i);
         if (r.end <= start || r.start >= end) { ++i; continue; }      // untouched
         if (r.start >= start && r.end <= end) {
             objReleaseRegion(r);
-            task.regions[i] = task.regions[n - 1];   // swap-remove
+            *r = regionAt(task, n - 1);              // swap-remove
             // The swap moves a LIVE region to a new ADDRESS.  Its MemRegion object still records
             // the old slot in `impl`, so the next objEnsureRegion() sees impl != &regions[i],
             // treats the object as stale, and -- because its release is guarded on impl MATCHING
@@ -687,20 +772,23 @@ void removeRegion(ref Task task, ulong start, ulong end) {
             // 8192-object table during ordinary desktop work: the installer reached ~5%% and then
             // every open/read/write failed EBADF, because publishActiveFd could no longer get an
             // object and cleared the fd's capability.  The symptom is nowhere near the cause.
-            {
-                auto mh = objGet(task.regions[i].objId);
+            if (i != n - 1) {
+                auto mh = objGet(r.objId);
                 if (mh !is null && mh.type == ObjType.MemRegion)
-                    mh.impl = cast(void*)&task.regions[i];
+                    mh.impl = cast(void*)r;
             }
             --n;
+            tab.count = n;
             continue;                                 // re-check swapped-in entry
         }
         if (r.start < start && r.end > end) {
             // A hole in the middle: this entry keeps the head, a new one takes the tail.  With the
             // table full it stays whole (still correct: its pages are unmapped all the same, and a
             // live tail must stay listed -- fork copies and exit frees only what is listed).
-            if (n >= MAX_REGIONS) { ++i; continue; }
-            auto t = &task.regions[n++];
+            tab.count = n;
+            if (!rtabRoom(tab)) { ++i; continue; }
+            auto t = &regionAt(task, n++);
+            r = &regionAt(task, i);
             *t = *r;
             t.start = end;
             if (t.physBase != 0) t.physBase += end - r.start;
@@ -715,64 +803,39 @@ void removeRegion(ref Task task, ulong start, ulong end) {
         }
         ++i;
     }
-    task.regionCount = n;
+    tab.count = n;
 }
 
-// Threads keep a region table each but share one address space, so an unmap -- which may come
-// from any of them, not the one that mapped -- must reach every table that lists the range.
+// Threads share one table now, so these are the plain operations; the names stay for callers.
 void removeRegionShared(int tid, ulong start, ulong end) {
     if (tid < 0 || tid >= MAX_TASKS) return;
-    const ulong pml4 = g_tasks[tid].pml4Phys;
-    foreach (i; 0 .. MAX_TASKS) {
-        auto t = &g_tasks[i];
-        if (i != tid && (!t.active || t.exited || pml4 == 0 || t.pml4Phys != pml4)) continue;
-        removeRegion(*t, start, end);
-    }
+    removeRegion(g_tasks[tid], start, end);
 }
-// The region covering `vaddr` in ANY table of this address space.  Threads each keep a table but
-// share one address space, so a page one thread reserved and another first touches (Firefox's JS
-// helper threads commit the main thread's JIT reservation) is found only by looking in all of them.
 AddrRegion* findRegionShared(int tid, ulong vaddr) {
     if (tid < 0 || tid >= MAX_TASKS) return null;
-    auto r = findRegion(g_tasks[tid], vaddr);
-    if (r !is null) return r;
-    const ulong pml4 = g_tasks[tid].pml4Phys;
-    if (pml4 == 0) return null;
-    foreach (i; 0 .. MAX_TASKS) {
-        auto t = &g_tasks[i];
-        if (i == tid || !t.active || t.exited || t.pml4Phys != pml4) continue;
-        r = findRegion(*t, vaddr);
-        if (r !is null) return r;
-    }
-    return null;
+    return findRegion(g_tasks[tid], vaddr);
 }
-// Does any table of this address space own the pages at `vaddr` (safe to free on unmap)?
 bool regionOwnedAtShared(int tid, ulong vaddr) {
     if (tid < 0 || tid >= MAX_TASKS) return false;
-    if (regionOwnedAt(g_tasks[tid], vaddr)) return true;
-    const ulong pml4 = g_tasks[tid].pml4Phys;
-    if (pml4 == 0) return false;
-    foreach (i; 0 .. MAX_TASKS) {
-        auto t = &g_tasks[i];
-        if (i == tid || !t.active || t.exited || t.pml4Phys != pml4) continue;
-        auto r = findRegion(*t, vaddr);
-        if (r !is null) return r.owned;
-    }
-    return false;
+    return regionOwnedAt(g_tasks[tid], vaddr);
 }
 
 void clearRegions(ref Task task) {
-    for (int i = 0; i < task.regionCount; ++i)
-        objReleaseRegion(&task.regions[i]);
-    task.regionCount = 0;
+    rtabDetach(task);
 }
 
 // Find the region that contains vaddr (or null)
 AddrRegion* findRegion(ref Task task, ulong vaddr) {
-    for (int i = 0; i < task.regionCount; i++) {
-        auto r = &task.regions[i];
-        if (vaddr >= r.start && vaddr < r.end)
-            return r;
+    auto tab = task.rtab;
+    if (tab is null) return null;
+    foreach (c; 0 .. tab.nchunks) {
+        auto ch = tab.chunks[c];
+        const int lim = (c + 1) * RT_PER_CHUNK <= tab.count ? RT_PER_CHUNK : tab.count - c * RT_PER_CHUNK;
+        foreach (k; 0 .. lim) {
+            auto r = &ch[k];
+            if (vaddr >= r.start && vaddr < r.end) return r;
+        }
+        if ((c + 1) * RT_PER_CHUNK >= tab.count) break;
     }
     return null;
 }
@@ -794,9 +857,9 @@ public void objReconcileRegions() {
     for (int t = 0; t < MAX_TASKS; ++t) {
         if (!g_tasks[t].active || g_tasks[t].exited) continue;
         auto task = &g_tasks[t];
-        int n = task.regionCount;
+        int n = regionCountOf(*task);
         for (int i = 0; i < n; ++i) {
-            auto r = &task.regions[i];
+            auto r = &regionAt(*task, i);
             objEnsureRegion(r);
             objMark(r.objId);
         }
@@ -852,8 +915,8 @@ public void orgReconcileOwnership() {
             if (task.parentObjId != 0 && task.parentObjId != proc)
                 edgeEnsure(proc, task.parentObjId, EdgeKind.Weak, 0); // parent back-edge
         }
-        for (int i = 0; i < task.regionCount; ++i) {
-            auto r = &task.regions[i];
+        for (int i = 0; i < regionCountOf(*task); ++i) {
+            auto r = &regionAt(*task, i);
             if (proc != 0 && r.objId != 0)
                 edgeEnsure(proc, r.objId, EdgeKind.StrongOwn, 0);
             if (r.objId != 0 && r.vmoObjId != 0)

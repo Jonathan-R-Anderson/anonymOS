@@ -2546,6 +2546,14 @@ public bool bootHasInstallPayload() {
     return instFindModule("esp-image", phys, size);
 }
 
+// TEST IMAGES: the live half of an unattended install (AUTOINSTALL=1) -- the medium carries the
+// install payload AND the "autoinstall" trigger.  AUTOPKG/AUTORUN wait for the installed system.
+@nogc nothrow
+public bool bootIsAutoInstallRun() {
+    ulong phys, size;
+    return bootHasInstallPayload() && instFindModule("autoinstall", phys, size);
+}
+
 @nogc nothrow
 public void installBootableProof() {
     import drivers.block.disk : diskFindTarget, diskStoreIndex, diskFindBootDisk;

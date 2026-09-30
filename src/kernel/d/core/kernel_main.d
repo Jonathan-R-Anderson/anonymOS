@@ -715,6 +715,13 @@ private void crashBacktrace(int tid) {
 
     // The faulting task's address space is still live here (exitTask has not reclaimed it), but
     // we may be on another CR3 -- switch to the crashed task's tables to read its stack.
+    // The page rsp sits in may itself be missing (a fork that ran out of memory, a stack overflow
+    // into a guard page); reading it would fault the KERNEL and take the whole system down over a
+    // client crash.
+    if (!userPageMapped(tid, rsp)) {
+        klog("[freeze] backtrace rsp="); klog_hex(rsp); klog(" (stack page not mapped)\n");
+        return;
+    }
     const ulong savedCr3 = x64ReadCR3();
     if (t.pml4Phys != 0) x64WriteCR3(t.pml4Phys);
 
@@ -748,8 +755,37 @@ private void crashBacktrace(int tid) {
 private __gshared bool[MAX_TASKS] g_taskGroupExit;
 private __gshared int[MAX_TASKS]  g_taskGroupExitCode;
 
+// Exited THREADS kept their task slot forever: nobody wait4()s a thread, and nothing else released
+// it.  Firefox starts and ends threads all the time -- after a few minutes every one of the 256 slots
+// was a dead thread, pthread_create failed ("[clone] no free task slot") and Firefox crashed on the
+// NULL it got back.  Reap them from the supervisor loop: never the running task, never a process
+// leader (wait4 reaps those), only a thread on its process's fd table, and only once it has been
+// gone for a moment.  Its children are re-parented to the process leader and its creator's
+// "child exited" note is dropped, so a reused slot cannot be mistaken for the dead thread.
+private __gshared ulong[MAX_TASKS] g_taskExitMs;
+private void reapExitedThreads() {
+    const ulong now = pitMs();
+    foreach (i; 1 .. MAX_TASKS) {
+        auto t = &g_tasks[i];
+        if (!t.active || !t.exited || cast(ulong)i == g_current_task_id || i == g_idleTid) continue;
+        const int lead = t.processLeaderTid;
+        if (lead == i || lead < 0 || lead >= MAX_TASKS || t.fdTabId == i) continue;   // not a thread
+        if (g_taskExitMs[i] == 0 || now < g_taskExitMs[i] + 500) continue;
+        if (g_vforkParentPlus1[i] != 0) continue;
+        bool vforkParent = false;
+        foreach (k; 0 .. MAX_TASKS) if (g_vforkParentPlus1[k] == i + 1) { vforkParent = true; break; }
+        if (vforkParent) continue;
+        foreach (k; 0 .. MAX_TASKS) if (k != i && g_tasks[k].active && g_tasks[k].parentId == i) g_tasks[k].parentId = lead;
+        const int par = t.parentId;
+        if (par >= 0 && par < MAX_TASKS && par != i) g_tasks[par].childExited[i] = false;
+        g_taskExitMs[i] = 0;
+        releaseTask(i);
+    }
+}
+
 private void exitTask(int tid, int code) {
     if (tid < 0 || tid >= MAX_TASKS) return;
+    g_taskExitMs[tid] = pitMs() | 1;
     if (g_futexWaitActive[tid])
         clearFutexWait(tid, -4); // EINTR-like cleanup for the exiting waiter
 
@@ -887,8 +923,8 @@ private void exitTask(int tid, int code) {
         }
         if (!sharedAS) {
             x64WriteCR3(t.pml4Phys);
-            for (int ri = 0; ri < t.regionCount; ri++) {
-                auto r = &t.regions[ri];
+            for (int ri = 0; ri < regionCountOf(*t); ri++) {
+                auto r = &regionAt(*t, ri);
                 if (!r.owned) continue;
                 for (ulong va = r.start; va < r.end; va += 4096) {
                     ulong phys = unmap_page_hhdm(va);
@@ -897,7 +933,7 @@ private void exitTask(int tid, int code) {
             }
         }
     }
-    clearRegions(*t);
+    rtabDetach(*t);   // the last thread's detach frees the address space's region table
     objReleaseUntyped(tid);
 
     klog("[kernel] task "); klog_hex(tid); klog(" exited code="); klog_hex(code); klog("\n");
@@ -928,11 +964,9 @@ private int forkTask(int parentTid) {
         child.sseState[i] = parent.sseState[i];
 
     // Copy address space regions metadata
-    child.regionCount = parent.regionCount;
-    for (int i = 0; i < parent.regionCount; i++) {
-        child.regions[i] = parent.regions[i];
-        child.regions[i].objId = 0;
-        child.regions[i].vmoRetained = false;
+    if (!rtabCopy(*child, *parent)) {
+        releaseTask(childTid);
+        return -12;
     }
 
     child.brkStart   = parent.brkStart;
@@ -979,8 +1013,24 @@ private int forkTask(int parentTid) {
     // Copy-on-write the parent's user pages into the child (shares frames
     // read-only instead of duplicating them — see walkAndCopyUserPages). Must
     // run while parent's CR3 is active so HHDM accesses resolve.
-    walkAndCopyUserPages(parent.pml4Phys, childPml4, child);
+    const bool copied = walkAndCopyUserPages(parent.pml4Phys, childPml4, child);
     physSetActiveUntyped(savedUntyped);
+    if (!copied) {
+        // Out of memory mid-copy: the child would run with holes in its memory.  Drop what it got
+        // (its copy-on-write references included) and fail the fork with ENOMEM instead.
+        klog("[fork] out of memory copying the address space -- ENOMEM\n");
+        x64WriteCR3(childPml4);
+        foreach (ri; 0 .. regionCountOf(*child)) {
+            auto r = &regionAt(*child, ri);
+            for (ulong va = r.start; va < r.end; va += 4096) {
+                const ulong ph = unmap_page_hhdm(va);
+                if (ph != 0 && r.owned) free_phys_page(ph);
+            }
+        }
+        x64WriteCR3(parent.pml4Phys);
+        releaseTask(childTid);
+        return -12;
+    }
     // The walk demoted the parent's now-shared pages to read-only; flush its TLB
     // so stale writable entries can't bypass the CoW fault on the next write.
     x64WriteCR3(parent.pml4Phys);
@@ -1099,12 +1149,7 @@ private int cloneThread(int parentTid, ulong flags, ulong childStack,
 
     // Share the address space: same PML4, same region view, same brk.
     child.pml4Phys   = parent.pml4Phys;
-    child.regionCount = parent.regionCount;
-    for (int i = 0; i < parent.regionCount; i++) {
-        child.regions[i] = parent.regions[i];
-        child.regions[i].objId = 0;
-        child.regions[i].vmoRetained = false;
-    }
+    rtabShare(*child, *parent);   // one region table per address space
     child.brkStart   = parent.brkStart;
     child.brkCurrent = parent.brkCurrent;
     child.parentId   = parentTid;
@@ -1551,8 +1596,8 @@ private long execveTask(int tid, ulong pathPtr, ulong argvPtr, ulong envpPtr) {
         if (o.active && !o.exited && o.pml4Phys == task.pml4Phys) { asShared = true; break; }
     }
     if (!asShared)
-    for (int ri = 0; ri < task.regionCount; ri++) {
-        auto r = &task.regions[ri];
+    for (int ri = 0; ri < regionCountOf(*task); ri++) {
+        auto r = &regionAt(*task, ri);
         if (!r.owned) continue;
         for (ulong va = r.start; va < r.end; va += 4096) {
             ulong phys = unmap_page_hhdm(va);
@@ -1567,7 +1612,7 @@ private long execveTask(int tid, ulong pathPtr, ulong argvPtr, ulong envpPtr) {
     x64WriteCR3(newPml4);
 
     task.pml4Phys    = newPml4;
-    clearRegions(*task);
+    rtabDetach(*task);   // a vfork child leaves its parent's table; a sole owner frees it
     task.brkStart    = 0;
     task.brkCurrent  = 0;
     task.mmapNext    = 0x740000000000UL;
@@ -1992,6 +2037,8 @@ private __gshared bool  g_autoPkgDone = false;
 private __gshared ulong g_autoPkgAtMs = 0;
 private void maybeAutoPkg() {
     if (g_autoPkgDone || !g_netConfigured || !g_guiClientStarted) return;
+    {   import drivers.veracrypt_impl : bootIsAutoInstallRun;
+        if (bootIsAutoInstallRun()) { g_autoPkgDone = true; return; } }   // the installed system does it
     const ulong now = pitMs();
     if (g_autoPkgAtMs == 0) { g_autoPkgAtMs = now + 15_000; return; }
     if (now < g_autoPkgAtMs) return;
@@ -2036,11 +2083,13 @@ private void maybeAutoRunDump() {
         if (g_pollBlocked[t]) klog(" POLL");
         if (tk.waiting) klog(" WAITING");
         klog(" rip="); klog_hex(tk.regs[REG_RIP]);
+        klog(" regions="); klog_dec(cast(ulong)regionCountOf(*tk));
         klog("\n");
     }
     import core.syscalls.posix : resourceUsageDump;
     resourceUsageDump();
     arProfDump();
+    { import core.syscalls.posix : epollRetDump; epollRetDump(); }
 }
 
 private void maybeAutoRun() {
@@ -3680,16 +3729,32 @@ private long brkTask(int tid, ulong newBrk) {
     ulong newAligned = (newBrk + 0xFFF) & ~0xFFFUL;
 
     if (newAligned > oldAligned) {
-        auto heapRegion = addRegion(*task, oldAligned, newAligned,
-                                    RegionType.Mapped, RegionPerms.ReadWrite,
-                                    0, true);
+        // Grow the heap's region in place when one ends exactly at the old break.  A new entry per
+        // growth leaked table slots: musl's malloc grows brk a page at a time for its metadata, and
+        // Firefox's parent filled its 4096-entry region table ("addRegion: full", then a NULL malloc).
+        AddrRegion* heapRegion = null;
+        bool extended = false;
+        foreach (ri; 0 .. regionCountOf(*task)) {
+            auto hr = &regionAt(*task, ri);
+            if (hr.end == oldAligned && hr.type == RegionType.Mapped && hr.owned && hr.physBase == 0
+                && hr.vmoObjId == 0 && hr.perms == RegionPerms.ReadWrite) {
+                hr.end = newAligned; heapRegion = hr; extended = true; break;
+            }
+        }
+        if (heapRegion is null)
+            heapRegion = addRegion(*task, oldAligned, newAligned,
+                                   RegionType.Mapped, RegionPerms.ReadWrite,
+                                   0, true);
         if (heapRegion is null) return cast(long)task.brkCurrent;
         // Defense-in-depth: NEVER re-map a page that is already live.  With leader routing
         // oldAligned is the true shared break so nothing in [oldAligned,newAligned) is mapped;
         // if that invariant is ever violated, refuse to clobber live heap/meta pages rather than
         // zero them (which is exactly the corruption this fix eliminates).
         for (ulong chk = oldAligned; chk < newAligned; chk += 4096) {
-            if (userPageMapped(leadTid, chk)) { removeRegion(*task, oldAligned, newAligned); return cast(long)task.brkCurrent; }
+            if (userPageMapped(leadTid, chk)) {
+                if (extended) heapRegion.end = oldAligned; else removeRegion(*task, oldAligned, newAligned);
+                return cast(long)task.brkCurrent;
+            }
         }
         // Allocate pages from oldAligned to newAligned
         ulong mappedBytes = 0;
@@ -3697,7 +3762,7 @@ private long brkTask(int tid, ulong newBrk) {
             ulong phys = alloc_phys_page();
             if (phys == 0) {
                 if (mappedBytes != 0) sys_munmap(oldAligned, mappedBytes, true);
-                removeRegion(*task, oldAligned, newAligned);
+                if (extended) heapRegion.end = oldAligned; else removeRegion(*task, oldAligned, newAligned);
                 return cast(long)task.brkCurrent;
             }
             map_page_hhdm(phys, pg, PTE_PRESENT | PTE_RW | PTE_USER, &alloc_phys_page);
@@ -4293,6 +4358,15 @@ private void dispatchSyscall(int tid) {
     ulong r8  = x64LastSyscallR8;
     ulong r9  = x64LastSyscallR9;
 
+    // clock_gettime fast path: no fd table, capability, object mirror or trace work applies to it,
+    // and there is no vDSO, so every caller pays a full syscall -- Firefox makes ~18,000 a second.
+    // The bookkeeping below made each one ~7,000 cycles.
+    if (rax == 228 && rsi >= 0x1000 && rsi < 0x0000_8000_0000_0000UL) {
+        import core.syscalls.posix : linux_sys_clock_gettime;
+        g_tasks[tid].regs[REG_RAX] = cast(ulong)linux_sys_clock_gettime(rdi, rsi);
+        return;
+    }
+
     // Freeze probe: snapshot every syscall ENTRY.  During a hard freeze the kernel loop is stuck
     // inside ONE handler — entries stop, so the last snapshot names the stuck syscall + task, and
     // the cursor-IRQ overlay shows it with its in-flight time.
@@ -4503,6 +4577,10 @@ private void dispatchSyscall(int tid) {
             // memory: its pages are zero-filled on first touch (handlePageFault).  Firefox's JS
             // engine reserves 1 GiB for JIT code in every process and commits it piecemeal; eager
             // backing made that 1 GiB of RAM per process.
+            // (Making EVERY private anonymous map demand-zero would save most of mmap's cost, but it
+            // concentrates the regions of exiting threads into one table -- Firefox's parent then
+            // overflowed the 4096-entry per-task table.  That needs one shared, growable region table
+            // per address space first.)
             enum MAP_NORESERVE = 0x4000;
             const bool reserveOnly = !useObjectBacking && !useFile && (mflags & MAP_ANONYMOUS) != 0
                               && (rdx == 0 || (mflags & MAP_NORESERVE) != 0);
@@ -6140,6 +6218,7 @@ private void kernelLoop() {
         // Software Center's placement ran on a short-lived helper's quota and every file of a
         // Firefox install failed "out of pages" with gigabytes free.
         physSetActiveUntyped(g_tasks[0].untypedObjId);
+        reapExitedThreads();
         installMaybeStartHiddenTest(pitMs());  // TEST image only: delayed hidden install repro
         installMaybeStartFdeTest(pitMs());     // TEST image only: headless Full-disk install
         maybeSpawnWaylandClient();

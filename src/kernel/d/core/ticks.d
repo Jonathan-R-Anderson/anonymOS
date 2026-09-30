@@ -25,7 +25,31 @@ ulong getTickCount()
 void increment_ticks()
 {
     ++g_tickCount;
+    g_tscAtTick = rdtscRaw();
     ++g_pitMs;
+}
+
+// Nanoseconds on the pitMs() scale, with the sub-millisecond part interpolated from the TSC since
+// the last tick.  clock_gettime used to advance in whole milliseconds, so a program waiting for a
+// deadline a fraction of a millisecond away -- Firefox's event loops, all of its timers -- saw
+// "not yet", polled with a zero timeout and read the same time again until the next tick: a spin
+// that ate most of the CPU.  The millisecond part is exactly pitMs(), so deadlines computed in
+// that domain (futex, timerfd, poll) are unchanged; the fraction never reaches the next ms, and
+// the result never goes backwards.
+private __gshared ulong g_tscAtTick;
+private __gshared ulong g_lastMonoNs;
+ulong monoNs() {
+    ulong ms, t0;
+    do { t0 = g_tscAtTick; ms = g_pitMs; } while (t0 != g_tscAtTick);
+    ulong frac = 0;
+    if (g_tscPerMs != 0 && t0 != 0) {
+        const ulong d = rdtscRaw() - t0;
+        frac = (d >= g_tscPerMs) ? 999_999 : (d * 1_000_000) / g_tscPerMs;
+    }
+    ulong ns = ms * 1_000_000 + frac;
+    if (ns < g_lastMonoNs) ns = g_lastMonoNs;
+    g_lastMonoNs = ns;
+    return ns;
 }
 
 // CPU time split, sampled at the 1000 Hz PIT tick: was the interrupted task the idle task or a

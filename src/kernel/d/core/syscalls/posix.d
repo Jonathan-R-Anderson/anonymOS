@@ -330,7 +330,10 @@ align(1):                 // pack: `data` at offset 4 (right after the 4-byte
     ulong data;           // (struct-level align(1) alone does NOT pack the fields.)
 }
 static assert(EpollEvent.sizeof == 12);
-private struct EpollWatch { bool active; int watchFd; uint events; ulong data; }
+// lastReady/lastGen: what an edge-triggered (EPOLLET) watch last reported; disarmed: an
+// EPOLLONESHOT watch that fired and waits for EPOLL_CTL_MOD.
+private struct EpollWatch { bool active; int watchFd; uint events; ulong data;
+                            uint lastReady; ulong lastGen; bool disarmed; }
 private struct EpollInst  { bool inUse; ubyte nestDepth; uint refs; EpollWatch[EPOLL_MAX_WATCHES] watches; }
 
 __gshared EpollInst[EPOLL_MAX_INSTANCES] g_epollTable;
@@ -5722,24 +5725,16 @@ public int guiAutostartMode() {
 // Only the autostart directives are handled here.  `bind = ...` is deliberately NOT parsed:
 // the kernel cannot install compositor keybindings, and Hyprland already binds the same apps
 // itself in system/hypr/custom/keybinds.lua.  `background = ...` is likewise the compositor's.
-__gshared char[8192] g_desktopConfBuf;   // desktop.conf is ~4.8 KB and mostly comments;
-                                         // 2048 silently truncated it BEFORE the
-                                         // autostart-live directive at byte ~2344
-
+// The file is read in place, straight out of its boot module through the HHDM -- no copy and so
+// no size limit.  The fixed buffer this replaced had already been outgrown twice (2 KiB, then
+// 8 KiB); the second time it cut off the `persist =` lines at the end, so an installed system
+// persisted NOTHING across reboots and never exposed the firewall's /vmstore.
 private const(char)[] desktopConfigContent() {
     ulong phys = 0;
     ulong size = 0;
-    if (!findBootModule("/desktop.conf\0".ptr, phys, size))
+    if (!findBootModule("/desktop.conf\0".ptr, phys, size) || phys == 0)
         return null;
-    ulong n = size;
-    if (size >= g_desktopConfBuf.length)
-        klog("[desktop.conf] WARNING: file larger than the parse buffer — directives past the cut are IGNORED\n");
-    if (n >= g_desktopConfBuf.length)
-        n = g_desktopConfBuf.length - 1;
-    if (n > 0)
-        bootModuleRead(phys, size, 0, g_desktopConfBuf.ptr, n);
-    g_desktopConfBuf[cast(size_t)n] = '\0';
-    return g_desktopConfBuf[0 .. cast(size_t)n];
+    return (cast(const(char)*)phys_to_virt(phys))[0 .. cast(size_t)size];
 }
 
 // Copy the `index`-th autostart value into dst (NUL-terminated, leading '/' stripped so it is
@@ -5871,11 +5866,14 @@ public bool desktopPersistPathAt(int index, char* dst, ulong cap) {
 enum int PERSIST_MAX = 8;
 __gshared int[PERSIST_MAX] g_persistRoots;
 __gshared int g_persistRootCount = 0;
-__gshared char[PERSIST_MAX][64] g_persistPaths;   // kept for the save walk's path prefix
+__gshared char[64][PERSIST_MAX] g_persistPaths;   // PERSIST_MAX paths of 64 chars (D reads T[N][M] as M arrays of T[N]); kept for the save walk's path prefix
 
 // Resolve the configured paths to RT nodes, creating them if absent.  Defaults to /home when
 // the config names none, so an image with no `persist =` line behaves as it did before.
 public void fsPersistInitRoots() @nogc nothrow {
+    // rtfs is built lazily (first fd op).  This runs at store-mount, before any userspace: without
+    // building it here every root failed to resolve and an installed system persisted NOTHING.
+    rtInit();
     g_persistRootCount = 0;
     char[128] buf;
     for (int i = 0; i < PERSIST_MAX; i++) {
@@ -6629,6 +6627,7 @@ public void materializeVmStore() {
     if (g_vmStoreState != VMSTORE_NONE || !diskReady() || bootHasInstallPayload()) return;
     ulong first, last;
     if (!vmStoreFindAB(first, last)) return;
+    rtInit();   // rtfs is built lazily; do not depend on the /home restore having done it first
     const ulong cap = (last - first + 1) * 512;
     if (cap > uint.max) return;                          // rtfs sizes are 32-bit
     rtMkdirPath("/vmstore\0".ptr, 0x1ED, 0, 0);
@@ -12255,7 +12254,10 @@ public int sys_clock_gettime(int clk_id, timespec* tp) {
     // R2: real monotonic ms from the PIT (1000 Hz), NOT getTickCount which
     // increments on every read (a fake clock that runs at the call rate, breaking
     // Weston's frame pacing).  Must match the page-flip-complete timestamp clock.
-    ulong ticks = pitMs();
+    import core.ticks : monoNs;
+    const ulong nowNs = monoNs();
+    ulong ticks = nowNs / 1_000_000;
+    const long subMsNs = cast(long)(nowNs % 1_000_000);
 
     // CLOCK_REALTIME must be wall-clock, not uptime.  This used to ignore clk_id entirely and
     // hand every caller seconds-since-boot, so userspace believed it was January 1970 -- which
@@ -12267,13 +12269,13 @@ public int sys_clock_gettime(int clk_id, timespec* tp) {
         import network.ntp : ntpSynced, ntpNowSec;
         if (ntpSynced()) {
             tp.tv_sec  = cast(long)ntpNowSec();
-            tp.tv_nsec = cast(long)((ticks % 1000) * 1000000);
+            tp.tv_nsec = cast(long)((ticks % 1000) * 1000000) + subMsNs;
             return 0;
         }
     }
 
     tp.tv_sec = cast(long)(ticks / 1000);
-    tp.tv_nsec = cast(long)((ticks % 1000) * 1000000);
+    tp.tv_nsec = cast(long)((ticks % 1000) * 1000000) + subMsNs;
 
     return 0;
 }
@@ -16467,9 +16469,7 @@ private bool fdReadableImpl(int fd) @nogc nothrow {
         bool any = false;
         for (int i = 0; i < EPOLL_MAX_WATCHES; i++) {
             if (!inst.watches[i].active) continue;
-            int wfd = inst.watches[i].watchFd;
-            if ((inst.watches[i].events & EPOLLIN_F)  && fdReadable(wfd)) { any = true; break; }
-            if ((inst.watches[i].events & EPOLLOUT_F) && fdWritable(wfd)) { any = true; break; }
+            if (epollWatchReport(inst.watches[i], false) != 0) { any = true; break; }
         }
         --g_fdReadableDepth;
         return any;
@@ -16597,6 +16597,8 @@ public void resourceUsageDump() @nogc nothrow {
       klog(" objects "); klog_dec(cast(ulong)(OBJ_MAX - 1 - (g_objFreeTop + 1))); klog("/"); klog_dec(OBJ_MAX); }
     { import core.org : g_orgEdgesLive, ORG_EDGE_MAX;
       klog(" edges "); klog_dec(g_orgEdgesLive); klog("/"); klog_dec(ORG_EDGE_MAX); }
+    { import memory.mm : memStats; ulong tot, fre; memStats(tot, fre);
+      klog(" mem free "); klog_dec(fre >> 20); klog("/"); klog_dec(tot >> 20); klog(" MiB"); }
     klog("\n");
 }
 
@@ -16742,10 +16744,13 @@ public long linux_sys_epoll_ctl(ulong epfd, ulong op, ulong fd, ulong ev_ptr) {
             if (!inst.watches[i].active && slot < 0) slot = i;
         }
         if (slot < 0) return negErrno(ENOSPC);
-        inst.watches[slot].active  = true;
-        inst.watches[slot].watchFd = wfd;
-        inst.watches[slot].events  = ev.events;
-        inst.watches[slot].data    = ev.data;
+        inst.watches[slot].active    = true;
+        inst.watches[slot].watchFd   = wfd;
+        inst.watches[slot].events    = ev.events;
+        inst.watches[slot].data      = ev.data;
+        inst.watches[slot].lastReady = 0;      // (re)armed: current readiness is an edge
+        inst.watches[slot].lastGen   = ~0UL;
+        inst.watches[slot].disarmed  = false;
         return 0;
     }
     return negErrno(EINVAL);
@@ -16765,17 +16770,89 @@ public long linux_sys_epoll_pwait(ulong epfd, ulong evs, ulong maxev, ulong time
     int nfound = 0;
     for (int i = 0; i < EPOLL_MAX_WATCHES && nfound < cast(int)maxev; i++) {
         if (!inst.watches[i].active) continue;
-        uint ready = 0;
         int wfd = inst.watches[i].watchFd;
-        if ((inst.watches[i].events & EPOLLIN_F)  && fdReadable(wfd))  ready |= EPOLLIN_F;
-        if ((inst.watches[i].events & EPOLLOUT_F) && fdWritable(wfd))  ready |= EPOLLOUT_F;
+        const uint ready = epollWatchReport(inst.watches[i], true);
         if (ready) {
             outev[nfound].events = ready;
             outev[nfound].data   = inst.watches[i].data;
+            if (nfound == 0) {   // DIAGNOSTIC: which fd/events a task keeps getting back
+                const int ct = cast(int)g_current_task_id;
+                if (ct >= 0 && ct < MAX_TASKS) {
+                    ++g_epRetN[ct]; g_epRetFd[ct] = wfd; g_epRetEv[ct] = ready;
+                    g_epRetWant[ct] = inst.watches[i].events;
+                }
+            }
             nfound++;
         }
     }
     return nfound; // 0 = timeout (no events ready)
+}
+// What a watch reports now.  Level-triggered (the default): whatever is ready.  EPOLLET: only a
+// readiness bit that was not ready at the last report, or EPOLLIN when new data arrived since
+// (fdEventGen) -- an edge.  This epoll used to be level-triggered only, so a Rust (mio) event loop
+// that registered EPOLLIN|EPOLLRDHUP|EPOLLET on a socket at EOF was told "readable" on every call
+// and spun: ~30,000 epoll_waits a second in Firefox's parent.  EPOLLONESHOT disarms after firing.
+// `commit` = false just asks (the poller-wakeup check), without consuming the edge.
+private uint epollWatchReport(ref EpollWatch w, bool commit) @nogc nothrow {
+    if (!w.active || w.disarmed) return 0;
+    uint ready = 0;
+    if ((w.events & EPOLLIN_F)  && fdReadable(w.watchFd)) ready |= EPOLLIN_F;
+    if ((w.events & EPOLLOUT_F) && fdWritable(w.watchFd)) ready |= EPOLLOUT_F;
+    uint report = ready;
+    if (w.events & EPOLLET_F) {
+        const ulong gen = fdEventGen(w.watchFd);
+        report = ready & ~w.lastReady;
+        if (gen != w.lastGen) report |= ready & EPOLLIN_F;
+        if (commit) { w.lastReady = ready; w.lastGen = gen; }
+    }
+    if (report && commit && (w.events & EPOLLONESHOT_F)) w.disarmed = true;
+    return report;
+}
+
+// A counter that changes whenever new input arrives on `fd` (or its writer goes away), for
+// EPOLLET: a reader that drained the fd and then got more data must see a new edge even though
+// the fd never looked "not readable" to epoll in between.  0 where no counter is kept.
+private ulong fdEventGen(int fd) @nogc nothrow {
+    if (fd < 0 || fd >= 1024) return 0;
+    auto f = &g_fdTable[fd];
+    if (f.type == FileType.FD_SOCKET) {
+        auto sock = fileSocket(f);
+        if (sock is null) return 0;
+        if (sock.domain == AF_INET && sock.inetTcp >= 0) {
+            import network.tcp : tcpEventGen;
+            return tcpEventGen(sock.inetTcp);
+        }
+        return (cast(ulong)sock.rx.head << 2) | (sock.peerClosed ? 2 : 0)
+             | (sock.state == LocalSocketState.closed ? 1 : 0) | (cast(ulong)sock.pendingHead << 40);
+    }
+    if (f.type == FileType.FD_PIPE_READ) {
+        auto p = getPipe(cast(size_t)pipeIdFromFd(f));
+        return p is null ? 0 : ((cast(ulong)p.head << 1) | (p.writers == 0 ? 1 : 0));
+    }
+    if (f.type == FileType.FD_EVENTFD) {
+        const int eid = cast(int)cast(size_t)f.backend;
+        return (eid >= 0 && eid < EVENTFD_MAX) ? g_eventfd_counters[eid] : 0;
+    }
+    if (f.type == FileType.FD_TIMERFD) {
+        const int ti = cast(int)cast(size_t)f.backend;
+        return (ti >= 0 && ti < TIMERFD_MAX) ? g_timerfds[ti].pending : 0;
+    }
+    return 0;
+}
+
+// DIAGNOSTIC (test images): per task, how often epoll_wait returned events and the first one.
+__gshared uint[MAX_TASKS] g_epRetN, g_epRetEv, g_epRetWant;
+__gshared int[MAX_TASKS]  g_epRetFd;
+public void epollRetDump() @nogc nothrow {
+    klog("[epret]");
+    foreach (t; 0 .. MAX_TASKS) {
+        if (g_epRetN[t] < 100) { g_epRetN[t] = 0; continue; }
+        klog(" t"); klog_dec(cast(ulong)t); klog("="); klog_dec(g_epRetN[t]);
+        klog("(fd"); klog_dec(cast(ulong)g_epRetFd[t]); klog(" ev="); klog_hex(g_epRetEv[t]);
+        klog(" want="); klog_hex(g_epRetWant[t]); klog(")");
+        g_epRetN[t] = 0;
+    }
+    klog("\n");
 }
 
 

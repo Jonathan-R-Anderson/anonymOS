@@ -842,6 +842,15 @@ export extern(C) bool tcpReadable(int id) @nogc nothrow {
     return c.started && (c.st == TCPState.CLOSED || c.st == TCPState.TIME_WAIT);
 }
 
+/// Changes whenever input arrives on the connection (a byte, a FIN, an error, a queued accept) --
+/// the edge counter for an edge-triggered (EPOLLET) epoll watch.
+export extern(C) ulong tcpEventGen(int id) @nogc nothrow {
+    if (!validId(id)) return 0;
+    auto c = &g_tcp[id];
+    return (cast(ulong)c.rcvNxt << 16) ^ (cast(ulong)c.aqLen << 4) ^ (c.peerFin ? 2 : 0) ^ (c.err != 0 ? 1 : 0)
+         ^ (cast(ulong)c.st << 8);
+}
+
 /// Writable for poll(): room in the send ring on a connected socket, or a result to report
 /// (a finished or failed connect -- the non-blocking connect's POLLOUT).
 export extern(C) bool tcpWritable(int id) @nogc nothrow {

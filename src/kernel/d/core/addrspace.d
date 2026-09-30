@@ -116,34 +116,22 @@ public ulong activeVirtToPhys(ulong va) {
 // child read the fd-remap list out of heap memory the parent was already freeing, so some content
 // processes started with no IPC socket.  Look in every table of the parent's address space and adopt
 // what is found into the child's table.  Consecutive pages hit the one-entry cache.
+// The region that decides how fork() copies the page at `va`: the child's table is a full copy of
+// the address space's one table (rtabCopy), so a plain lookup -- cached, since the walk visits a
+// region's pages consecutively.
 private __gshared AddrRegion* g_forkRegionCache;
 private AddrRegion* forkRegionFor(ulong srcPml4, Task* child, ulong va) {
     if (child is null) return null;
     auto c = g_forkRegionCache;
     if (c !is null && va >= c.start && va < c.end) return c;
     auto r = findRegion(*child, va);
-    if (r is null) {
-        foreach (i; 0 .. MAX_TASKS) {
-            auto t = &g_tasks[i];
-            if (!t.active || t.exited || t.pml4Phys != srcPml4 || t is child) continue;
-            auto src = findRegion(*t, va);
-            if (src is null) continue;
-            if (child.regionCount < MAX_REGIONS) {
-                r = &child.regions[child.regionCount++];
-                *r = *src;
-                r.objId = 0;
-                r.vmoRetained = false;
-            } else {
-                r = src;                        // table full: still copy the page correctly
-            }
-            break;
-        }
-    }
     g_forkRegionCache = r;
     return r;
 }
 
-void walkAndCopyUserPages(ulong srcPml4, ulong dstPml4, Task* dstTask = null) {
+// Returns false when a page-table page could not be allocated: the copy is then INCOMPLETE and the
+// child must not run (it would fault on whatever was not copied yet).
+bool walkAndCopyUserPages(ulong srcPml4, ulong dstPml4, Task* dstTask = null) {
     auto src4 = cast(ulong*)(srcPml4 + hhdm_offset);
     auto dst4 = cast(ulong*)(dstPml4 + hhdm_offset);
     g_forkRegionCache = null;
@@ -156,7 +144,7 @@ void walkAndCopyUserPages(ulong srcPml4, ulong dstPml4, Task* dstTask = null) {
 
         if (!(dst4[a] & PTE_PRESENT)) {
             ulong np = alloc_phys_page();
-            if (np == 0) return;
+            if (np == 0) return false;
             dst4[a] = np | PTE_PRESENT | PTE_RW | PTE_USER;
         }
         auto dpdpt = cast(ulong*)((dst4[a] & PTE_ADDR_MASK) + hhdm_offset);
@@ -172,7 +160,7 @@ void walkAndCopyUserPages(ulong srcPml4, ulong dstPml4, Task* dstTask = null) {
 
             if (!(dpdpt[b] & PTE_PRESENT)) {
                 ulong np = alloc_phys_page();
-                if (np == 0) return;
+                if (np == 0) return false;
                 dpdpt[b] = np | PTE_PRESENT | PTE_RW | PTE_USER;
             }
             auto dpd = cast(ulong*)((dpdpt[b] & PTE_ADDR_MASK) + hhdm_offset);
@@ -186,7 +174,7 @@ void walkAndCopyUserPages(ulong srcPml4, ulong dstPml4, Task* dstTask = null) {
 
                 if (!(dpd[c] & PTE_PRESENT)) {
                     ulong np = alloc_phys_page();
-                    if (np == 0) return;
+                    if (np == 0) return false;
                     dpd[c] = np | PTE_PRESENT | PTE_RW | PTE_USER;
                 }
                 auto dpt = cast(ulong*)((dpd[c] & PTE_ADDR_MASK) + hhdm_offset);
@@ -242,6 +230,7 @@ void walkAndCopyUserPages(ulong srcPml4, ulong dstPml4, Task* dstTask = null) {
             }
         }
     }
+    return true;
 }
 
 // Handle a page fault at virtAddr for task taskId.

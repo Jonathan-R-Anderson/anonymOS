@@ -31,10 +31,13 @@ $(BUILD_ROOT)/d/drivers/veracrypt_crypto.o $(BUILD_ROOT)/d/drivers/veracrypt_imp
 # `make OPT_LEVEL=-O0` (the default reason: low-RAM build hosts) still opts these out too.
 $(BUILD_ROOT)/d/core/syscalls/posix.o $(BUILD_ROOT)/d/core/kernel_main.o $(BUILD_ROOT)/d/display/framebuffer.o: D_OPT_OVERRIDE = $(D_HOT_OPT)
 
-# Rule for local kernel sources
+# Rule for local kernel sources.  --makedeps records every module the source imports, so an edit
+# to a shared module (a struct in core/task.d, an enum like OBJ_MAX) recompiles its importers too.
+# Without it an object built against the OLD layout survived: shrinking Task left modules indexing
+# g_tasks with the old 200 KB stride, and the kernel faulted 40 MB past its BSS at boot.
 $(BUILD_ROOT)/d/%.o: %.d
 	mkdir -p $(dir $@)
-	$(BUILD_RESOURCE_RUN) $(DC) -c $< -of=$@ $(DFLAGS) $(D_OPT_OVERRIDE) -I. -I../../../src/libs/userland
+	$(BUILD_RESOURCE_RUN) $(DC) -c $< -of=$@ $(DFLAGS) $(D_OPT_OVERRIDE) -I. -I../../../src/libs/userland --makedeps=$(@:.o=.dep)
 
 # Rule for userland sources linked into kernel
 $(BUILD_ROOT)/d/%.o: $(USERLAND_DIR)/%.d
@@ -47,3 +50,6 @@ $(BUILD_ROOT)/d/%.o: %.S
 
 clean:
 	rm -rf $(BUILD_ROOT)/d $(BUILD_ROOT)/libkernel_d.a
+
+# Import dependencies written by --makedeps (absent on a first build; `-include` tolerates that).
+-include $(shell find $(BUILD_ROOT)/d -name '*.dep' 2>/dev/null)

@@ -42,6 +42,7 @@
 #include <time.h>
 #include <unistd.h>
 #include <poll.h>
+#include <dirent.h>
 #include <wayland-client.h>
 #include <cairo/cairo.h>
 #include <ft2build.h>
@@ -109,6 +110,7 @@ struct vmcfg {
     char firmware[160];      /* UEFI firmware: boot this instead of a kernel */
     char diskimg[160];       /* an existing disk image (qcow2 or raw by extension) */
     int  disk_ro;            /* attach diskimg read-only */
+    int  autostart;          /* start headless when anonymOS boots (wl-vmm --autostart) */
 };
 
 /* A tiny VT100-ish terminal: a ring of lines, a cursor, CSI parsing (the escapes a shell's line
@@ -147,6 +149,9 @@ struct vm {
     char note[400];          /* last action's outcome */
     long serial_bytes;
     time_t reconnect_at;     /* after the VMM dropped the console: when to try again */
+    int  child;              /* this process started the VMM (waitpid works); 0 = re-attached */
+    char log_path[96], state_path[96];
+    time_t next_alive_check;
 };
 
 enum { MAX_VMS = 12 };
@@ -169,7 +174,7 @@ enum {                                     /* click actions */
     A_NONE, A_NEW, A_SETTINGS, A_DELETE, A_START, A_PAUSE, A_RESET, A_ACPI, A_POWEROFF, A_SNAPSHOT,
     A_SELECT_VM, A_TAB, A_VIEW, A_SNAP_RESTORE, A_SNAP_DELETE, A_CONSOLE,
     A_DLG_NEXT, A_DLG_BACK, A_DLG_CANCEL, A_DLG_OK, A_DLG_FIELD, A_DLG_STEP, A_DLG_CHOICE,
-    A_DLG_SECTION, A_DLG_DELETE_OK,
+    A_DLG_SECTION, A_DLG_DELETE_OK, A_DLG_TOGGLE,
 };
 struct hit { int x, y, w, h, action, arg; };
 
@@ -238,6 +243,8 @@ struct app {
 };
 
 static struct app *g_app;
+static void autostart_set(const char *name, int on);
+static int autostart_listed(const char *name);
 
 /* ── small helpers ─────────────────────────────────────────────────────────────────────── */
 static void set_banner(struct app *a, int kind, const char *fmt, ...)
@@ -941,6 +948,40 @@ static void vm_close_fds(struct vm *v)
     }
 }
 
+/* ── headless: machines outlive this window ────────────────────────────────────────────────
+ * Each running machine has RUN_DIR/vm<id>.state (its configuration + the VMM's pid) and its VMM
+ * writes to RUN_DIR/vm<id>.log, so closing Virtual Machines leaves it running; the next launch
+ * re-attaches: the console socket takes the new client, the log file is tailed again. */
+static void cfg_put(FILE *f, const char *k, const char *v) { fprintf(f, "%s=%s\n", k, v); }
+static void vm_write_state(struct vm *v)
+{
+    if (!v->state_path[0]) return;
+    char tmp[112];
+    snprintf(tmp, sizeof tmp, "%s.new", v->state_path);
+    FILE *f = fopen(tmp, "w");
+    if (!f) return;
+    struct vmcfg *c = &v->cfg;
+    char n[32];
+    cfg_put(f, "name", c->name); cfg_put(f, "desc", c->desc);
+    snprintf(n, sizeof n, "%d", c->os); cfg_put(f, "os", n);
+    snprintf(n, sizeof n, "%d", c->mem_mb); cfg_put(f, "mem", n);
+    snprintf(n, sizeof n, "%d", c->cpus); cfg_put(f, "cpus", n);
+    snprintf(n, sizeof n, "%d", c->disk_mb); cfg_put(f, "disk_mb", n);
+    snprintf(n, sizeof n, "%d", c->disk_ro); cfg_put(f, "disk_ro", n);
+    snprintf(n, sizeof n, "%d", c->autostart); cfg_put(f, "autostart", n);
+    cfg_put(f, "kernel", c->kernel); cfg_put(f, "initrd", c->initrd); cfg_put(f, "cmdline", c->cmdline);
+    cfg_put(f, "firmware", c->firmware); cfg_put(f, "diskimg", c->diskimg);
+    snprintf(n, sizeof n, "%d", (int)v->pid); cfg_put(f, "pid", n);
+    snprintf(n, sizeof n, "%ld", (long)v->started); cfg_put(f, "started", n);
+    snprintf(n, sizeof n, "%d", v->id); cfg_put(f, "id", n);
+    fclose(f);
+    rename(tmp, v->state_path);
+}
+static void vm_drop_state(struct vm *v)
+{
+    if (v->state_path[0]) unlink(v->state_path);
+}
+
 static int vm_start(struct app *a, struct vm *v)
 {
     if (v->state != ST_OFF && v->state != ST_ABORTED) return -1;
@@ -1026,8 +1067,10 @@ static int vm_start(struct app *a, struct vm *v)
     argv[ac++] = "--seccomp"; argv[ac++] = "false";
     argv[ac] = NULL;
 
-    int lp[2];
-    if (pipe(lp) != 0) { vm_note(v, "Cannot start: pipe: %s", strerror(errno)); return -1; }
+    snprintf(v->log_path, sizeof v->log_path, "%s/vm%d.log", RUN_DIR, v->id);
+    snprintf(v->state_path, sizeof v->state_path, "%s/vm%d.state", RUN_DIR, v->id);
+    int logw = open(v->log_path, O_WRONLY | O_CREAT | O_TRUNC | O_APPEND, 0600);
+    if (logw < 0) { vm_note(v, "Cannot start: %s: %s", v->log_path, strerror(errno)); return -1; }
     term_reset(&v->con);
     char cmd[640]; size_t cl = 0;
     for (int i = 0; i < ac && cl < sizeof cmd - 2; i++)
@@ -1035,26 +1078,29 @@ static int vm_start(struct app *a, struct vm *v)
     vm_note(v, "Starting: %s", cmd);
 
     pid_t pid = fork();
-    if (pid < 0) { close(lp[0]); close(lp[1]); vm_note(v, "Cannot start: fork: %s", strerror(errno)); return -1; }
+    if (pid < 0) { close(logw); vm_note(v, "Cannot start: fork: %s", strerror(errno)); return -1; }
     if (pid == 0) {
+        /* The VMM writes to a file, not a pipe to this window: it keeps running (headless) when
+         * Virtual Machines is closed, and a relaunch tails the same log. */
         int nul = open("/dev/null", O_RDWR);
         if (nul >= 0) dup2(nul, 0);
-        dup2(lp[1], 1);
-        dup2(lp[1], 2);
+        dup2(logw, 1);
+        dup2(logw, 2);
         /* This kernel has no close-on-exec: close everything else (the Wayland socket included) so
          * the VMM holds nothing of the manager's. */
         for (int fd = 3; fd < 256; fd++) close(fd);
         execve(CH_PATH, (char *const *)argv, environ);
         _exit(127);
     }
-    close(lp[1]);
-    v->log_fd = lp[0];
-    fcntl(v->log_fd, F_SETFL, fcntl(v->log_fd, F_GETFL) | O_NONBLOCK);
+    close(logw);
+    v->log_fd = open(v->log_path, O_RDONLY);
     v->pid = pid;
+    v->child = 1;
     v->state = ST_STARTING;
     v->started = time(NULL);
     v->connect_tries = 0;
     v->exit_status = 0;
+    vm_write_state(v);
     return 0;
 }
 
@@ -1063,8 +1109,10 @@ static void vm_exited(struct vm *v, int status)
 {
     vm_close_fds(v);
     v->pid = 0;
+    v->child = 0;
     unlink(v->api_path);
     unlink(v->serial_path);
+    vm_drop_state(v);
     int code = WIFEXITED(status) ? WEXITSTATUS(status) : 128 + (WIFSIGNALED(status) ? WTERMSIG(status) : 0);
     v->exit_status = code;
     int was = v->state;
@@ -1184,8 +1232,20 @@ static void vm_poll(struct app *a, struct vm *v)
             a->dirty = 1;
         }
     int status = 0;
-    pid_t w = waitpid(v->pid, &status, WNOHANG);
-    if (w == v->pid) { vm_exited(v, status); a->dirty = 1; }
+    if (v->child) {
+        pid_t w = waitpid(v->pid, &status, WNOHANG);
+        if (w == v->pid) { vm_exited(v, status); a->dirty = 1; }
+    } else if (time(NULL) >= v->next_alive_check) {
+        /* re-attached: not our child, so no waitpid -- the process and its API socket must both
+         * still be there (an exited, unreaped VMM still answers kill(pid, 0)) */
+        v->next_alive_check = time(NULL) + 2;
+        int fd = unix_connect(v->api_path);
+        if (fd >= 0) close(fd);
+        if (fd < 0 || (kill(v->pid, 0) != 0 && errno == ESRCH)) {
+            vm_exited(v, v->state == ST_STOPPING ? 0 : (1 << 8));
+            a->dirty = 1;
+        }
+    }
 }
 
 /* ── machines ──────────────────────────────────────────────────────────────────────────── */
@@ -1318,7 +1378,12 @@ static void dlg_finish(struct app *a)
     } else if (a->dlg.kind == DLG_SETTINGS) {
         struct vm *v = &a->vms[a->dlg.target];
         if (v->cfg.disk_mb != a->dlg.cfg.disk_mb && v->disk_path[0]) { unlink(v->disk_path); v->disk_path[0] = 0; }
+        if (v->cfg.autostart != a->dlg.cfg.autostart || strcmp(v->cfg.name, a->dlg.cfg.name)) {
+            autostart_set(v->cfg.name, 0);
+            autostart_set(a->dlg.cfg.name, a->dlg.cfg.autostart);
+        }
         v->cfg = a->dlg.cfg;
+        if (v->pid > 0) vm_write_state(v);
         set_banner(a, 1, "Saved the settings of \"%s\"", v->cfg.name);
     }
     a->dlg.kind = DLG_NONE;
@@ -1382,6 +1447,21 @@ static void stepper(struct app *a, int x, int y, const char *label, const char *
         text_center(a, F_BOLD, 16, bx, y + 21, 30, enabled ? C_TEXT : C_FAINT, d ? "+" : "-");
         if (enabled) hit_add(a, bx, y + 17, 30, 30, A_DLG_STEP, which * 2 + d);
     }
+}
+
+static void checkbox(struct app *a, int x, int y, int w, int on, const char *label, const char *sub, int arg)
+{
+    int hover = ptr_in(a, x, y, w, 40);
+    rfill(a, x, y + 2, 20, 20, 5, on ? C_ACCENT : 0x10161bu);
+    rstroke(a, x, y + 2, 20, 20, 5, on ? C_ACCENT2 : hover ? C_DIM : C_LINE, 1.5);
+    if (on) {
+        cairo_set_line_width(a->cr, 2.2); set_rgb(a->cr, 0xffffffu);
+        cairo_move_to(a->cr, x + 5, y + 12); cairo_line_to(a->cr, x + 9, y + 16); cairo_line_to(a->cr, x + 16, y + 7);
+        cairo_stroke(a->cr);
+    }
+    text(a, F_REG, 13, x + 30, y + 3, w - 30, C_TEXT, label);
+    if (sub) text_wrap(a, F_REG, 11, x + 30, y + 22, w - 30, 15, 3, C_DIM, sub);
+    hit_add(a, x, y, w, 40, A_DLG_TOGGLE, arg);
 }
 
 static void choice_card(struct app *a, int x, int y, int w, int h, int os, const char *title,
@@ -1563,6 +1643,9 @@ static void draw_dialog(struct app *a)
         text_field(a, cx, cy + 62, cw, FLD_DESC, "Description");
         textf(a, F_REG, 12, cx, cy + 132, cw, C_DIM, "Type: %s",
               os_name(c->os));
+        checkbox(a, cx, cy + 166, cw, c->autostart, "Start automatically when anonymOS boots (headless)",
+                 "The machine runs with no window: closing Virtual Machines never stops it.  Open this "
+                 "app any time to reach its console.", 0);
         break;
     case SEC_SYSTEM:
         snprintf(v, sizeof v, "%d MB", c->mem_mb);
@@ -1770,11 +1853,12 @@ static void draw_details(struct app *a, struct vm *v, int x, int y, int w, int h
     char s[220];
     /* left column */
     int cy = y;
-    section_card(a, x, cy, colw, 108, IC_SETTINGS, "General");
+    section_card(a, x, cy, colw, 128, IC_SETTINGS, "General");
     int ky = cy + 50;
     kv(a, x + 16, &ky, colw - 32, "Name", c->name, C_TEXT);
     kv(a, x + 16, &ky, colw - 32, "Operating system", os_name(c->os), C_TEXT);
-    cy += 120;
+    kv(a, x + 16, &ky, colw - 32, "Autostart", c->autostart ? "at boot, headless" : "no", C_TEXT);
+    cy += 140;
     section_card(a, x, cy, colw, 150, IC_HOST, "System");
     ky = cy + 50;
     snprintf(s, sizeof s, "%d MB", c->mem_mb);
@@ -1838,6 +1922,7 @@ static void draw_details(struct app *a, struct vm *v, int x, int y, int w, int h
         long up = (long)(time(NULL) - v->started);
         snprintf(s, sizeof s, "%ld:%02ld:%02ld (VMM pid %d)", up / 3600, (up / 60) % 60, up % 60, (int)v->pid);
         kv(a, rx + 16, &ky, colw - 32, "Uptime", s, C_TEXT);
+        kv(a, rx + 16, &ky, colw - 32, "Headless", "keeps running when this window closes", C_DIM);
     } else if (v->state == ST_ABORTED) {
         snprintf(s, sizeof s, "exit status %d", v->exit_status);
         kv(a, rx + 16, &ky, colw - 32, "Last run", s, C_RED);
@@ -2180,6 +2265,7 @@ static void do_action(struct app *a, int action, int arg)
         break;
     }
     case A_DLG_SECTION: a->dlg.section = arg; a->dlg.focus = -1; break;
+    case A_DLG_TOGGLE: if (arg == 0) a->dlg.cfg.autostart = !a->dlg.cfg.autostart; break;
     case A_DLG_DELETE_OK: {
         char nm[48]; copy_str(nm, sizeof nm, a->vms[a->dlg.target].cfg.name);
         vm_remove(a, a->dlg.target);
@@ -2442,6 +2528,143 @@ static const struct wl_registry_listener reg_listener = { .global = reg_global, 
 /* Headless self-test (`wl-vmm --selftest`): create the bundled machine, boot it, wait for the
  * guest's banner on the serial console, run a command through it, power it off.  Proves the whole
  * path the GUI drives, without a display. */
+/* Re-attach to the machines a previous Virtual Machines left running (headless). */
+static void vm_reattach_all(struct app *a)
+{
+    DIR *d = opendir(RUN_DIR);
+    if (!d) return;
+    struct dirent *de;
+    while ((de = readdir(d))) {
+        int id;
+        char tail[16];
+        if (sscanf(de->d_name, "vm%d.%15s", &id, tail) != 2 || strcmp(tail, "state")) continue;
+        char path[160];
+        snprintf(path, sizeof path, "%s/%s", RUN_DIR, de->d_name);
+        FILE *f = fopen(path, "r");
+        if (!f) continue;
+        struct vmcfg c;
+        memset(&c, 0, sizeof c);
+        int pid = 0; long started = 0;
+        char line[512];
+        while (fgets(line, sizeof line, f)) {
+            char *eq = strchr(line, '=');
+            if (!eq) continue;
+            *eq = 0;
+            char *v = eq + 1;
+            v[strcspn(v, "\n")] = 0;
+            if (!strcmp(line, "name")) copy_str(c.name, sizeof c.name, v);
+            else if (!strcmp(line, "desc")) copy_str(c.desc, sizeof c.desc, v);
+            else if (!strcmp(line, "os")) c.os = atoi(v);
+            else if (!strcmp(line, "mem")) c.mem_mb = atoi(v);
+            else if (!strcmp(line, "cpus")) c.cpus = atoi(v);
+            else if (!strcmp(line, "disk_mb")) c.disk_mb = atoi(v);
+            else if (!strcmp(line, "disk_ro")) c.disk_ro = atoi(v);
+            else if (!strcmp(line, "autostart")) c.autostart = atoi(v);
+            else if (!strcmp(line, "kernel")) copy_str(c.kernel, sizeof c.kernel, v);
+            else if (!strcmp(line, "initrd")) copy_str(c.initrd, sizeof c.initrd, v);
+            else if (!strcmp(line, "cmdline")) copy_str(c.cmdline, sizeof c.cmdline, v);
+            else if (!strcmp(line, "firmware")) copy_str(c.firmware, sizeof c.firmware, v);
+            else if (!strcmp(line, "diskimg")) copy_str(c.diskimg, sizeof c.diskimg, v);
+            else if (!strcmp(line, "pid")) pid = atoi(v);
+            else if (!strcmp(line, "started")) started = atol(v);
+        }
+        fclose(f);
+        char api[96], ser[96];
+        snprintf(api, sizeof api, "%s/vm%d.api", RUN_DIR, id);
+        snprintf(ser, sizeof ser, "%s/vm%d.serial", RUN_DIR, id);
+        int fd = unix_connect(api);
+        if (fd >= 0) close(fd);
+        if (pid <= 0 || fd < 0 || (kill(pid, 0) != 0 && errno == ESRCH)) {   /* stale: it is gone */
+            unlink(path); unlink(api); unlink(ser);
+            continue;
+        }
+        int i = vm_add(a, &c);
+        if (i < 0) continue;
+        struct vm *vm = &a->vms[i];
+        vm->id = id;
+        if (id > a->next_id) a->next_id = id;
+        copy_str(vm->api_path, sizeof vm->api_path, api);
+        copy_str(vm->serial_path, sizeof vm->serial_path, ser);
+        snprintf(vm->log_path, sizeof vm->log_path, "%s/vm%d.log", RUN_DIR, id);
+        copy_str(vm->state_path, sizeof vm->state_path, path);
+        vm->pid = pid;
+        vm->child = 0;
+        vm->started = (time_t)started;
+        char resp[1024];
+        vm->state = ST_RUNNING;
+        if (api_call(vm, "GET", "vm.info", NULL, resp, sizeof resp, 3000) / 100 == 2 && strstr(resp, "\"Paused\""))
+            vm->state = ST_PAUSED;
+        vm->log_fd = open(vm->log_path, O_RDONLY);
+        if (vm->log_fd >= 0) {                              /* show the recent part of the log */
+            off_t end = lseek(vm->log_fd, 0, SEEK_END);
+            lseek(vm->log_fd, end > 16384 ? end - 16384 : 0, SEEK_SET);
+        }
+        term_reset(&vm->con);
+        term_puts(&vm->con, "\033[90m-- re-attached to the running machine; earlier output is in its VMM log --\033[0m\r\n");
+        vm_note(vm, "Re-attached: this machine kept running (headless) while Virtual Machines was closed");
+        printf("[vmm] re-attached \"%s\" (VMM pid %d)\n", c.name, pid);
+    }
+    closedir(d);
+    fflush(stdout);
+}
+
+/* The machines to start headless at boot (Settings > General), one name per line. */
+#define AUTOSTART_LIST "/home/user/.config/vms/autostart"
+static int autostart_listed(const char *name)
+{
+    FILE *f = fopen(AUTOSTART_LIST, "r");
+    if (!f) return 0;
+    char line[64]; int hit = 0;
+    while (fgets(line, sizeof line, f)) { line[strcspn(line, "\n")] = 0; if (!strcmp(line, name)) hit = 1; }
+    fclose(f);
+    return hit;
+}
+static void autostart_set(const char *name, int on)
+{
+    char names[16][64]; int n = 0;
+    FILE *f = fopen(AUTOSTART_LIST, "r");
+    if (f) {
+        char line[64];
+        while (n < 16 && fgets(line, sizeof line, f)) {
+            line[strcspn(line, "\n")] = 0;
+            if (line[0] && strcmp(line, name)) copy_str(names[n++], sizeof names[0], line);
+        }
+        fclose(f);
+    }
+    if (on && n < 16) copy_str(names[n++], sizeof names[0], name);
+    mkdir("/home/user/.config", 0755);
+    mkdir("/home/user/.config/vms", 0755);
+    f = fopen(AUTOSTART_LIST, "w");
+    if (!f) return;
+    for (int i = 0; i < n; i++) fprintf(f, "%s\n", names[i]);
+    fclose(f);
+}
+
+/* `wl-vmm --start-headless NAME` / `wl-vmm --autostart`: start machines with no window at all (boot
+ * time, the firewall).  A machine already running (re-attachable) is left alone.  Returns once each
+ * VMM's console is up, leaving the VMMs running. */
+static int headless_start(struct app *a, const char *name)
+{
+    for (int i = 0; i < MAX_VMS; i++)
+        if (a->vms[i].used && a->vms[i].pid > 0 && !strcmp(a->vms[i].cfg.name, name)) {
+            printf("[vmm] \"%s\" is already running (VMM pid %d)\n", name, (int)a->vms[i].pid);
+            return 0;
+        }
+    struct vmcfg c;
+    if (!strcasecmp(name, "opnsense") || !strcmp(name, "OPNsense Firewall")) cfg_defaults(a, &c, OS_OPNSENSE);
+    else if (!strcasecmp(name, "alpine") || !strcmp(name, "Alpine Linux")) cfg_defaults(a, &c, OS_ALPINE);
+    else { printf("[vmm] no machine called \"%s\"\n", name); return 1; }
+    c.autostart = autostart_listed(c.name);
+    int i = vm_add(a, &c);
+    struct vm *v = &a->vms[i];
+    if (vm_start(a, v) != 0) { printf("[vmm] %s: %s\n", c.name, v->note); return 1; }
+    for (int k = 0; k < 300 && v->pid > 0 && v->serial_fd < 0; k++) { vm_poll(a, v); usleep(100000); }
+    if (v->serial_fd >= 0) { close(v->serial_fd); v->serial_fd = -1; }   /* leave the console to the app */
+    vm_write_state(v);
+    printf("[vmm] \"%s\" %s headless (VMM pid %d)\n", c.name, v->pid > 0 ? "started" : "FAILED to start", (int)v->pid);
+    return v->pid > 0 ? 0 : 1;
+}
+
 static int selftest(struct app *a)
 {
     probe_host(a);
@@ -2505,7 +2728,6 @@ static int selftest(struct app *a)
          * (Cloud Hypervisor only retries a buffered serial write when the guest writes again) */
         struct pollfd pf[2]; int np = 0;
         if (v->serial_fd >= 0) pf[np++] = (struct pollfd){ .fd = v->serial_fd, .events = POLLIN };
-        if (v->log_fd >= 0) pf[np++] = (struct pollfd){ .fd = v->log_fd, .events = POLLIN };
         poll(pf, (nfds_t)np, 100);
     }
     if (!ok)                                              /* show why: the VMM's log and the console */
@@ -2538,14 +2760,45 @@ int main(int argc, char **argv)
     if (getenv("WLVMM_INITRD")) BUNDLED_INITRD = getenv("WLVMM_INITRD");
     if (getenv("WLVMM_RUNDIR")) RUN_DIR = getenv("WLVMM_RUNDIR");
     if (argc > 1 && !strcmp(argv[1], "--selftest")) { setvbuf(stdout, NULL, _IOLBF, 0); return selftest(a); }
+    if (argc > 2 && !strcmp(argv[1], "--start-headless")) {
+        setvbuf(stdout, NULL, _IOLBF, 0);
+        probe_host(a);
+        vm_reattach_all(a);
+        return headless_start(a, argv[2]);
+    }
+    if (argc > 1 && !strcmp(argv[1], "--autostart")) {
+        setvbuf(stdout, NULL, _IOLBF, 0);
+        probe_host(a);
+        vm_reattach_all(a);
+        FILE *f = fopen(AUTOSTART_LIST, "r");
+        int rc = 0;
+        if (f) {
+            char line[64];
+            while (fgets(line, sizeof line, f)) {
+                line[strcspn(line, "\n")] = 0;
+                if (line[0]) rc |= headless_start(a, line);
+            }
+            fclose(f);
+        }
+        return rc;
+    }
 
     probe_host(a);
-    if (opnsense_disk()) {                                /* the firewall chosen at install */
+    vm_reattach_all(a);                                   /* machines left running headless */
+    for (int i = 0; i < MAX_VMS && a->sel < 0; i++) if (a->vms[i].used) a->sel = i;
+    int have_opn = 0, have_alpine = 0;
+    for (int i = 0; i < MAX_VMS; i++) if (a->vms[i].used) {
+        if (a->vms[i].cfg.os == OS_OPNSENSE) have_opn = 1;
+        if (a->vms[i].cfg.os == OS_ALPINE) have_alpine = 1;
+    }
+    if (opnsense_disk() && !have_opn) {                   /* the firewall chosen at install */
         struct vmcfg c;
         cfg_defaults(a, &c, OS_OPNSENSE);
-        a->sel = vm_add(a, &c);
+        c.autostart = autostart_listed(c.name);
+        int i = vm_add(a, &c);
+        if (a->sel < 0) a->sel = i;
     }
-    if (a->have_bundled) {                                /* a ready-made machine, like a sample appliance */
+    if (a->have_bundled && !have_alpine) {                /* a ready-made machine, like a sample appliance */
         struct vmcfg c;
         cfg_defaults(a, &c, OS_ALPINE);
         int i = vm_add(a, &c);
@@ -2586,7 +2839,6 @@ int main(int argc, char **argv)
             if (!v->used || v->pid <= 0) continue;
             active = 1;
             if (v->serial_fd >= 0) pfd[np++] = (struct pollfd){ .fd = v->serial_fd, .events = POLLIN };
-            if (v->log_fd >= 0) pfd[np++] = (struct pollfd){ .fd = v->log_fd, .events = POLLIN };
         }
         while (wl_display_prepare_read(a->display) != 0) wl_display_dispatch_pending(a->display);
         wl_display_flush(a->display);
@@ -2600,13 +2852,15 @@ int main(int argc, char **argv)
         last_sec = now;
         if (a->dirty && !a->frame_pending) render(a);
     }
-    for (int i = 0; i < MAX_VMS; i++) {                   /* the manager owns its machines: power them off */
+    /* Running machines keep running headless: their VMMs are independent processes with their
+     * own log files and state files, and the next launch re-attaches to them. */
+    for (int i = 0; i < MAX_VMS; i++) {
         struct vm *v = &a->vms[i];
         if (v->used && v->pid > 0) {
-            api_call(v, "PUT", "vmm.shutdown", NULL, NULL, 0, 1500);
-            kill(v->pid, SIGKILL);
-            waitpid(v->pid, NULL, 0);
+            vm_write_state(v);
+            printf("[vmm] \"%s\" keeps running headless (VMM pid %d)\n", v->cfg.name, (int)v->pid);
         }
     }
+    fflush(stdout);
     return 0;
 }

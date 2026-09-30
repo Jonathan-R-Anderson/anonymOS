@@ -1103,7 +1103,7 @@ static const struct wl_registry_listener registry_listener = {
     .global_remove = registry_global_remove,
 };
 
-int main(void)
+int main(int argc, char **argv)
 {
     // The entry table makes `struct app` large (~135KB); keep it out of the
     // limited initial stack of a spawned process by placing it in BSS.
@@ -1112,6 +1112,8 @@ int main(void)
     app.running = 1;
     app.place_sel = 2; // "Share"
     snprintf(app.cwd, sizeof(app.cwd), "%s", "/usr/share");
+    // `wl-files DIR` opens DIR (the desktop's Home / Trash / folder icons launch it that way).
+    if (argc > 1 && argv[1][0] == '/') { snprintf(app.cwd, sizeof(app.cwd), "%s", argv[1]); app.place_sel = -1; }
 
     log_line("G17FILES: starting Cairo/FreeType file manager -- G17 START");
     app.display = wl_display_connect(NULL);

@@ -71,6 +71,11 @@ export extern(C) void initDNS(const IPv4Address* dnsServer) @nogc nothrow {
     g_dnsCacheSize = 0;
 }
 
+/// The DNS server the host uses (the vnet uplink router hands it to VMs by DHCP).
+export extern(C) void getDNSServer(IPv4Address* outServer) @nogc nothrow {
+    if (outServer !is null) *outServer = g_dnsServer;
+}
+
 /// Set DNS server
 export extern(C) void setDNSServer(const IPv4Address* server) @nogc nothrow {
     if (server !is null) {

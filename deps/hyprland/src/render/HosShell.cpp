@@ -2,6 +2,7 @@
 
 #include <xkbcommon/xkbcommon.h>
 #include <algorithm>
+#include <chrono>
 #include <cctype>
 #include <cstdio>
 #include <cstring>
@@ -212,6 +213,9 @@ namespace HosShell {
         return true; // launcher owns all keys while open
     }
 
+    static std::chrono::steady_clock::time_point g_shellDrawnAt{};
+    void noteShellDrawn() { g_shellDrawnAt = std::chrono::steady_clock::now(); }
+
     bool onPointerButton(double gx, double gy) {
         if (!g_pCompositor)
             return false;
@@ -222,6 +226,10 @@ namespace HosShell {
             requestRedraw();
             return true;
         }
+
+        // Dock and shell titlebar buttons exist only while the CPU compose path draws them.
+        if (std::chrono::steady_clock::now() - g_shellDrawnAt > std::chrono::seconds(2))
+            return false;
 
         const auto mon = g_pCompositor->getMonitorFromVector({gx, gy});
         if (!mon)

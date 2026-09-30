@@ -320,6 +320,12 @@ struct USBHIDSubsystem
             device.endpoint = hidInfo.endpoint;
             device.vendorId = devDesc.idVendor;
             device.productId = devDesc.idProduct;
+            {   // the per-domain USB device registry (Domain Manager > Permissions)
+                import core.usbdev : usbDevRegister;
+                usbDevRegister(1, cast(ubyte)g_xhci.lastSlotId, devDesc.idVendor, devDesc.idProduct, 3,
+                               hidInfo.devType == HIDDeviceType.keyboard ? "USB keyboard"
+                             : hidInfo.devType == HIDDeviceType.mouse ? "USB mouse" : "USB input device");
+            }
 
             if (hidInfo.devType == HIDDeviceType.keyboard)
             {

@@ -111,7 +111,16 @@ struct vmcfg {
     char diskimg[160];       /* an existing disk image (qcow2 or raw by extension) */
     int  disk_ro;            /* attach diskimg read-only */
     int  autostart;          /* start headless when anonymOS boots (wl-vmm --autostart) */
+    int  net;                /* NET_*: the machine's network card (OPNsense: fixed LAN + WAN) */
 };
+/* Network cards are vnet TAPs (the kernel's virtual network): "nat*"/"wan*" join the uplink the
+ * kernel NATs out through the host; "lan-opnsense*" is the firewall's LAN, which the domains the
+ * Domain Manager routes through it join too. */
+enum { NET_NONE, NET_NAT, NET_LAN };
+static const char *const k_net_name[3] = { "Not attached", "NAT through the host network",
+                                           "Behind the OPNsense firewall (its LAN)" };
+#define FW_LAN "lan-opnsense"
+#define NET_OFFLOADS "offload_tso=off,offload_ufo=off,offload_csum=off"
 
 /* A tiny VT100-ish terminal: a ring of lines, a cursor, CSI parsing (the escapes a shell's line
  * editor and `clear` use). */
@@ -181,8 +190,8 @@ struct hit { int x, y, w, h, action, arg; };
 enum { DLG_NONE, DLG_NEW, DLG_SETTINGS, DLG_DELETE };
 enum { FLD_NAME, FLD_KERNEL, FLD_INITRD, FLD_CMDLINE, FLD_DESC, FLD_COUNT };
 enum { STEP_MEM, STEP_CPU, STEP_DISK };
-enum { SEC_GENERAL, SEC_SYSTEM, SEC_STORAGE, SEC_SERIAL, SEC_DISPLAY, SEC_COUNT };
-static const char *const k_sec_name[SEC_COUNT] = { "General", "System", "Storage", "Serial Port",
+enum { SEC_GENERAL, SEC_SYSTEM, SEC_STORAGE, SEC_NETWORK, SEC_SERIAL, SEC_DISPLAY, SEC_COUNT };
+static const char *const k_sec_name[SEC_COUNT] = { "General", "System", "Storage", "Network", "Serial Port",
                                                    "Display" };
 
 struct dialog {
@@ -969,6 +978,7 @@ static void vm_write_state(struct vm *v)
     snprintf(n, sizeof n, "%d", c->disk_mb); cfg_put(f, "disk_mb", n);
     snprintf(n, sizeof n, "%d", c->disk_ro); cfg_put(f, "disk_ro", n);
     snprintf(n, sizeof n, "%d", c->autostart); cfg_put(f, "autostart", n);
+    snprintf(n, sizeof n, "%d", c->net); cfg_put(f, "net", n);
     cfg_put(f, "kernel", c->kernel); cfg_put(f, "initrd", c->initrd); cfg_put(f, "cmdline", c->cmdline);
     cfg_put(f, "firmware", c->firmware); cfg_put(f, "diskimg", c->diskimg);
     snprintf(n, sizeof n, "%d", (int)v->pid); cfg_put(f, "pid", n);
@@ -1063,6 +1073,21 @@ static int vm_start(struct app *a, struct vm *v)
         argv[ac++] = "--serial"; argv[ac++] = serial;
         argv[ac++] = "--console"; argv[ac++] = "off";
         if (v->disk_path[0]) { argv[ac++] = "--disk"; argv[ac++] = disk; }
+    }
+    char net1[160], net2[160];
+    if (!restoring) {
+        if (v->cfg.os == OS_OPNSENSE) {                    /* vtnet0 = LAN, vtnet1 = WAN (live-mode order) */
+            snprintf(net1, sizeof net1, "tap=" FW_LAN ",mac=52:54:00:a1:01:01," NET_OFFLOADS);
+            snprintf(net2, sizeof net2, "tap=wan%d,mac=52:54:00:a0:00:%02x," NET_OFFLOADS, v->id, v->id & 0xff);
+            argv[ac++] = "--net"; argv[ac++] = net1;
+            argv[ac++] = "--net"; argv[ac++] = net2;
+        } else if (v->cfg.net == NET_NAT) {
+            snprintf(net1, sizeof net1, "tap=nat%d,mac=52:54:00:a0:01:%02x," NET_OFFLOADS, v->id, v->id & 0xff);
+            argv[ac++] = "--net"; argv[ac++] = net1;
+        } else if (v->cfg.net == NET_LAN) {
+            snprintf(net1, sizeof net1, "tap=" FW_LAN ".%d,mac=52:54:00:a1:02:%02x," NET_OFFLOADS, v->id, v->id & 0xff);
+            argv[ac++] = "--net"; argv[ac++] = net1;
+        }
     }
     argv[ac++] = "--seccomp"; argv[ac++] = "false";
     argv[ac] = NULL;
@@ -1255,6 +1280,7 @@ static void cfg_defaults(struct app *a, struct vmcfg *c, int os)
     c->os = os;
     c->mem_mb = 128;
     c->cpus = 1;
+    c->net = NET_NAT;
     if (os == OS_OPNSENSE) {
         const char *d = opnsense_disk();
         copy_str(c->firmware, sizeof c->firmware, FIRMWARE_PATH);
@@ -1566,7 +1592,7 @@ static void draw_summary_page(struct app *a, int x, int y, int w)
     if (c->disk_mb) snprintf(v, sizeof v, "%d MB raw image (virtio-blk)", c->disk_mb); else snprintf(v, sizeof v, "none");
     summary_row(a, x, &y, w, "Hard disk", v);
     summary_row(a, x, &y, w, "Serial port", "COM1, connected to the Console tab");
-    summary_row(a, x, &y, w, "Network", "not attached");
+    summary_row(a, x, &y, w, "Network", c->os == OS_OPNSENSE ? "LAN " FW_LAN " + WAN via NAT" : k_net_name[c->net]);
 }
 
 static void draw_dialog(struct app *a)
@@ -1661,6 +1687,24 @@ static void draw_dialog(struct app *a)
         stepper(a, cx, cy, "Virtual hard disk (virtio-blk)", v, STEP_DISK, !running);
         text_wrap(a, F_REG, 12, cx, cy + 66, cw, 17, 4, C_DIM,
                   "A raw image in RAM (/tmp/vms), attached as /dev/vda.  Changing its size replaces it.");
+        break;
+    case SEC_NETWORK:
+        if (c->os == OS_OPNSENSE) {
+            text(a, F_BOLD, 13, cx, cy, cw, C_TEXT, "Adapter 1: LAN (" FW_LAN ", 192.168.1.1)");
+            text(a, F_BOLD, 13, cx, cy + 26, cw, C_TEXT, "Adapter 2: WAN (NAT through the host network, DHCP)");
+            text_wrap(a, F_REG, 12, cx, cy + 56, cw, 17, 5, C_DIM,
+                      "Domains routed through this firewall in the Domain Manager (Network tab) join its LAN; "
+                      "machines set to \"Behind the OPNsense firewall\" too.  Its web interface is "
+                      "https://192.168.1.1 from any of them.");
+        } else {
+            for (int i = 0; i < 3; i++) {
+                checkbox(a, cx, cy + i * 48, cw, c->net == i, k_net_name[i],
+                         i == NET_NONE ? "no network card" : i == NET_NAT ? "virtio-net on the uplink: a DHCP address in 10.77.0.0/24, NAT out"
+                                       : "virtio-net on the firewall's LAN: DHCP from OPNsense, filtered by it", 10 + i);
+            }
+            text_wrap(a, F_REG, 11, cx, cy + 156, cw, 15, 3, C_FAINT,
+                      "Adapter type: virtio-net (paravirtualized), offloads off.");
+        }
         break;
     case SEC_SERIAL:
         text(a, F_BOLD, 13, cx, cy, cw, C_TEXT, "Port 1 (COM1, 0x3F8, IRQ 4)");
@@ -1913,7 +1957,8 @@ static void draw_details(struct app *a, struct vm *v, int x, int y, int w, int h
     section_card(a, rx, cy, colw, 108, IC_SNAPSHOT, "Serial port and network");
     ky = cy + 50;
     kv(a, rx + 16, &ky, colw - 32, "Serial port 1", "COM1, the Console tab", C_TEXT);
-    kv(a, rx + 16, &ky, colw - 32, "Network", "not attached", C_DIM);
+    kv(a, rx + 16, &ky, colw - 32, "Network", c->os == OS_OPNSENSE ? "LAN " FW_LAN " + WAN via NAT" : k_net_name[c->net],
+       c->net == NET_NONE && c->os != OS_OPNSENSE ? C_DIM : C_TEXT);
     cy += 120;
     section_card(a, rx, cy, colw, 128, IC_ACPI, "Runtime");
     ky = cy + 50;
@@ -2265,7 +2310,10 @@ static void do_action(struct app *a, int action, int arg)
         break;
     }
     case A_DLG_SECTION: a->dlg.section = arg; a->dlg.focus = -1; break;
-    case A_DLG_TOGGLE: if (arg == 0) a->dlg.cfg.autostart = !a->dlg.cfg.autostart; break;
+    case A_DLG_TOGGLE:
+        if (arg == 0) a->dlg.cfg.autostart = !a->dlg.cfg.autostart;
+        else if (arg >= 10 && arg < 13) a->dlg.cfg.net = arg - 10;
+        break;
     case A_DLG_DELETE_OK: {
         char nm[48]; copy_str(nm, sizeof nm, a->vms[a->dlg.target].cfg.name);
         vm_remove(a, a->dlg.target);
@@ -2560,6 +2608,7 @@ static void vm_reattach_all(struct app *a)
             else if (!strcmp(line, "disk_mb")) c.disk_mb = atoi(v);
             else if (!strcmp(line, "disk_ro")) c.disk_ro = atoi(v);
             else if (!strcmp(line, "autostart")) c.autostart = atoi(v);
+            else if (!strcmp(line, "net")) c.net = atoi(v);
             else if (!strcmp(line, "kernel")) copy_str(c.kernel, sizeof c.kernel, v);
             else if (!strcmp(line, "initrd")) copy_str(c.initrd, sizeof c.initrd, v);
             else if (!strcmp(line, "cmdline")) copy_str(c.cmdline, sizeof c.cmdline, v);

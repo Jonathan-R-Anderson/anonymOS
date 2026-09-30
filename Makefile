@@ -925,17 +925,20 @@ $(WLLAYERBAR_BIN): src/util/wl-layer-bar.c $(XDG_SHELL_HEADER) $(XDG_SHELL_CODE)
 		-lm \
 		-pthread
 
-# Desktop background for Hyprland — a wlr-layer-shell BACKGROUND client that paints
-# the dendritic-network PNG.  Links the layer-shell protocol code like wl-layer-bar,
-# but needs no FreeType (its text is baked into the PNG), only libpng to decode it.
+# The Hyprland desktop — a wlr-layer-shell BACKGROUND client: the dendritic-network
+# wallpaper (libpng), desktop icons + selection + the right-click menu (an xdg_popup made a
+# child of the layer surface, hence the xdg-shell code).  cairo shapes + FreeType labels,
+# linked like wl-vmm / wl-software.
 $(WLWALLPAPER_BIN): src/util/wl-wallpaper.c $(XDG_SHELL_HEADER) $(XDG_SHELL_CODE) $(LAYER_SHELL_HEADER) $(LAYER_SHELL_CODE)
-	@echo "==== Building wl-wallpaper (desktop background for Hyprland, wlr-layer-shell) ===="
-	@WL_LIBS="$$(PKG_CONFIG_LIBDIR='$(WAYLAND_SYSROOT)/lib/pkgconfig:$(WAYLAND_SYSROOT)/share/pkgconfig' PKG_CONFIG_PATH='' PKG_CONFIG_SYSROOT_DIR='' pkg-config --libs wayland-client)" ; \
+	@echo "==== Building wl-wallpaper (desktop: wallpaper + icons for Hyprland, wlr-layer-shell) ===="
+	@CAIRO_CFLAGS="$$(PKG_CONFIG_LIBDIR='$(WAYLAND_SYSROOT)/lib/pkgconfig:$(WAYLAND_SYSROOT)/share/pkgconfig' PKG_CONFIG_PATH='' PKG_CONFIG_SYSROOT_DIR='' pkg-config --cflags cairo wayland-client)" ; \
+	CAIRO_LIBS="$$(PKG_CONFIG_LIBDIR='$(WAYLAND_SYSROOT)/lib/pkgconfig:$(WAYLAND_SYSROOT)/share/pkgconfig' PKG_CONFIG_PATH='' PKG_CONFIG_SYSROOT_DIR='' pkg-config --libs cairo wayland-client)" ; \
 	$(MUSL_CC) -O2 -Wall -Wextra -L$(WAYLAND_SYSROOT)/lib \
-		-I$(WAYLAND_SYSROOT)/include -Ibuild \
+		-I$(WAYLAND_SYSROOT)/include -I$(WAYLAND_SYSROOT)/include/freetype2 -Ibuild $$CAIRO_CFLAGS \
 		-o $@ $< $(XDG_SHELL_CODE) $(LAYER_SHELL_CODE) \
+		-lfreetype \
 		-lpng16 -lz \
-		$$WL_LIBS \
+		$$CAIRO_LIBS \
 		-lm \
 		-pthread
 

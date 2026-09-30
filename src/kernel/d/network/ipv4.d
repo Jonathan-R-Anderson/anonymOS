@@ -65,6 +65,12 @@ export extern(C) bool ipv4Send(const ref IPv4Address destIP,
                                 const(ubyte)* payload,
                                 size_t payloadLen) @nogc nothrow {
     if (payload is null || payloadLen == 0) return false;
+    // A domain interface (network/vnet.d: a domain routed through a gateway VM) has its own
+    // address, next hop and segment.
+    {
+        import network.vnet : g_netIf, vnetIfSendIPv4;
+        if (g_netIf != 0) return vnetIfSendIPv4(g_netIf, destIP, protocol, payload, payloadLen);
+    }
     
     // Allocate buffer
     enum MAX_PACKET_SIZE = 1500;
@@ -178,9 +184,16 @@ export extern(C) void ipv4HandlePacket(const(ubyte)* data, size_t len,
 /// Get local IP address
 export extern(C) void getLocalIP(IPv4Address* outIP) @nogc nothrow {
     if (outIP !is null) {
+        // The current packet's interface: a domain interface answers with its own address, so
+        // TCP/UDP pseudo-header checksums and connect() source addresses follow it.
+        import network.vnet : g_netIf, vnetIfAddr;
+        if (g_netIf != 0 && vnetIfAddr(g_netIf, outIP)) return;
         *outIP = g_localIP;
     }
 }
+
+/// The host NIC's own address, whatever interface is current (the vnet NAT translates to it).
+export extern(C) uint ipv4HostIP() @nogc nothrow { return g_localIP.addr; }
 
 /// Set local IP address
 export extern(C) void setLocalIPAddress(const IPv4Address* ip) @nogc nothrow {

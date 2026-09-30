@@ -574,11 +574,11 @@ public long objfsRead(int kind, const(char)* objName, size_t objLen, char* buf, 
 // identity policyEpoch transaction path (F2 phase 2).  /etc becomes a view of this.
 enum int CFG_NONE = 0, CFG_SYSTEM = 1, CFG_IDENTITIES = 2, CFG_USERS = 3, CFG_SERVICES = 4,
          CFG_DOMAINS = 5, CFG_PACKAGES = 6, CFG_TEMPLATES = 7, CFG_DISKS = 8, CFG_APPS = 9,
-         CFG_APPGATE = 10;
+         CFG_APPGATE = 10, CFG_VNET = 11, CFG_USB = 12;
 
-private immutable string[10] g_configFiles =
+private immutable string[12] g_configFiles =
     ["system.json", "identities.json", "users.json", "services.json", "domains.json", "packages.json", "templates.json", "disks.json", "apps.json",
-     "appgate.json"];
+     "appgate.json", "vnet.json", "usb.json"];
 
 // "<name>.json" -> config id (0 = not a config file).
 public int configfsId(const(char)* name, size_t len) {
@@ -809,6 +809,17 @@ public long configfsRender(int id, char* buf, size_t buflen) {
             }
             lit(b, "\n]\n");
             return cast(long)b.len;
+        }
+        case CFG_USB: {
+            // USB devices the kernel enumerated and the domains allowed to use each (core/usbdev.d).
+            import core.usbdev : usbDevRenderJson;
+            return cast(long)usbDevRenderJson(buf, buflen);
+        }
+        case CFG_VNET: {
+            // The virtual network (network/vnet.d): segments with their VM / router / domain ports,
+            // the domains' routes, NAT counters -- the Domain Manager's routing view reads it.
+            import network.vnet : vnetRenderJson;
+            return cast(long)vnetRenderJson(buf, buflen);
         }
         case CFG_APPGATE: {
             // appgate: what the desktop chrome needs to explain and pre-filter launches -- the System and

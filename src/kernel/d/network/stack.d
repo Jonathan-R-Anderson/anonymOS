@@ -50,6 +50,11 @@ export extern(C) bool initNetworkStack(const IPv4Address* localIP,
 /// Protocol handler for IPv4
 private extern(C) void handleIPv4Protocol(ubyte protocol, const(ubyte)* data, size_t len,
                                  const ref IPv4Address srcIP) @nogc nothrow {
+    // Replies to flows the vnet uplink router NATed out for a VM go back to the VM, not to us.
+    {
+        import network.vnet : vnetNatInbound;
+        if (vnetNatInbound(protocol, data, len, srcIP)) return;
+    }
     switch (protocol) {
         case IPProtocol.ICMP:
             icmpHandlePacket(data, len, srcIP);

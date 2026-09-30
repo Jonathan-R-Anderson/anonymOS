@@ -1535,23 +1535,190 @@ static void tab_packages(struct app *app, cairo_t *cr) {
     }
 }
 
-static void tab_network(struct app *app, cairo_t *cr) {
-    struct dconf *cc = &app->cfg[app->sel];
-    if (!cr) {
-        int ry = TAB_Y + 12; char v[48];
-        draw_text(app,"Network policy",LABEL_X,ry,200,14,0xffb7c1d0u);
-        ctl_value(cc,2,v,sizeof(v)); draw_text(app,v,LABEL_X+200,ry,220,14,0xfff2f5fau); ry+=28;
-        draw_text(app,"Clipboard",LABEL_X,ry,200,14,0xffb7c1d0u);
-        ctl_value(cc,3,v,sizeof(v)); draw_text(app,v,LABEL_X+200,ry,220,14,0xfff2f5fau); ry+=28;
-        draw_text(app,"Secure IPC",LABEL_X,ry,200,14,0xffb7c1d0u);
-        draw_text(app,cc->secure_ipc?"required":"optional",LABEL_X+200,ry,200,14,0xfff2f5fau);
-        draw_text(app,"network / clipboard runtime enforcement is the next DM8 surface",LABEL_X,ry+44,560,12,0xff6b7686u);
+// ── Network tab: where this domain's traffic goes (network/vnet.d in the kernel) ─────────────
+// Routes: Direct (the host network), through the OPNsense firewall VM (its LAN segment
+// "lan-opnsense": the domain gets its own 192.168.1.x address there), or through another domain
+// (whatever that domain's route is -- chains resolve in the kernel, a loop fails closed).  The
+// kernel's live view is /config/vnet.json: routes, the segments with their VM / router / domain
+// ports and counters.
+#define FW_SEG "lan-opnsense"
+struct vnetview { char via[32][32]; char dom[32][32]; int nroutes; int fw_up; unsigned long rx, tx; char myip[20]; };
+
+static void vnet_read(struct vnetview *v, const char *self)
+{
+    memset(v, 0, sizeof *v);
+    unsigned char *buf = NULL; size_t n = 0;
+    if (load_file("/config/vnet.json", &buf, &n) < 0 || !buf) return;
+    char *js = (char *)buf;
+    js[n - 1] = 0;
+    char *r = strstr(js, "\"routes\":[");
+    for (char *q = r; q && v->nroutes < 32; ) {
+        q = strstr(q, "{\"domain\":\"");
+        if (!q) break;
+        q += 11;
+        char *e = strchr(q, '"'); if (!e) break;
+        snprintf(v->dom[v->nroutes], sizeof v->dom[0], "%.*s", (int)(e - q), q);
+        char *w = strstr(e, "\"via\":\""); if (!w) break;
+        w += 7;
+        char *we = strchr(w, '"'); if (!we) break;
+        snprintf(v->via[v->nroutes], sizeof v->via[0], "%.*s", (int)(we - w), w);
+        v->nroutes++;
+        q = we;
     }
+    char *seg = strstr(js, "{\"name\":\"" FW_SEG "\"");
+    if (seg) {
+        char *end = strstr(seg, "]}");
+        char *vm = strstr(seg, "\"kind\":\"vm\"");
+        v->fw_up = vm && (!end || vm < end);
+        char key[64]; snprintf(key, sizeof key, "\"domain\":\"%s\"", self);
+        char *me = strstr(seg, key);
+        if (me && (!end || me < end)) {
+            char *ip = me; while (ip > seg && strncmp(ip, "\"ip\":\"", 6)) ip--;
+            if (!strncmp(ip, "\"ip\":\"", 6)) sscanf(ip + 6, "%19[0-9.]", v->myip);
+            char *rx = strstr(me, "\"rx\":"), *tx = strstr(me, "\"tx\":");
+            if (rx) v->rx = strtoul(rx + 5, NULL, 10);
+            if (tx) v->tx = strtoul(tx + 5, NULL, 10);
+        }
+    }
+    free(buf);
+}
+static const char *vnet_route_of(const struct vnetview *v, const char *dom)
+{
+    for (int i = 0; i < v->nroutes; i++) if (!strcmp(v->dom[i], dom)) return v->via[i];
+    return "direct";
+}
+static int route_rows(struct app *app) { return 2 + app->n_doms; }
+static void route_row_rect(int idx, int *x, int *y, int *w, int *h)
+{
+    *x = LABEL_X; *y = TAB_Y + 52 + idx * 32; *w = 560; *h = 28;
+}
+// Row i -> the route it selects ("" = not a selectable row: the domain itself / a template).
+static void route_row_arg(struct app *app, int i, char *out, size_t n)
+{
+    out[0] = 0;
+    if (i == 0) { snprintf(out, n, "direct"); return; }
+    if (i == 1) { snprintf(out, n, "vm:" FW_SEG); return; }
+    int di = i - 2;
+    if (di < 0 || di >= app->n_doms || di == app->sel || !strcmp(app->doms[di].type, "template")) return;
+    snprintf(out, n, "domain:%s", app->doms[di].name);
+}
+
+static void tab_network(struct app *app, cairo_t *cr) {
+    struct vnetview v;
+    const char *self = app->doms[app->sel].name;
+    vnet_read(&v, self);
+    const char *cur = vnet_route_of(&v, self);
+    const int nrows = route_rows(app);
+    if (cr) {
+        for (int i = 0, vis = 0; i < nrows; i++) {
+            char arg[48]; route_row_arg(app, i, arg, sizeof arg);
+            if (!arg[0]) continue;
+            int x, y, w, h; route_row_rect(vis++, &x, &y, &w, &h);
+            const int on = !strcmp(arg, cur);
+            cairo_set_source_rgb(cr, on ? 0.09 : 0.14, on ? 0.23 : 0.17, on ? 0.27 : 0.21);
+            rounded_rect(cr, x, y, w, h, 6); cairo_fill(cr);
+            cairo_set_source_rgb(cr, 0.55, 0.62, 0.70);
+            cairo_set_line_width(cr, 1.5);
+            cairo_arc(cr, x + 16, y + h / 2.0, 7, 0, 6.2832); cairo_stroke(cr);
+            if (on) { cairo_set_source_rgb(cr, 0.08, 0.65, 0.58); cairo_arc(cr, x + 16, y + h / 2.0, 4, 0, 6.2832); cairo_fill(cr); }
+            if (i >= 2) { cairo_argb(cr, app->doms[i - 2].color); rounded_rect(cr, x + 34, y + 8, 12, 12, 3); cairo_fill(cr); }
+        }
+        return;
+    }
+    draw_text(app, "Route this domain's traffic", LABEL_X, TAB_Y + 8, 400, 15, 0xfff2f5fau);
+    draw_text(app, "Where its connections leave: the host network, a firewall VM, or another domain's route",
+              LABEL_X, TAB_Y + 30, app->width - LABEL_X - PAD, 12, 0xff8b94a3u);
+    int vis = 0;
+    for (int i = 0; i < nrows; i++) {
+        char arg[48]; route_row_arg(app, i, arg, sizeof arg);
+        if (!arg[0]) continue;
+        int x, y, w, h; route_row_rect(vis++, &x, &y, &w, &h);
+        char label[96];
+        if (i == 0) snprintf(label, sizeof label, "Direct - the host network");
+        else if (i == 1) snprintf(label, sizeof label, "Through the OPNsense firewall VM  %s",
+                                  v.fw_up ? "(running, LAN 192.168.1.1)" : "(not running - start it in Virtual Machines)");
+        else snprintf(label, sizeof label, "Through domain %s  (its route: %s)", app->doms[i - 2].name,
+                      vnet_route_of(&v, app->doms[i - 2].name));
+        draw_text(app, label, x + (i >= 2 ? 54 : 34), y + 7, w - 60, 13, 0xffd6deeau);
+    }
+    // The resolved path, following "domain:" links the way the kernel does.
+    char path[256]; size_t pl = 0;
+    pl += (size_t)snprintf(path + pl, sizeof path - pl, "%s", self);
+    const char *at = self;
+    int hops = 0, loop = 0;
+    for (;;) {
+        const char *via = vnet_route_of(&v, at);
+        if (!strncmp(via, "domain:", 7)) {
+            at = via + 7;
+            if (!strcmp(at, self) || ++hops > 8) { loop = 1; break; }
+            pl += (size_t)snprintf(path + pl, sizeof path - pl, "  ->  %s", at);
+            continue;
+        }
+        if (!strncmp(via, "vm:", 3))
+            pl += (size_t)snprintf(path + pl, sizeof path - pl, "  ->  OPNsense (%s)  ->  NAT uplink  ->  Internet",
+                                   v.myip[0] ? v.myip : "192.168.1.x");
+        else
+            pl += (size_t)snprintf(path + pl, sizeof path - pl, "  ->  host network  ->  Internet");
+        break;
+    }
+    const int py = TAB_Y + 60 + vis * 32;
+    draw_text(app, "Path", LABEL_X, py, 80, 13, 0xffb7c1d0u);
+    draw_text(app, loop ? "a routing loop: this domain's traffic is blocked (fail closed)" : path, LABEL_X + 60, py,
+              app->width - LABEL_X - 60 - PAD, 13, loop ? 0xffe08a8au : 0xff7fe0a0u);
+    if (!strncmp(cur, "vm:", 3) || v.myip[0]) {
+        char st[160];
+        snprintf(st, sizeof st, "Interface on the firewall LAN: %s   frames in %lu, out %lu%s", v.myip[0] ? v.myip : "not up yet",
+                 v.rx, v.tx, v.fw_up ? "" : "   (the firewall is not running: traffic waits for it)");
+        draw_text(app, st, LABEL_X + 60, py + 22, app->width - LABEL_X - 60 - PAD, 12, 0xff8b94a3u);
+        draw_text(app, "The firewall's web interface is https://192.168.1.1 from this domain (root / opnsense).",
+                  LABEL_X + 60, py + 42, app->width - LABEL_X - 60 - PAD, 12, 0xff8b94a3u);
+    }
+}
+
+// USB devices, per device (the kernel's /config/usb.json: id, name, and the domains that may use
+// each one now).  Toggling gives the device to / takes it from the selected domain ("usbon/usboff
+// <domain> <vid:pid>"), on top of the USB class switch above.
+#define N_USBDEV 6
+struct usbdev { char id[12]; char name[40]; int allowed; };
+static int usb_read(struct usbdev *out, int max, const char *dom)
+{
+    unsigned char *buf = NULL; size_t n = 0;
+    if (load_file("/config/usb.json", &buf, &n) < 0 || !buf) return 0;
+    char *js = (char *)buf; js[n - 1] = 0;
+    int k = 0;
+    for (char *q = js; k < max && (q = strstr(q, "{\"id\":\"")); ) {
+        q += 7;
+        struct usbdev *d = &out[k];
+        memset(d, 0, sizeof *d);
+        sscanf(q, "%11[0-9a-f:]", d->id);
+        char *nm = strstr(q, "\"name\":\"");
+        if (nm) sscanf(nm + 8, "%39[^\"]", d->name);
+        char *doms = strstr(q, "\"domains\":[");
+        char *end = doms ? strchr(doms, ']') : NULL;
+        char key[64]; snprintf(key, sizeof key, "\"%s\"", dom);
+        char *hit = doms ? strstr(doms, key) : NULL;
+        d->allowed = hit && end && hit < end;
+        k++;
+        q = end ? end : q;
+    }
+    free(buf);
+    return k;
+}
+static void usb_row_rect(int idx, int *x, int *y, int *w, int *h) {
+    *y = TAB_Y + 24 + N_DEV * 42 + 34 + idx * 36; *h = 26; *w = 60; *x = LABEL_X + 240;
 }
 
 static void tab_permissions(struct app *app, cairo_t *cr) {
     unsigned dev = app->doms[app->sel].devices;
+    struct usbdev usb[N_USBDEV];
+    const int nusb = usb_read(usb, N_USBDEV, app->doms[app->sel].name);
     if (cr) {
+        for (int i = 0; i < nusb; i++) { int x,y,w,h; usb_row_rect(i,&x,&y,&w,&h);
+            int on = usb[i].allowed;
+            if (on) cairo_set_source_rgb(cr,0.20,0.50,0.34); else cairo_set_source_rgb(cr,0.40,0.20,0.20);
+            rounded_rect(cr,x,y,w,h,h/2); cairo_fill(cr);
+            cairo_set_source_rgb(cr,0.95,0.97,1.0);
+            cairo_arc(cr, on?(x+w-h/2):(x+h/2), y+h/2.0, h/2-3, 0, 6.2832); cairo_fill(cr); }
         for (int i = 0; i < N_DEV; i++) { int x,y,w,h; dev_row_rect(i,&x,&y,&w,&h);
             int on = (dev & DEV_BIT[i]) != 0;
             if (on) cairo_set_source_rgb(cr,0.20,0.50,0.34); else cairo_set_source_rgb(cr,0.40,0.20,0.20);
@@ -1565,6 +1732,17 @@ static void tab_permissions(struct app *app, cairo_t *cr) {
             int on = (dev & DEV_BIT[i]) != 0;
             draw_text(app,DEV_LABEL[i],LABEL_X,y+8,230,14,0xffd6deeau);
             draw_text(app, on?"allowed":"denied", x+w+12, y+8, 90,13, on?0xff7fe0a0u:0xffe08a8au); }
+        const int uy = TAB_Y + 24 + N_DEV * 42 + 8;
+        draw_text(app, "USB devices - give one device to this domain (the USB switch above must be on too):",
+                  LABEL_X, uy, app->width - LABEL_X - PAD, 12, 0xff8b94a3u);
+        if (nusb == 0)
+            draw_text(app, "No USB device is connected - or this image hands the USB controller to the LKL (USB=1), which does not report its devices yet.",
+                      LABEL_X, uy + 26, app->width - LABEL_X - PAD, 12, 0xff6b7686u);
+        for (int i = 0; i < nusb; i++) { int x,y,w,h; usb_row_rect(i,&x,&y,&w,&h);
+            char label[64]; snprintf(label, sizeof label, "%s  (%s)", usb[i].name, usb[i].id);
+            draw_text(app, label, LABEL_X, y+6, 230, 13, 0xffd6deeau);
+            draw_text(app, usb[i].allowed ? "this domain may use it" : "not for this domain", x+w+12, y+6, 220, 12,
+                      usb[i].allowed ? 0xff7fe0a0u : 0xffe08a8au); }
     }
 }
 
@@ -2191,11 +2369,28 @@ static void handle_click(struct app *app)
             if (x>=bx && x<=bx+bw && y>=by && y<=by+bh) {
                 int inst = (app->pkg_mask[app->sel] >> i) & 1;
                 domain_action_arg(app, inst ? "uninstall" : "install", app->pkgs[i].name); return; } }
+    } else if (app->tab == 3) {                     // Network: route selection
+        for (int i = 0, vis = 0; i < route_rows(app); i++) {
+            char arg[48]; route_row_arg(app, i, arg, sizeof arg);
+            if (!arg[0]) continue;
+            int bx, by, bw, bh; route_row_rect(vis++, &bx, &by, &bw, &bh);
+            if (x >= bx && x <= bx + bw && y >= by && y <= by + bh) {
+                domain_action_arg(app, "route", arg);
+                redraw_commit(app, "route");
+                return;
+            }
+        }
     } else if (app->tab == 4) {                     // Permissions: device toggles
         for (int i = 0; i < N_DEV; i++) { int bx,by,bw,bh; dev_row_rect(i,&bx,&by,&bw,&bh);
             if (y>=by-4 && y<=by+bh+4 && x>=LABEL_X) {
                 int on = (app->doms[app->sel].devices & DEV_BIT[i]) != 0;
                 domain_action_arg(app, on ? "devoff" : "devon", DEV_CLASS[i]); return; } }
+        {   struct usbdev usb[N_USBDEV];
+            const int nusb = usb_read(usb, N_USBDEV, app->doms[app->sel].name);
+            for (int i = 0; i < nusb; i++) { int bx,by,bw,bh; usb_row_rect(i,&bx,&by,&bw,&bh);
+                if (y>=by-4 && y<=by+bh+4 && x>=LABEL_X) {
+                    domain_action_arg(app, usb[i].allowed ? "usboff" : "usbon", usb[i].id);
+                    redraw_commit(app, "usb toggle"); return; } } }
     } else if (app->tab == 5) {                     // Applications: Launch + delegation
         const int isSystem = is_system_dom(app, app->sel);
         // Checklist panel open (System): delegate to / revoke from a domain, or Back.

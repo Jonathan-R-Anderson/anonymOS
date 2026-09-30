@@ -26,6 +26,7 @@ module network.tcp;
 
 import network.types;
 import network.ipv4;
+import network.vnet : g_netIf;
 
 enum int    TCP_MAX_CONN    = 32;
 enum size_t TCP_RXBUF       = 65536;       // power of two
@@ -59,6 +60,7 @@ private struct TcpConn {
     TCPState    st;
     IPv4Address rip;
     ushort      lport, rport;
+    int         nif;         // network/vnet.d interface (0 = the host NIC; > 0 = a domain's interface)
 
     // send side
     uint   iss, sndUna, sndNxt, sndWnd;
@@ -205,11 +207,15 @@ private bool sendSeg(ref TcpConn c, uint seq, ubyte flags, bool fromRing, size_t
     } else if (data !is null) {
         foreach (i; 0 .. len) pl[i] = data[i];
     }
+    const int prevIf = g_netIf;
+    g_netIf = c.nif;                        // the connection's interface (timers send outside any RX)
     IPv4Address me; getLocalIP(&me);
     put16(pkt.ptr + 16, tcpCsum(me, c.rip, pkt.ptr, hlen + len));
     if (flags & F_ACK) c.advWnd = wnd;
     ++g_tcpSegsOut;
-    return ipv4Send(c.rip, IPProtocol.TCP, pkt.ptr, hlen + len);
+    const bool sent = ipv4Send(c.rip, IPProtocol.TCP, pkt.ptr, hlen + len);
+    g_netIf = prevIf;
+    return sent;
 }
 
 private void sendAck(ref TcpConn c) @nogc nothrow { sendSeg(c, c.sndNxt, F_ACK, false, 0, null, 0); }
@@ -362,7 +368,7 @@ private int allocConn() @nogc nothrow {
         c.used = true; c.owned = false; c.started = false;
         c.st = TCPState.CLOSED;
         c.rip = IPv4Address(0, 0, 0, 0);
-        c.lport = 0; c.rport = 0;
+        c.lport = 0; c.rport = 0; c.nif = 0;
         c.iss = 0; c.sndUna = 0; c.sndNxt = 0; c.sndMax = 0; c.sndWnd = 0; c.mss = TCP_MSS_DEFAULT;
         c.txHead = 0; c.txLen = 0;
         c.finPending = false; c.finSent = false; c.finOnWire = false; c.finSeq = 0; c.dupAcks = 0;
@@ -402,7 +408,7 @@ export extern(C) void tcpHandlePacket(const(ubyte)* data, size_t len,
         if (!c.used || c.lport != dport) continue;
         if (c.st == TCPState.LISTEN) { lid = cast(int)i; continue; }
         if (c.st == TCPState.CLOSED) continue;
-        if (c.rport == sport && c.rip.isEqual(srcIP)) { id = cast(int)i; break; }
+        if (c.rport == sport && c.rip.isEqual(srcIP) && c.nif == g_netIf) { id = cast(int)i; break; }
     }
 
     if (id < 0) {
@@ -574,6 +580,7 @@ private void listenerSyn(int lid, const ref IPv4Address src, ushort sport, ushor
     c.started = true;
     c.parent = lid;
     c.rip = src; c.rport = sport; c.lport = dport;
+    c.nif = g_netIf;                        // answered on the interface the SYN came in on
     c.irs = seq; c.rcvNxt = seq + 1;
     c.iss = tcpNewIss(); c.sndUna = c.iss; c.sndNxt = c.iss + 1; c.sndMax = c.sndNxt;
     c.sndWnd = win;
@@ -691,6 +698,7 @@ export extern(C) int tcpConnectStart(int id, IPv4Address ip, ushort port) @nogc 
     if (c.lport == 0) { const int p = tcpBindPort(id, 0); if (p < 0) return p; }
     c.started = true;
     c.rip = ip; c.rport = port;
+    c.nif = g_netIf;                        // the caller selected the route (posix inetTcpConnect)
     c.iss = tcpNewIss(); c.sndUna = c.iss; c.sndNxt = c.iss + 1; c.sndMax = c.sndNxt;
     c.st = TCPState.SYN_SENT;
     c.rto = TCP_RTO_INIT; c.retries = 0;

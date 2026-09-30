@@ -1238,6 +1238,7 @@ namespace {
             else if (lower.find("mon") != std::string::npos)
                 runningSlot = 4;
             hosDrawDock(bg, running, runningSlot, activeTitle);
+            HosShell::noteShellDrawn();
             hosDrawLauncher(bg);
 
             // scratch = background, then the cursor on top.

@@ -326,7 +326,10 @@ public void identityInitDefaults() {
     mkBootIdentity("Banking\0".ptr,    0xFFFFD600, TRUST_BANKING,    CEIL_USER, NetPolicy.VPN,        ClipPolicy.Deny,              GUI_BANK, false, DEV_LOCKNET);
     mkBootIdentity("Development\0".ptr,0xFF6A1B9A, TRUST_DEV,        CEIL_USER, NetPolicy.LocalOnly,  ClipPolicy.AskApproval,       GUI_BASE, false, DEV_FULL);
     mkBootIdentity("Untrusted\0".ptr,  0xFFB71C1C, TRUST_UNTRUSTED,  CEIL_USER, NetPolicy.Tor,        ClipPolicy.Deny,              GUI_BASE, false, DEV_LOCKNET);
-    mkBootIdentity("Disposable\0".ptr, 0xFFFF6D00, TRUST_DISPOSABLE, CEIL_USER, NetPolicy.Disposable, ClipPolicy.Deny,              GUI_BASE, true,  DEV_LOCKNET);
+    // Disposable also gets USB by default: it is the place to open an untrusted USB device -- the
+    // domain is thrown away afterwards, and nothing it saw can reach another domain (clipboard
+    // denied, private files).  Every other identity keeps USB off unless the user grants it.
+    mkBootIdentity("Disposable\0".ptr, 0xFFFF6D00, TRUST_DISPOSABLE, CEIL_USER, NetPolicy.Disposable, ClipPolicy.Deny,              GUI_BASE, true,  DEV_LOCKNET | DEVCLASS_USB);
 }
 
 // One-shot boot proof (roadmap §2 outcome): create/lookup/validate; duplicate name,

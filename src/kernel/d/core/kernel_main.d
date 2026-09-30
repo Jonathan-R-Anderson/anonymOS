@@ -5544,6 +5544,7 @@ bool kernelIrqDrainBottomHalf() @nogc nothrow {
             import network.tcp : tcpTick;
             networkStackDrain(32);
             tcpTick(pitMs());
+            { import network.vnet : vnetTick; vnetTick(pitMs()); }
         }
         resched = true;
     }
@@ -5948,6 +5949,7 @@ private void kernelLoop() {
                         import network.tcp : tcpTick;
                         networkStackDrain(32);
                         tcpTick(pitMs());
+                        { import network.vnet : vnetTick; vnetTick(pitMs()); }
                     }
                     wakePollers();
                     picEOI(false);    // harmless when PIC IRQ0 is masked; covers the legacy-PIT case

@@ -124,6 +124,12 @@ public DomainId domainByName(const(char)* name) {
     return 0;
 }
 
+// A domain's name (NUL-terminated), or null.
+public const(char)* domainNameOf(DomainId id) {
+    auto d = domainById(id);
+    return d is null ? null : d.name.ptr;
+}
+
 public uint domainCount() {
     uint n = 0;
     foreach (ref e; g_domains) if (e.inUse) ++n;
@@ -362,6 +368,7 @@ public uint domainBuildNamespace(uint domObjId) {
     nsBind(ns, "/dev/shm\0".ptr,     root, RW);   // POSIX shm: rtfs keeps each domain's objects private
     nsBind(ns, "/dev/dri\0".ptr,     root, RW);
     nsBind(ns, "/dev/kvm\0".ptr,     root, RW);   // VMs: usable only where Virtualization is enabled
+    nsBind(ns, "/dev/net/tun\0".ptr, root, RW);   // VM network cards (vnet TAPs): gated like /dev/kvm
     nsBind(ns, "/dev/urandom\0".ptr, root, RO);
     nsBind(ns, "/dev/random\0".ptr,  root, RO);
 
@@ -725,6 +732,19 @@ public long domainControlWriteFrom(uint callerDom, const(char)* callerImage, boo
     // DM10.7: peripheral device toggles — "devon/devoff <domain> <gpu|audio|camera|mic|usb|input>"
     else if (verbEq(verb.ptr, "devon"))     ok = (id != 0) && domainSetDevice(id, domainDeviceClassByName(arg.ptr), true);
     else if (verbEq(verb.ptr, "devoff"))    ok = (id != 0) && domainSetDevice(id, domainDeviceClassByName(arg.ptr), false);
+    // USB, per device: "usbon/usboff <domain> <vid:pid>" -- assign one device to (or take it from) a
+    // domain, on top of the USB class switch (core/usbdev.d).
+    else if (verbEq(verb.ptr, "usbon") || verbEq(verb.ptr, "usboff")) {
+        import core.usbdev : usbDevSet;
+        ok = (id != 0) && (arg[0] != 0) && usbDevSet(id, arg.ptr, verbEq(verb.ptr, "usbon"));
+    }
+    // Virtual network: "route <domain> direct|vm:<segment>|domain:<name>" -- where the domain's
+    // traffic leaves: the host network, through the gateway VM on a segment (OPNsense), or along
+    // another domain's route (network/vnet.d).
+    else if (verbEq(verb.ptr, "route")) {
+        import network.vnet : vnetSetRoute;
+        ok = (id != 0) && (arg[0] != 0) && vnetSetRoute(id, arg.ptr);
+    }
     // DM10.7: filesystem path access — "fsro/fsrw/fsdeny <domain> <path>" (real backing paths)
     else if (verbEq(verb.ptr, "fsro"))      ok = (id != 0) && domainFsBindAllow(id, arg.ptr, false);
     else if (verbEq(verb.ptr, "fsrw"))      ok = (id != 0) && domainFsBindAllow(id, arg.ptr, true);

@@ -32,4 +32,10 @@ namespace HosShell {
     // App registry size (dock tile count is kept in sync with the renderer).
     int  appCount();
     void launchDockSlot(int slot);
+
+    // The CPU compose path (hosComposeShmWindows) draws the dock and the shell titlebar buttons;
+    // it calls this each time it does.  Clicks are hit-tested against them only while they are
+    // actually on screen -- the GL path never draws them, and an invisible dock swallowed every
+    // left click in a band at the bottom centre of the screen.
+    void noteShellDrawn();
 }

@@ -141,6 +141,8 @@ enum FileType {
     FD_KVM_SYSTEM, // /dev/kvm itself; fileSize unused
     FD_KVM_VM,     // VM fd; fileSize = packed (vmObjId, vmGen)
     FD_KVM_VCPU,   // vCPU fd; fileSize = packed (vcpuObjId, vcpuGen)
+    // Virtual network: /dev/net/tun.  backend = the vnet TAP port index (0 until TUNSETIFF).
+    FD_TUN,
 }
 
 struct File {
@@ -780,6 +782,7 @@ private enum int ENOTSUP = 95; // same value as EOPNOTSUPP
 private enum int ERANGE  = 34;
 private enum int ENOTDIR = 20;
 private enum int EBUSY = 16;
+private enum int EBADFD = 77;   // fd in a bad state (a /dev/net/tun not yet attached by TUNSETIFF)
 private enum int ENOTEMPTY = 39;
 
 private enum int F_ADD_SEALS = 1033;
@@ -848,6 +851,7 @@ private ObjType objTypeForFile(File* f) {
         case FileType.FD_KVM_SYSTEM:
         case FileType.FD_KVM_VM:
         case FileType.FD_KVM_VCPU:
+        case FileType.FD_TUN:
             return ObjType.Device;
         case FileType.FD_MEMFD:
             return ObjType.Vmo;
@@ -945,6 +949,10 @@ private uint capRightsForFile(File* f) {
             break;
         case FileType.FD_PTY_MASTER:
         case FileType.FD_PTY_SLAVE:
+            rights |= CAP_RIGHT_READ | CAP_RIGHT_WRITE | CAP_RIGHT_IOCTL;
+            break;
+        case FileType.FD_TUN:
+            // /dev/net/tun: frames in and out, TUNSETIFF & co.  The open was gated on DEVCLASS_VIRT.
             rights |= CAP_RIGHT_READ | CAP_RIGHT_WRITE | CAP_RIGHT_IOCTL;
             break;
         case FileType.FD_KVM_SYSTEM:
@@ -2093,6 +2101,16 @@ private long fileObjRead(ObjHeader* oh, void* _buf, ulong _count) {
         return 0;   // /dev/null always reads EOF
     }
 
+    if (f.type == FileType.FD_TUN) {
+        import network.vnet : vnetTapRead;
+        const int port = cast(int)cast(size_t)f.backend;
+        if (port <= 0) return negErrno(EBADFD);
+        smapBegin();
+        const long r = vnetTapRead(port, cast(ubyte*)_buf, cast(size_t)_count);
+        smapEnd();
+        return r;
+    }
+
     if (f.type == FileType.FD_ZERO) {
         auto buffer = cast(ubyte*)_buf;
 
@@ -2505,6 +2523,19 @@ private long fileObjWrite(ObjHeader* oh, const(void)* buf, ulong count) {
 
     if (f.type == FileType.FD_SOCKET) {
         return localSocketWrite(f, buf, count);
+    }
+
+    if (f.type == FileType.FD_TUN) {
+        import network.vnet : vnetTapWrite;
+        const int port = cast(int)cast(size_t)f.backend;
+        if (port <= 0) return negErrno(EBADFD);
+        ubyte[1600] frame;                                  // copy in: segInput may run a while
+        const size_t n = count < frame.length ? cast(size_t)count : frame.length;
+        smapBegin();
+        foreach (i; 0 .. n) frame[i] = (cast(const(ubyte)*)buf)[i];
+        smapEnd();
+        const long r = vnetTapWrite(port, frame.ptr, n);
+        return r < 0 ? r : cast(long)count;
     }
 
     if (fileIsSyntheticDirectory(f)) {
@@ -2963,6 +2994,7 @@ private uint devClassForPath(const(char)* path) {
     if (cstrEqPrefix(path, "/dev/bus/usb/"))     return DEVCLASS_USB;
     if (cstrEqPrefix(path, "/dev/snd/"))         return DEVCLASS_AUDIO;
     if (cstrEq(path, "/dev/kvm"))                  return DEVCLASS_VIRT;
+    if (cstrEq(path, "/dev/net/tun"))              return DEVCLASS_VIRT;   // VM network cards
     return 0;
 }
 
@@ -2985,6 +3017,15 @@ private int deviceClassGate(const(char)* path) {
                 vmmAuditDeny(dom, VMM_DENY_DEVICE_CLASS);
             }
             return negErrno(EACCES);
+        }
+        // A USB device node: the per-device assignment (core.usbdev) on top of the class.
+        if (cls == DEVCLASS_USB && cstrEqPrefix(path, "/dev/bus/usb/")) {
+            import core.usbdev : usbDevAllowedAt;
+            const(char)* q = path + 13;
+            uint bus = 0, addr = 0;
+            while (*q >= '0' && *q <= '9') bus = bus * 10 + (*q++ - '0');
+            if (*q == '/') { ++q; while (*q >= '0' && *q <= '9') addr = addr * 10 + (*q++ - '0'); }
+            if (bus != 0 && addr != 0 && !usbDevAllowedAt(dom, cast(ubyte)bus, cast(ubyte)addr)) return negErrno(EACCES);
         }
         return 0;
     }
@@ -3423,6 +3464,35 @@ private bool cpuBrandString(ref char[49] outb) @nogc nothrow {
 
 private size_t procDynamicSynth(const(char)* path) {
     size_t pos = 0;
+
+    // /sys/class/net/<tap>/tun_flags: a VM's TAP (network/vnet.d).  Cloud Hypervisor checks it for
+    // multi-queue support before attaching; it read "exists" through stat() and then failed to
+    // open it.  Hex flags like Linux: IFF_TAP | IFF_NO_PI | IFF_VNET_HDR, no IFF_MULTI_QUEUE.
+    {
+        static immutable string pre = "/sys/class/net/";
+        bool isNet = true;
+        foreach (i; 0 .. pre.length) if (path[i] != pre[i]) { isNet = false; break; }
+        if (isNet) {
+            char[20] nm = 0;
+            size_t k = 0;
+            const(char)* q = path + pre.length;
+            while (q[k] && q[k] != '/' && k < 16) { nm[k] = q[k]; ++k; }
+            if (q[k] == '/' && cstrEq(q + k + 1, "tun_flags")) {
+                import network.vnet : vnetTapByName, vnetTapFlags;
+                const int tap = vnetTapByName(nm.ptr);
+                if (tap > 0) {
+                    pbStr(pos, "0x".ptr);
+                    const uint fl = vnetTapFlags(tap) & 0xFFFF;
+                    foreach_reverse (sh; [12, 8, 4, 0]) {
+                        const uint nib = (fl >> sh) & 0xF;
+                        if (pos < g_procBuf.length - 1) g_procBuf[pos++] = cast(char)(nib < 10 ? '0' + nib : 'a' + nib - 10);
+                    }
+                    pbStr(pos, "\n".ptr);
+                    return pos;
+                }
+            }
+        }
+    }
 
     if (cstrEq(path, "/proc/net/dev")) {
         import drivers.network.network : netRxFrames, netRxBytes, netTxFrames, netTxBytes, netTxErrs;
@@ -4032,6 +4102,18 @@ public int sys_open(const(char)* path, int flags) {
     // fds are minted by KVM_CREATE_VM / KVM_CREATE_VCPU with narrower rights.
     if (cstrEq(path, "/dev/kvm")) {
         g_fdTable[fd].type     = FileType.FD_KVM_SYSTEM;
+        g_fdTable[fd].flags    = flags;
+        g_fdTable[fd].offset   = 0;
+        g_fdTable[fd].backend  = null;
+        g_fdTable[fd].fileSize = 0;
+        g_fdTable[fd].objId    = 0;
+        deviceNoteOpen(path);
+        return publishActiveFdReturn(fd);
+    }
+
+    // /dev/net/tun — a VMM's network card (network/vnet.d).  Attached to a segment by TUNSETIFF.
+    if (cstrEq(path, "/dev/net/tun")) {
+        g_fdTable[fd].type     = FileType.FD_TUN;
         g_fdTable[fd].flags    = flags;
         g_fdTable[fd].offset   = 0;
         g_fdTable[fd].backend  = null;
@@ -4687,6 +4769,16 @@ private long fileObjClose(ObjHeader* oh) {
         else kvmVcpuFdClosed(objId, gen);
     } else if (f.type == FileType.FD_SOCKET) {
         closeLocalSocket(f);
+    } else if (f.type == FileType.FD_TUN) {
+        // CH dup()s its TAP fds (try_clone), and fds are copied on fork: the port goes away with
+        // the LAST fd that refers to it.
+        const int port = cast(int)cast(size_t)f.backend;
+        if (port > 0) {
+            int refs = 0;
+            foreach (i; 0 .. 1024)
+                if (g_fdTable[i].type == FileType.FD_TUN && cast(int)cast(size_t)g_fdTable[i].backend == port) ++refs;
+            if (refs <= 1) { import network.vnet : vnetTapRelease; vnetTapRelease(port); }
+        }
     } else if (f.type == FileType.FD_EPOLL) {
         // Instance is shared across fork-copied tables and dups (see fdInstanceRef);
         // destroy only when the LAST reference closes — a forked child exiting must
@@ -9556,6 +9648,20 @@ private const(char)[] findVirtualFile(const(char)* path) {
 // (used by isSyntheticDirectoryPath for /proc/*, /sys/*, /etc/* sub-directories).
 private bool isVirtualDirectoryPath(const(char)* path) {
     if (path is null) return false;
+    // /sys/class/net/<if>: only interfaces that exist.  Everything under /sys/class/net/ used to be
+    // a directory, so a VMM probing /sys/class/net/<tap>/tun_flags before creating its TAP was told
+    // it existed (as a directory) and then failed to read it.  Unknown names are ENOENT, like Linux;
+    // a vnet TAP exists while a VMM holds it, and only its directory is synthetic (tun_flags is a file).
+    if (cstrEqPrefix(path, "/sys/class/net/")) {
+        const(char)* nm = path + 15;
+        if (cstrEqPrefix(nm, "lo") || cstrEqPrefix(nm, "eth") || cstrEqPrefix(nm, "wl")) return true;
+        char[17] n = 0;
+        size_t k = 0;
+        while (nm[k] && nm[k] != '/' && k < 16) { n[k] = nm[k]; ++k; }
+        import network.vnet : vnetTapByName;
+        if (vnetTapByName(n.ptr) <= 0) return false;
+        return nm[k] == 0 || (nm[k] == '/' && nm[k + 1] == 0);
+    }
     // Accept known /proc/ sub-dirs
     if (cstrEqPrefix(path, "/proc/sys/") ||
         cstrEqPrefix(path, "/proc/net/") ||
@@ -10178,6 +10284,37 @@ private long handleSocketIoctl(ulong cmd, ulong arg) {
     foreach (i; 0 .. 16) nm[i] = cast(char)src[i];
     smapEnd();
     nm[16] = 0;
+    {   // a VM's TAP (network/vnet.d): the VMM brings it up and reads its MAC through these
+        import network.vnet : vnetTapByName, vnetTapMac;
+        const int tap = vnetTapByName(nm.ptr);
+        if (tap > 0) {
+            switch (cast(uint)cmd) {
+                case SIOCGIFFLAGS:
+                    smapBegin(); *cast(ushort*)(arg + 16) = 0x1043; smapEnd();   // UP|BROADCAST|RUNNING|MULTICAST
+                    return 0;
+                case SIOCGIFHWADDR: {
+                    const(ubyte)* mac = vnetTapMac(tap);
+                    smapBegin();
+                    auto hp = cast(ubyte*)(arg + 16);
+                    foreach (i; 0 .. 16) hp[i] = 0;
+                    *cast(ushort*)(arg + 16) = 1;
+                    foreach (i; 0 .. 6) hp[2 + i] = mac[i];
+                    smapEnd();
+                    return 0;
+                }
+                case SIOCGIFMTU:
+                    smapBegin(); *cast(int*)(arg + 16) = 1500; smapEnd();
+                    return 0;
+                case SIOCGIFINDEX:
+                    smapBegin(); *cast(int*)(arg + 16) = 100 + tap; smapEnd();
+                    return 0;
+                case 0x8914: case 0x8922: case 0x8924: case 0x8916: case 0x891c:   // SIOCSIF FLAGS/MTU/HWADDR/ADDR/NETMASK
+                    return 0;                                   // nothing to configure on our side
+                default:
+                    return negErrno(25);
+            }
+        }
+    }
     const int ifx = ifIndexForName(nm.ptr);
     if (ifx < 0) return negErrno(ENODEV);
     const bool isLo = (ifx == 0);
@@ -10357,10 +10494,75 @@ private long kvmFdIoctl(int fd, File* f, ulong cmd, ulong arg) {
     return kvmVcpuIoctl(tid, objId, gen, cmd, arg);
 }
 
+// /dev/net/tun ioctls (network/vnet.d): what a VMM needs to attach a virtio-net card.  No
+// offloads, no multi-queue: TUNGETFEATURES says so, and TUNSETOFFLOAD only accepts "none".
+private long tunIoctl(File* f, ulong cmd, ulong arg) {
+    import network.vnet : vnetTapAttach, vnetTapName, vnetTapSetHdr, vnetTapHdr, vnetTapFlags;
+    enum uint IFF_TUN = 0x0001, IFF_TAP = 0x0002, IFF_NO_PI = 0x1000, IFF_VNET_HDR = 0x4000;
+    const int port = cast(int)cast(size_t)f.backend;
+    switch (cast(uint)cmd) {
+        case 0x800454cf:                                    // TUNGETFEATURES
+            if (!isUserRange(arg, 4)) return negErrno(EFAULT);
+            userWrite!uint(arg, IFF_TAP | IFF_NO_PI | IFF_VNET_HDR);
+            return 0;
+        case 0x400454ca: {                                  // TUNSETIFF (struct ifreq: name[16], short flags)
+            if (!isUserRange(arg, 40)) return negErrno(EFAULT);
+            if (port > 0) return negErrno(EBUSY);
+            char[16] name = 0;
+            smapBegin();
+            foreach (i; 0 .. 15) name[i] = (cast(const(char)*)arg)[i];
+            const uint fl = *cast(const(ushort)*)(arg + 16);
+            smapEnd();
+            if ((fl & IFF_TAP) == 0 || (fl & IFF_TUN) != 0) return negErrno(EINVAL);   // TAP only
+            if ((fl & 0x0100) != 0) return negErrno(EINVAL);                            // no multi-queue
+            if (name[0] == 0) { name[0 .. 4] = "nat0"; }                                // unnamed: NAT uplink
+            const int p = vnetTapAttach(name.ptr, fl);
+            if (p < 0) return p;
+            f.backend = cast(void*)cast(size_t)p;
+            smapBegin();
+            const(char)* nm = vnetTapName(p);
+            foreach (i; 0 .. 16) { (cast(char*)arg)[i] = nm[i]; if (nm[i] == 0) break; }
+            smapEnd();
+            return 0;
+        }
+        case 0x800454d2: {                                  // TUNGETIFF
+            if (port <= 0) return negErrno(EBADFD);
+            if (!isUserRange(arg, 40)) return negErrno(EFAULT);
+            const(char)* nm = vnetTapName(port);
+            smapBegin();
+            foreach (i; 0 .. 16) { (cast(char*)arg)[i] = nm[i]; if (nm[i] == 0) break; }
+            *cast(ushort*)(arg + 16) = cast(ushort)vnetTapFlags(port);
+            smapEnd();
+            return 0;
+        }
+        case 0x400454d8: {                                  // TUNSETVNETHDRSZ
+            if (!isUserRange(arg, 4)) return negErrno(EFAULT);
+            const int sz = cast(int)userRead!uint(arg);
+            if (sz < 10 || sz > 12) return negErrno(EINVAL);
+            if (port > 0) vnetTapSetHdr(port, cast(uint)sz);
+            return 0;
+        }
+        case 0x800454d7:                                    // TUNGETVNETHDRSZ
+            if (!isUserRange(arg, 4)) return negErrno(EFAULT);
+            userWrite!uint(arg, port > 0 ? vnetTapHdr(port) : 10);
+            return 0;
+        case 0x400454d0:                                    // TUNSETOFFLOAD: only "none" (checksums complete)
+            return arg == 0 ? 0 : negErrno(EINVAL);
+        case 0x400454cb: case 0x400454d4: case 0x400454dc:  // TUNSETPERSIST / TUNSETSNDBUF / TUNSETVNETLE
+            return 0;
+        case 0x400454d9:                                    // TUNSETQUEUE: single queue
+            return negErrno(EINVAL);
+        default:
+            return negErrno(25);                            // ENOTTY
+    }
+}
+
 private long fileObjIoctl(ObjHeader* oh, ulong cmd, ulong arg) {
     File* f = fileFromObj(oh);
     if (f is null) return negErrno(EBADF);
     ++g_objOpsDispatch;
+
+    if (f.type == FileType.FD_TUN) return tunIoctl(f, cmd, arg);
 
     if (f.type == FileType.FD_KVM_SYSTEM || f.type == FileType.FD_KVM_VM ||
         f.type == FileType.FD_KVM_VCPU) {
@@ -10959,6 +11161,20 @@ import core.globals : hhdm_offset;
 
 public long sys_writev(int fd, const(iovec)* iov, int iovcnt) {
     if (iov == null && iovcnt > 0) return negErrno(14); // EFAULT
+    // A TAP takes ONE frame per write: gather the iovecs (virtio-net header + frame) first.
+    if (fd >= 0 && fd < 1024 && g_fdTable !is null && g_fdTable[fd].type == FileType.FD_TUN) {
+        ubyte[1600] frame;
+        size_t n = 0;
+        for (int i = 0; i < iovcnt; i++) {
+            size_t k = iov[i].iov_len;
+            if (n + k > frame.length) return negErrno(EMSGSIZE);
+            smapBegin();
+            foreach (j; 0 .. k) frame[n + j] = (cast(const(ubyte)*)iov[i].iov_base)[j];
+            smapEnd();
+            n += k;
+        }
+        return sys_write(fd, frame.ptr, n);
+    }
     
     long total = 0;
     for (int i = 0; i < iovcnt; i++) {
@@ -11312,14 +11528,20 @@ private ssize_t inetSendTo(LocalSocket* s, const(void)* buf, size_t len,
 
     auto ip = IPv4Address(cast(ubyte)(dip & 0xFF), cast(ubyte)((dip >> 8) & 0xFF),
                           cast(ubyte)((dip >> 16) & 0xFF), cast(ubyte)((dip >> 24) & 0xFF));
+    const int nif = inetRouteIf();
+    if (nif < 0) return negErrno(ENETUNREACH);
     MACAddress mac;
-    if (!arpLookup(ip, &mac)) {
+    if (nif == 0 && !arpLookup(ip, &mac)) {
         arpSendRequest(ip);
         for (uint i = 0; i < 200_000u; ++i) {
             networkStackPoll();
             if (arpLookup(ip, &mac)) break;
         }
     }
+    import network.vnet : g_netIf;
+    const int prevIf = g_netIf;
+    g_netIf = nif;                               // a routed domain's datagrams leave by its interface
+    scope(exit) g_netIf = prevIf;
     // SOCK_RAW: `buf` is already a complete ICMP message -- busybox builds the echo header
     // and computes its checksum itself -- so hand it to the IP layer verbatim with
     // protocol 1.  Do NOT re-checksum it here; that is the caller's job on a raw socket.
@@ -11477,7 +11699,21 @@ private ssize_t inetSendMsg(LocalSocket* s, msghdr* msg) @nogc nothrow {
 // straight out through the in-kernel stack.  There is no in-kernel VPN or Tor transport to route
 // through, so those policies fail CLOSED here; LocalOnly reaches private/link-local networks only.
 // Unconfined tasks (the desktop, system services, the kernel's own DHCP/DNS) are not governed.
+// The calling task's network route (network/vnet.d): 0 = the host network, > 0 = the domain's
+// interface on a gateway VM's segment (the Domain Manager's `route` verb), -1 = no way out (a
+// routing loop): fail closed.
+private int inetRouteIf() @nogc nothrow {
+    import network.vnet : vnetIfForDomain;
+    const int tid = cast(int)g_current_task_id;
+    if (tid < 0 || tid >= MAX_TASKS) return 0;
+    const uint dom = g_tasks[tid].domainObjId;
+    return dom == 0 ? 0 : vnetIfForDomain(dom);
+}
+
 private int netPolicyGate(uint dst) @nogc nothrow {
+    // Routed through a gateway VM: that firewall is the policy enforcement point for this
+    // domain's traffic (its VPN/Tor/allow rules), so the host-side identity policy stands aside.
+    if (inetRouteIf() > 0) return 0;
     import core.identity : identityById, NetPolicy;
     import core.domain : domainById;
     const int tid = cast(int)g_current_task_id;
@@ -11571,9 +11807,15 @@ private int inetTcpConnect(LocalSocket* s, File* f, const(sockaddr)* addr, uint 
         if (p < 0) return negErrno(EADDRNOTAVAIL);
         s.inetLocalPort = cast(ushort)p;
     }
-    inetResolveNextHop(sin.sin_addr);
+    const int nif = inetRouteIf();
+    if (nif < 0) return negErrno(ENETUNREACH);
+    if (nif == 0) inetResolveNextHop(sin.sin_addr);
+    import network.vnet : g_netIf;
+    const int prevIf = g_netIf;
+    g_netIf = nif;                               // the connection keeps this interface (TcpConn.nif)
     const int r = tcpConnectStart(c, IPv4Address(sin.sin_addr),
                                   cast(ushort)((sin.sin_port >> 8) | (sin.sin_port << 8)));
+    g_netIf = prevIf;
     if (r < 0) return negErrno(-r);
     s.inetPeerIP   = sin.sin_addr;
     s.inetPeerPort = cast(ushort)((sin.sin_port >> 8) | (sin.sin_port << 8));
@@ -11651,7 +11893,10 @@ public int sys_socket(int domain, int type, int protocol) {
     }
 
     if (domain != AF_UNIX) return negErrno(EAFNOSUPPORT);
-    if (baseType != SOCK_STREAM) return negErrno(EPROTONOSUPPORT);
+    // SOCK_DGRAM: created so it can carry the interface ioctls (SIOC*) a VMM issues through a
+    // throwaway AF_UNIX datagram socket to bring its TAP up -- datagram transfer itself is not
+    // implemented on it.
+    if (baseType != SOCK_STREAM && baseType != 2 /*SOCK_DGRAM*/) return negErrno(EPROTONOSUPPORT);
     if (protocol != 0) return negErrno(EPROTONOSUPPORT);
 
     const int socketId = allocLocalSocket(domain, baseType);
@@ -14800,6 +15045,23 @@ public long linux_sys_sendfile(ulong out_, ulong in_, ulong off, ulong cnt) { re
 public long linux_sys_readv(ulong fd, ulong iov_ptr, ulong iovcnt) {
     struct iovec { void* iov_base; size_t iov_len; }
     auto iovs = cast(iovec*)iov_ptr;
+    // A TAP delivers ONE frame per read, scattered over the iovecs (a VMM's virtio descriptor
+    // chain); reading each iovec separately would split frames across reads.
+    if (fd < 1024 && g_fdTable !is null && g_fdTable[cast(int)fd].type == FileType.FD_TUN) {
+        ubyte[1600] frame;
+        const long n = linux_sys_read(fd, cast(ulong)frame.ptr, frame.length);
+        if (n <= 0) return n;
+        size_t done = 0;
+        for (ulong i = 0; i < iovcnt && done < cast(size_t)n; ++i) {
+            size_t k = iovs[i].iov_len;
+            if (k > cast(size_t)n - done) k = cast(size_t)n - done;
+            smapBegin();
+            foreach (j; 0 .. k) (cast(ubyte*)iovs[i].iov_base)[j] = frame[done + j];
+            smapEnd();
+            done += k;
+        }
+        return cast(long)done;
+    }
     long total = 0;
     for (ulong i = 0; i < iovcnt; ++i) {
         if (!iovs[i].iov_len) continue;
@@ -15066,6 +15328,10 @@ private bool fdReadableImpl(int fd) @nogc nothrow {
     if (!fdRequireCap(cast(ulong)fd, CAP_RIGHT_READ)) return false;
     auto f = &g_fdTable[fd];
     if (f.type == FileType.FD_CONSOLE)  return true;
+    if (f.type == FileType.FD_TUN) {
+        import network.vnet : vnetTapReadable;
+        return vnetTapReadable(cast(int)cast(size_t)f.backend);
+    }
     if (f.type == FileType.FD_EPOLL) {
         // An epoll fd is readable when any fd it watches is ready.  This makes a
         // *nested* epoll work: libinput hands Weston an epoll fd that itself

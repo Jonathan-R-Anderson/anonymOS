@@ -1,0 +1,252 @@
+diff --git a/virtio-devices/src/transport/pci_device.rs b/virtio-devices/src/transport/pci_device.rs
+index 6ba8368..26ace00 100644
+--- a/virtio-devices/src/transport/pci_device.rs
++++ b/virtio-devices/src/transport/pci_device.rs
+@@ -85,6 +85,33 @@ fn id(&self) -> PciCapabilityId {
+     }
+ }
+ 
++// anonymOS: a minimal PCI Express capability (version 1 -- 20 bytes, all that fits beside the
++// virtio capabilities -- Root Complex Integrated Endpoint; no link).  FreeBSD enables MSI/MSI-X only on a PCI Express (or PCI-X) chipset or a whitelisted VM
++// host bridge (pci_msi_blacklisted()), and it decides "PCI Express chipset" from any device
++// carrying this capability -- without it every interrupt allocation for a virtio device fails
++// ("exhausted all interrupt allocation attempts").  Linux guests read it as an RCiEP.
++struct PcieRcepCap {
++    body: [u8; 0x12],
++}
++
++impl PcieRcepCap {
++    fn new() -> Self {
++        let mut body = [0u8; 0x12];
++        body[0] = 0x91; // PCI Express Capabilities: version 1, device/port type 9 (RCiEP)
++        PcieRcepCap { body }
++    }
++}
++
++impl PciCapability for PcieRcepCap {
++    fn bytes(&self) -> &[u8] {
++        &self.body
++    }
++
++    fn id(&self) -> PciCapabilityId {
++        PciCapabilityId::PciExpress
++    }
++}
++
+ const VIRTIO_PCI_CAP_LEN_OFFSET: u8 = 2;
+ 
+ impl VirtioPciCap {
+@@ -277,7 +304,12 @@ const fn next_bar_addr(offset: u64, size: u64) -> u64 {
+ const DEVICE_CONFIG_SIZE: u64 = 0x1000;
+ const NOTIFICATION_BAR_OFFSET: u64 = next_bar_addr(DEVICE_CONFIG_BAR_OFFSET, DEVICE_CONFIG_SIZE);
+ const NOTIFICATION_SIZE: u64 = MAX_QUEUES * NOTIFY_OFF_MULTIPLIER as u64;
+-const MSIX_TABLE_BAR_OFFSET: u64 = next_bar_addr(NOTIFICATION_BAR_OFFSET, NOTIFICATION_SIZE);
++// anonymOS: the MSI-X table and PBA live in a BAR of their own (VIRTIO_MSIX_BAR_INDEX), as on
++// QEMU.  FreeBSD's virtio_pci maps the capability BAR and then allocates the MSI-X table BAR as a
++// separate resource; with the table inside the capability BAR that second allocation fails
++// ("virtio_pci0: Unable to map MSIX table"), no interrupt can be set up, and a FreeBSD guest
++// (OPNsense, pfSense) never finds its disk.
++const MSIX_TABLE_BAR_OFFSET: u64 = 0;
+ 
+ // The size is 256KiB because the table can hold up to 2048 entries, with each
+ // entry being 128 bits (4 DWORDS).
+@@ -287,11 +319,14 @@ const fn next_bar_addr(offset: u64, size: u64) -> u64 {
+ // can support up to 2048 vectors.
+ const MSIX_PBA_SIZE: u64 = 0x800;
+ // The BAR size must be a power of 2.
+-const CAPABILITY_BAR_SIZE: u64 = (MSIX_PBA_BAR_OFFSET + MSIX_PBA_SIZE).next_power_of_two();
++const MSIX_BAR_SIZE: u64 = (MSIX_PBA_BAR_OFFSET + MSIX_PBA_SIZE).next_power_of_two();
++const CAPABILITY_BAR_SIZE: u64 =
++    next_bar_addr(NOTIFICATION_BAR_OFFSET, NOTIFICATION_SIZE).next_power_of_two();
+ // Align larger than natural alignment to work around Windows driver issues
+ const VIRTIO_PCI_BAR_ALIGN: u64 = 0x80_0000;
+ const VIRTIO_CONFIG_BAR_INDEX: usize = 0;
+ const VIRTIO_SHM_BAR_INDEX: usize = 2;
++const VIRTIO_MSIX_BAR_INDEX: usize = 4;
+ 
+ const NOTIFY_OFF_MULTIPLIER: u32 = 4; // A dword per notification address.
+ 
+@@ -758,16 +793,20 @@ fn add_pci_capabilities(
+         self.cap_pci_cfg_info.cap = configuration_cap;
+ 
+         let msix_cap = MsixCap::new(
+-            VIRTIO_CONFIG_BAR_INDEX as u8,
++            VIRTIO_MSIX_BAR_INDEX as u8,
+             self.msix_num,
+             MSIX_TABLE_BAR_OFFSET as u32,
+-            VIRTIO_CONFIG_BAR_INDEX as u8,
++            VIRTIO_MSIX_BAR_INDEX as u8,
+             MSIX_PBA_BAR_OFFSET as u32,
+         );
+         self.configuration
+             .add_capability(&msix_cap)
+             .map_err(PciDeviceError::CapabilitiesSetup)?;
+ 
++        self.configuration
++            .add_capability(&PcieRcepCap::new())
++            .map_err(PciDeviceError::CapabilitiesSetup)?;
++
+         Ok(())
+     }
+ 
+@@ -1034,6 +1073,7 @@ fn allocate_bars(
+         let device = device_clone.lock().unwrap();
+ 
+         let mut settings_bar_addr = None;
++        let mut msix_bar_addr = None;
+         let mut use_64bit_bar = self.use_64bit_bar;
+         let restoring = resources.is_some();
+         if let Some(resources) = resources {
+@@ -1041,8 +1081,14 @@ fn allocate_bars(
+                 if let Resource::PciBar {
+                     index, base, type_, ..
+                 } = resource
+-                    && index == VIRTIO_CONFIG_BAR_INDEX
+                 {
++                    if index == VIRTIO_MSIX_BAR_INDEX {
++                        msix_bar_addr = Some(GuestAddress(base));
++                        continue;
++                    }
++                    if index != VIRTIO_CONFIG_BAR_INDEX {
++                        continue;
++                    }
+                     settings_bar_addr = Some(GuestAddress(base));
+                     use_64bit_bar = match type_ {
+                         PciBarType::Io => {
+@@ -1051,7 +1097,6 @@ fn allocate_bars(
+                         PciBarType::Mmio32 => false,
+                         PciBarType::Mmio64 => true,
+                     };
+-                    break;
+                 }
+             }
+             // Error out if no resource was matching the BAR id.
+@@ -1091,6 +1136,22 @@ fn allocate_bars(
+             .set_size(CAPABILITY_BAR_SIZE)
+             .set_region_type(region_type);
+ 
++        // The MSI-X table + PBA BAR, the same kind as the capability BAR.
++        let msix_addr = if use_64bit_bar {
++            mmio64_allocator
++                .allocate(msix_bar_addr, MSIX_BAR_SIZE, Some(MSIX_BAR_SIZE))
++                .ok_or(PciDeviceError::IoAllocationFailed(MSIX_BAR_SIZE))?
++        } else {
++            mmio32_allocator
++                .allocate(msix_bar_addr, MSIX_BAR_SIZE, Some(MSIX_BAR_SIZE))
++                .ok_or(PciDeviceError::IoAllocationFailed(MSIX_BAR_SIZE))?
++        };
++        let msix_bar = PciBarConfiguration::default()
++            .set_index(VIRTIO_MSIX_BAR_INDEX)
++            .set_address(msix_addr.raw_value())
++            .set_size(MSIX_BAR_SIZE)
++            .set_region_type(region_type);
++
+         // The creation of the PCI BAR and its associated capabilities must
+         // happen only during the creation of a brand new VM. When a VM is
+         // restored from a known state, the BARs are already created with the
+@@ -1099,6 +1160,9 @@ fn allocate_bars(
+             self.configuration.add_pci_bar(&bar).map_err(|e| {
+                 PciDeviceError::IoRegistrationFailed(virtio_pci_bar_addr.raw_value(), e)
+             })?;
++            self.configuration.add_pci_bar(&msix_bar).map_err(|e| {
++                PciDeviceError::IoRegistrationFailed(msix_addr.raw_value(), e)
++            })?;
+ 
+             // Once the BARs are allocated, the capabilities can be added to the PCI configuration.
+             let device_config_size = device.config_size().unwrap_or(DEVICE_CONFIG_SIZE);
+@@ -1106,6 +1170,7 @@ fn allocate_bars(
+         }
+ 
+         bars.push(bar);
++        bars.push(msix_bar);
+ 
+         // Allocate a dedicated BAR if there are some shared memory regions.
+         if let Some(shm_list) = device.get_shm_regions() {
+@@ -1181,7 +1246,25 @@ fn restore_bar_addr(&mut self, params: &BarReprogrammingParams) {
+         self.configuration.restore_bar_addr(params);
+     }
+ 
+-    fn read_bar(&mut self, _base: u64, offset: u64, data: &mut [u8]) {
++    fn read_bar(&mut self, base: u64, offset: u64, data: &mut [u8]) {
++        if base == self.configuration.get_bar_addr(VIRTIO_MSIX_BAR_INDEX) {
++            match offset {
++                o if (MSIX_TABLE_BAR_OFFSET..MSIX_TABLE_BAR_OFFSET + MSIX_TABLE_SIZE).contains(&o) => {
++                    self.msix_config
++                        .lock()
++                        .unwrap()
++                        .read_table(o - MSIX_TABLE_BAR_OFFSET, data);
++                }
++                o if (MSIX_PBA_BAR_OFFSET..MSIX_PBA_BAR_OFFSET + MSIX_PBA_SIZE).contains(&o) => {
++                    self.msix_config
++                        .lock()
++                        .unwrap()
++                        .read_pba(o - MSIX_PBA_BAR_OFFSET, data);
++                }
++                _ => (),
++            }
++            return;
++        }
+         match offset {
+             o if o < COMMON_CONFIG_BAR_OFFSET + COMMON_CONFIG_SIZE => {
+                 self.common_config
+@@ -1205,23 +1288,29 @@ fn read_bar(&mut self, _base: u64, offset: u64, data: &mut [u8]) {
+             {
+                 // Handled with ioeventfds.
+             }
+-            o if (MSIX_TABLE_BAR_OFFSET..MSIX_TABLE_BAR_OFFSET + MSIX_TABLE_SIZE).contains(&o) => {
+-                self.msix_config
+-                    .lock()
+-                    .unwrap()
+-                    .read_table(o - MSIX_TABLE_BAR_OFFSET, data);
+-            }
+-            o if (MSIX_PBA_BAR_OFFSET..MSIX_PBA_BAR_OFFSET + MSIX_PBA_SIZE).contains(&o) => {
+-                self.msix_config
+-                    .lock()
+-                    .unwrap()
+-                    .read_pba(o - MSIX_PBA_BAR_OFFSET, data);
+-            }
+             _ => (),
+         }
+     }
+ 
+     fn write_bar(&mut self, base: u64, offset: u64, data: &[u8]) -> Option<Arc<Barrier>> {
++        if base == self.configuration.get_bar_addr(VIRTIO_MSIX_BAR_INDEX) {
++            match offset {
++                o if (MSIX_TABLE_BAR_OFFSET..MSIX_TABLE_BAR_OFFSET + MSIX_TABLE_SIZE).contains(&o) => {
++                    self.msix_config
++                        .lock()
++                        .unwrap()
++                        .write_table(o - MSIX_TABLE_BAR_OFFSET, data);
++                }
++                o if (MSIX_PBA_BAR_OFFSET..MSIX_PBA_BAR_OFFSET + MSIX_PBA_SIZE).contains(&o) => {
++                    self.msix_config
++                        .lock()
++                        .unwrap()
++                        .write_pba(o - MSIX_PBA_BAR_OFFSET, data);
++                }
++                _ => (),
++            }
++            return None;
++        }
+         let initial_ready = self.is_driver_ready();
+         match offset {
+             o if o < COMMON_CONFIG_BAR_OFFSET + COMMON_CONFIG_SIZE => {
+@@ -1266,18 +1355,6 @@ fn write_bar(&mut self, base: u64, offset: u64, data: &[u8]) -> Option<Arc<Barri
+                     warn!("Notification BAR write matched no queue: offset = 0x{o:x}");
+                 }
+             }
+-            o if (MSIX_TABLE_BAR_OFFSET..MSIX_TABLE_BAR_OFFSET + MSIX_TABLE_SIZE).contains(&o) => {
+-                self.msix_config
+-                    .lock()
+-                    .unwrap()
+-                    .write_table(o - MSIX_TABLE_BAR_OFFSET, data);
+-            }
+-            o if (MSIX_PBA_BAR_OFFSET..MSIX_PBA_BAR_OFFSET + MSIX_PBA_SIZE).contains(&o) => {
+-                self.msix_config
+-                    .lock()
+-                    .unwrap()
+-                    .write_pba(o - MSIX_PBA_BAR_OFFSET, data);
+-            }
+             _ => (),
+         }
+ 

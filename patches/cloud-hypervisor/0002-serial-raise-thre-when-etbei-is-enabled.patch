@@ -1,0 +1,23 @@
+diff --git a/devices/src/legacy/serial.rs b/devices/src/legacy/serial.rs
+index 4031206..b4d5497 100644
+--- a/devices/src/legacy/serial.rs
++++ b/devices/src/legacy/serial.rs
+@@ -259,7 +259,17 @@ fn handle_write(&mut self, offset: u8, v: u8) -> Result<()> {
+                     self.thr_empty()?;
+                 }
+             }
+-            IER => self.interrupt_enable = v & IER_FIFO_BITS,
++            IER => {
++                // anonymOS: a 16550 raises the THRE interrupt when the driver enables it while the
++                // transmitter is empty (always, here) -- as QEMU's serial does.  FreeBSD's uart
++                // driver fills the FIFO first and enables ETBEI afterwards, then waits for that
++                // interrupt; without it its tty output stopped after the first chunk.
++                let was_thr = self.is_thr_intr_enabled();
++                self.interrupt_enable = v & IER_FIFO_BITS;
++                if !was_thr && self.is_thr_intr_enabled() {
++                    self.thr_empty()?;
++                }
++            }
+             LCR => self.line_control = v,
+             MCR => self.modem_control = v,
+             SCR => self.scratch = v,

@@ -5230,6 +5230,12 @@ private long dispatchLinuxSyscall(ulong n, ulong a, ulong b, ulong c,
         case 157: return linux_sys_prctl(a, b, c, d, e);
         case 160: return linux_sys_setrlimit(a, b);
         case 162: return linux_sys_sync();
+        // fsync / fdatasync / syncfs: implemented (rtfs is memory, disk-backed nodes write through)
+        // but never dispatched -- ENOSYS failed every flush a VMM's virtio-blk forwarded, and UEFI
+        // treated the guest's disk as broken ("No bootable option").
+        case 74:  return linux_sys_fsync(a);
+        case 75:  return linux_sys_fdatasync(a);
+        case 306: return linux_sys_sync();
         case 165: return linux_sys_mount(a, b, c, d, e);
         case 186: return linux_sys_gettid();
         case 200: return linux_sys_tkill(a, b);

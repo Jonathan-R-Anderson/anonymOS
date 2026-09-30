@@ -1125,6 +1125,15 @@ stage-iso-tree: kernel.elf $(WLSOFTWARE_BIN) $(PKGFETCH_BIN) $(SOFTWARE_CATALOG)
 		echo "Cloud Hypervisor NOT staged (run scripts/build-cloud-hypervisor.sh)"; \
 	fi
 
+	@# Virtual Machines' UEFI firmware (Cloud Hypervisor's edk2 CloudHv build, pinned in
+	@# deps/vm-firmware): what a firmware-booted guest (OPNsense / FreeBSD) starts in.  /vm-firmware.fd.
+	@if [ -f $(CLOUD_HYPERVISOR_BIN) ] && [ -f deps/vm-firmware/CLOUDHV.fd ]; then \
+		(cd deps/vm-firmware && sha256sum -c --quiet CLOUDHV.fd.sha256) || { echo "deps/vm-firmware/CLOUDHV.fd: SHA-256 mismatch" >&2; exit 1; }; \
+		cp deps/vm-firmware/CLOUDHV.fd cd/vm-firmware.fd; \
+		printf '    module_path: boot():/vm-firmware.fd\n' >> cd/boot/limine/limine.conf; \
+		echo "Included the VM UEFI firmware (/vm-firmware.fd)"; \
+	fi
+
 	@# Virtual Machines' bundled guest: Alpine's linux-virt kernel + a busybox initramfs
 	@# (tests/vmm/linux-guest/build.sh), boot modules /vm-alpine.vmlinuz + /vm-alpine.initrd that every
 	@# domain may read (core/domain.d).  Staged with Cloud Hypervisor; skipped if it cannot be built.

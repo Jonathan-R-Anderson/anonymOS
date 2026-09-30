@@ -63,6 +63,12 @@ static const char *BUNDLED_KERNEL = "/vm-alpine.vmlinuz";
 static const char *BUNDLED_INITRD = "/vm-alpine.initrd";
 #define BUNDLED_CMDLINE "console=ttyS0 panic=-1 no_timer_check"
 static const char *RUN_DIR = "/tmp/vms";
+/* Firmware-booted guests: Cloud Hypervisor's UEFI (edk2 CloudHv, boot module) and the OPNsense
+ * firewall's disk -- downloaded, verified and committed after install by hos-vm-fetch into the VM
+ * store (exposed read-only at OPNSENSE_DISK), or a test image. */
+static const char *FIRMWARE_PATH = "/vm-firmware.fd";
+static const char *OPNSENSE_DISK = "/home/user/vms/opnsense.img";
+static const char *OPNSENSE_TEST_DISK = "/vm-opnsense.qcow2";
 
 enum { DEFAULT_WIDTH = 1120, DEFAULT_HEIGHT = 720, MIN_WIDTH = 900, MIN_HEIGHT = 600 };
 enum { TOOLBAR_Y = DECO_BTN_H, TOOLBAR_H = 64, SIDEBAR_W = 270, STATUS_H = 26, TAB_H = 34, VMROW_H = 58 };
@@ -88,7 +94,7 @@ enum { TOOLBAR_Y = DECO_BTN_H, TOOLBAR_H = 64, SIDEBAR_W = 270, STATUS_H = 26, T
 #define C_TERM_BG 0x0a0d10u
 
 /* ── model ─────────────────────────────────────────────────────────────────────────────── */
-enum { OS_ALPINE, OS_CUSTOM };
+enum { OS_ALPINE, OS_CUSTOM, OS_OPNSENSE };
 enum { ST_OFF, ST_STARTING, ST_RUNNING, ST_PAUSED, ST_STOPPING, ST_ABORTED };
 static const char *const k_state_name[] = { "Powered Off", "Starting", "Running", "Paused",
                                             "Stopping", "Aborted" };
@@ -100,6 +106,9 @@ struct vmcfg {
     int  mem_mb, cpus;
     int  disk_mb;            /* 0 = no virtual hard disk */
     char desc[120];
+    char firmware[160];      /* UEFI firmware: boot this instead of a kernel */
+    char diskimg[160];       /* an existing disk image (qcow2 or raw by extension) */
+    int  disk_ro;            /* attach diskimg read-only */
 };
 
 /* A tiny VT100-ish terminal: a ring of lines, a cursor, CSI parsing (the escapes a shell's line
@@ -242,6 +251,20 @@ static void set_banner(struct app *a, int kind, const char *fmt, ...)
 }
 static void copy_str(char *dst, size_t cap, const char *src) { snprintf(dst, cap, "%s", src ? src : ""); }
 static int file_readable(const char *p) { return p && *p && access(p, R_OK) == 0; }
+static const char *opnsense_disk(void)
+{
+    if (file_readable(OPNSENSE_DISK)) return OPNSENSE_DISK;
+    if (file_readable(OPNSENSE_TEST_DISK)) return OPNSENSE_TEST_DISK;
+    return NULL;
+}
+static const char *os_name(int os)
+{
+    switch (os) {
+    case OS_ALPINE: return "Alpine Linux 3.19 (bundled)";
+    case OS_OPNSENSE: return "OPNsense 26.7 firewall (FreeBSD 15.1)";
+    default: return "Linux";
+    }
+}
 static long file_size(const char *p) { struct stat st; return (p && stat(p, &st) == 0) ? (long)st.st_size : -1; }
 static const char *basename_of(const char *p) { const char *s = strrchr(p, '/'); return s ? s + 1 : p; }
 static void fmt_bytes(long b, char *out, size_t cap)
@@ -596,10 +619,20 @@ static void icon(struct app *a, int kind, double x, double y, double s, uint32_t
 /* An OS badge like VirtualBox's type icons: a rounded tile with the distribution's mark. */
 static void os_badge(struct app *a, int os, double x, double y, double s)
 {
-    rfill(a, x, y, s, s, s * 0.22, os == OS_ALPINE ? 0x0d597fu : 0x3b4652u);
+    rfill(a, x, y, s, s, s * 0.22, os == OS_ALPINE ? 0x0d597fu : os == OS_OPNSENSE ? 0xd9480fu : 0x3b4652u);
     cairo_t *cr = a->cr;
     set_rgb(cr, 0xffffffu);
-    if (os == OS_ALPINE) {                                 /* two mountain peaks */
+    if (os == OS_OPNSENSE) {                               /* a shield */
+        cairo_move_to(cr, x + s * 0.5, y + s * 0.14);
+        cairo_line_to(cr, x + s * 0.8, y + s * 0.26);
+        cairo_curve_to(cr, x + s * 0.8, y + s * 0.6, x + s * 0.66, y + s * 0.76, x + s * 0.5, y + s * 0.88);
+        cairo_curve_to(cr, x + s * 0.34, y + s * 0.76, x + s * 0.2, y + s * 0.6, x + s * 0.2, y + s * 0.26);
+        cairo_close_path(cr); cairo_fill(cr);
+        set_rgb(cr, 0xd9480fu);
+        cairo_set_line_width(cr, s * 0.08);
+        cairo_move_to(cr, x + s * 0.38, y + s * 0.5); cairo_line_to(cr, x + s * 0.47, y + s * 0.6);
+        cairo_line_to(cr, x + s * 0.64, y + s * 0.38); cairo_stroke(cr);
+    } else if (os == OS_ALPINE) {                                 /* two mountain peaks */
         cairo_move_to(cr, x + s * 0.12, y + s * 0.74); cairo_line_to(cr, x + s * 0.4, y + s * 0.3);
         cairo_line_to(cr, x + s * 0.56, y + s * 0.54); cairo_line_to(cr, x + s * 0.66, y + s * 0.4);
         cairo_line_to(cr, x + s * 0.88, y + s * 0.74); cairo_close_path(cr); cairo_fill(cr);
@@ -920,7 +953,17 @@ static int vm_start(struct app *a, struct vm *v)
     }
     if (!a->have_ch) { vm_note(v, "Cannot start: %s is missing from this image", CH_PATH); return -1; }
     int restoring = v->restore_from >= 0 && v->restore_from < v->nsnap;
-    if (!restoring && !file_readable(v->cfg.kernel)) {
+    if (!restoring && v->cfg.firmware[0]) {
+        if (!file_readable(v->cfg.firmware)) {
+            vm_note(v, "Cannot start: the UEFI firmware %s is not in this image", v->cfg.firmware);
+            return -1;
+        }
+        if (!file_readable(v->cfg.diskimg)) {
+            vm_note(v, "Cannot start: the disk %s is not there yet%s", v->cfg.diskimg,
+                    v->cfg.os == OS_OPNSENSE ? " (it is downloaded after install when the firewall was chosen)" : "");
+            return -1;
+        }
+    } else if (!restoring && !file_readable(v->cfg.kernel)) {
         vm_note(v, "Cannot start: kernel image %s is not readable", v->cfg.kernel);
         return -1;
     }
@@ -949,7 +992,14 @@ static int vm_start(struct app *a, struct vm *v)
     snprintf(cpus, sizeof cpus, "boot=%d", v->cfg.cpus);
     snprintf(api, sizeof api, "path=%s", v->api_path);
     snprintf(serial, sizeof serial, "socket=%s", v->serial_path);
-    snprintf(disk, sizeof disk, "path=%s", v->disk_path);
+    snprintf(disk, sizeof disk, "path=%s,image_type=raw", v->disk_path);
+    char img[240];
+    {
+        size_t il = strlen(v->cfg.diskimg);
+        const int qcow = il > 6 && !strcmp(v->cfg.diskimg + il - 6, ".qcow2");
+        snprintf(img, sizeof img, "path=%s,image_type=%s%s", v->cfg.diskimg, qcow ? "qcow2" : "raw",
+                 v->cfg.disk_ro ? ",readonly=on" : "");
+    }
     const char *argv[32];
     int ac = 0;
     argv[ac++] = CH_PATH;          /* no -v: at INFO it logs every unclaimed port access, and the
@@ -959,9 +1009,14 @@ static int vm_start(struct app *a, struct vm *v)
         snprintf(restore, sizeof restore, "source_url=file://%s", v->snaps[v->restore_from].path);
         argv[ac++] = "--restore"; argv[ac++] = restore;
     } else {
-        argv[ac++] = "--kernel"; argv[ac++] = v->cfg.kernel;
-        if (v->cfg.initrd[0]) { argv[ac++] = "--initramfs"; argv[ac++] = v->cfg.initrd; }
-        if (v->cfg.cmdline[0]) { argv[ac++] = "--cmdline"; argv[ac++] = v->cfg.cmdline; }
+        if (v->cfg.firmware[0]) {
+            argv[ac++] = "--firmware"; argv[ac++] = v->cfg.firmware;
+            argv[ac++] = "--disk"; argv[ac++] = img;
+        } else {
+            argv[ac++] = "--kernel"; argv[ac++] = v->cfg.kernel;
+            if (v->cfg.initrd[0]) { argv[ac++] = "--initramfs"; argv[ac++] = v->cfg.initrd; }
+            if (v->cfg.cmdline[0]) { argv[ac++] = "--cmdline"; argv[ac++] = v->cfg.cmdline; }
+        }
         argv[ac++] = "--cpus"; argv[ac++] = cpus;
         argv[ac++] = "--memory"; argv[ac++] = mem;
         argv[ac++] = "--serial"; argv[ac++] = serial;
@@ -1140,7 +1195,14 @@ static void cfg_defaults(struct app *a, struct vmcfg *c, int os)
     c->os = os;
     c->mem_mb = 128;
     c->cpus = 1;
-    if (os == OS_ALPINE) {
+    if (os == OS_OPNSENSE) {
+        const char *d = opnsense_disk();
+        copy_str(c->firmware, sizeof c->firmware, FIRMWARE_PATH);
+        copy_str(c->diskimg, sizeof c->diskimg, d ? d : OPNSENSE_DISK);
+        c->disk_ro = 1;              /* live mode: the root is mounted read-only, config in memory */
+        c->mem_mb = 1024;
+        copy_str(c->desc, sizeof c->desc, "OPNsense 26.7 firewall, verified release image (live mode)");
+    } else if (os == OS_ALPINE) {
         copy_str(c->kernel, sizeof c->kernel, BUNDLED_KERNEL);
         copy_str(c->initrd, sizeof c->initrd, BUNDLED_INITRD);
         copy_str(c->cmdline, sizeof c->cmdline, BUNDLED_CMDLINE);
@@ -1151,8 +1213,9 @@ static void cfg_defaults(struct app *a, struct vmcfg *c, int os)
     int n = 1;
     for (;;) {
         char nm[48];
-        snprintf(nm, sizeof nm, os == OS_ALPINE ? "Alpine Linux%s" : "Linux VM%s", "");
-        if (n > 1) snprintf(nm, sizeof nm, os == OS_ALPINE ? "Alpine Linux %d" : "Linux VM %d", n);
+        const char *base = os == OS_ALPINE ? "Alpine Linux" : os == OS_OPNSENSE ? "OPNsense Firewall" : "Linux VM";
+        snprintf(nm, sizeof nm, "%s", base);
+        if (n > 1) snprintf(nm, sizeof nm, "%s %d", base, n);
         int clash = 0;
         for (int i = 0; i < MAX_VMS; i++) if (a->vms[i].used && !strcmp(a->vms[i].cfg.name, nm)) clash = 1;
         if (!clash) { copy_str(c->name, sizeof c->name, nm); break; }
@@ -1341,13 +1404,17 @@ static void draw_os_page(struct app *a, int x, int y, int w)
     y += 62;
     text(a, F_REG, 11, x, y, w, C_DIM, "Operating system");
     y += 18;
-    int cw = (w - 12) / 2;
+    int cw = (w - 24) / 3;
     choice_card(a, x, y, cw, 76, OS_ALPINE, "Alpine Linux 3.19 (bundled)",
                 a->have_bundled ? "linux-virt 6.6 and a busybox shell, included with this system"
                                 : "not included in this image (tests/vmm/linux-guest/build.sh)",
                 c->os == OS_ALPINE, a->have_bundled, OS_ALPINE);
     choice_card(a, x + cw + 12, y, cw, 76, OS_CUSTOM, "Other Linux kernel",
                 "boot any bzImage / vmlinux, with an optional initramfs", c->os == OS_CUSTOM, 1, OS_CUSTOM);
+    choice_card(a, x + 2 * (cw + 12), y, cw, 76, OS_OPNSENSE, "OPNsense firewall",
+                opnsense_disk() ? "the verified OPNsense 26.7 image on this system"
+                                : "choose it in the installer: it is downloaded after install",
+                c->os == OS_OPNSENSE, opnsense_disk() != NULL, OS_OPNSENSE);
     y += 92;
     if (c->os == OS_CUSTOM) {
         text_field(a, x, y, w, FLD_KERNEL, "Kernel image (bzImage or ELF vmlinux)");
@@ -1355,6 +1422,11 @@ static void draw_os_page(struct app *a, int x, int y, int w)
         text_field(a, x, y, w, FLD_INITRD, "Initial ramdisk (optional)");
         y += 58;
         text_field(a, x, y, w, FLD_CMDLINE, "Kernel command line");
+    } else if (c->os == OS_OPNSENSE) {
+        text_wrap(a, F_REG, 12, x, y, w, 17, 5, C_DIM,
+                  "OPNsense boots from UEFI in live mode on its serial console (the Console tab).  Its first "
+                  "network card is the LAN every routed domain joins (192.168.1.1), the second its WAN.  "
+                  "Log in as root / opnsense.");
     } else {
         text_wrap(a, F_REG, 12, x, y, w, 17, 4, C_DIM,
                   "The guest boots Alpine's linux-virt kernel straight into a busybox shell on its serial "
@@ -1403,7 +1475,7 @@ static void draw_summary_page(struct app *a, int x, int y, int w)
     struct vmcfg *c = &a->dlg.cfg;
     char v[200];
     summary_row(a, x, &y, w, "Name", c->name);
-    summary_row(a, x, &y, w, "Type", c->os == OS_ALPINE ? "Alpine Linux 3.19 (bundled)" : "Linux");
+    summary_row(a, x, &y, w, "Type", os_name(c->os));
     summary_row(a, x, &y, w, "Kernel", c->kernel[0] ? c->kernel : "(none chosen)");
     summary_row(a, x, &y, w, "Initial ramdisk", c->initrd[0] ? c->initrd : "none");
     summary_row(a, x, &y, w, "Command line", c->cmdline);
@@ -1490,7 +1562,7 @@ static void draw_dialog(struct app *a)
         text_field(a, cx, cy, cw, FLD_NAME, "Name");
         text_field(a, cx, cy + 62, cw, FLD_DESC, "Description");
         textf(a, F_REG, 12, cx, cy + 132, cw, C_DIM, "Type: %s",
-              c->os == OS_ALPINE ? "Alpine Linux 3.19 (bundled guest)" : "Linux (direct kernel boot)");
+              os_name(c->os));
         break;
     case SEC_SYSTEM:
         snprintf(v, sizeof v, "%d MB", c->mem_mb);
@@ -1701,7 +1773,7 @@ static void draw_details(struct app *a, struct vm *v, int x, int y, int w, int h
     section_card(a, x, cy, colw, 108, IC_SETTINGS, "General");
     int ky = cy + 50;
     kv(a, x + 16, &ky, colw - 32, "Name", c->name, C_TEXT);
-    kv(a, x + 16, &ky, colw - 32, "Operating system", c->os == OS_ALPINE ? "Alpine Linux 3.19 (64-bit)" : "Linux (64-bit)", C_TEXT);
+    kv(a, x + 16, &ky, colw - 32, "Operating system", os_name(c->os), C_TEXT);
     cy += 120;
     section_card(a, x, cy, colw, 150, IC_HOST, "System");
     ky = cy + 50;
@@ -1709,17 +1781,24 @@ static void draw_details(struct app *a, struct vm *v, int x, int y, int w, int h
     kv(a, x + 16, &ky, colw - 32, "Base memory", s, C_TEXT);
     snprintf(s, sizeof s, "%d", c->cpus);
     kv(a, x + 16, &ky, colw - 32, "Processors", s, C_TEXT);
-    kv(a, x + 16, &ky, colw - 32, "Boot", "direct kernel boot (no firmware)", C_TEXT);
+    kv(a, x + 16, &ky, colw - 32, "Boot", c->firmware[0] ? "UEFI firmware (Cloud Hypervisor edk2)" : "direct kernel boot (no firmware)", C_TEXT);
     kv(a, x + 16, &ky, colw - 32, "Acceleration", "VT-x/EPT, in-kernel LAPIC, kvmclock", C_TEXT);
     cy += 162;
     section_card(a, x, cy, colw, 128, IC_MEDIA, "Storage");
     ky = cy + 50;
-    kv(a, x + 16, &ky, colw - 32, "Kernel", basename_of(c->kernel), file_readable(c->kernel) ? C_TEXT : C_RED);
-    kv(a, x + 16, &ky, colw - 32, "Initial ramdisk", c->initrd[0] ? basename_of(c->initrd) : "none",
-       !c->initrd[0] || file_readable(c->initrd) ? C_TEXT : C_RED);
+    if (c->firmware[0]) {
+        kv(a, x + 16, &ky, colw - 32, "Firmware", basename_of(c->firmware), file_readable(c->firmware) ? C_TEXT : C_RED);
+        snprintf(s, sizeof s, "%s%s", file_readable(c->diskimg) ? basename_of(c->diskimg) : "not downloaded yet",
+                 c->disk_ro ? " (read-only)" : "");
+        kv(a, x + 16, &ky, colw - 32, "System disk", s, file_readable(c->diskimg) ? C_TEXT : C_YELLOW);
+    } else {
+        kv(a, x + 16, &ky, colw - 32, "Kernel", basename_of(c->kernel), file_readable(c->kernel) ? C_TEXT : C_RED);
+        kv(a, x + 16, &ky, colw - 32, "Initial ramdisk", c->initrd[0] ? basename_of(c->initrd) : "none",
+           !c->initrd[0] || file_readable(c->initrd) ? C_TEXT : C_RED);
+    }
     if (c->disk_mb) snprintf(s, sizeof s, "virtio-blk, %d MB raw image", c->disk_mb); else snprintf(s, sizeof s, "none");
     kv(a, x + 16, &ky, colw - 32, "Hard disk", s, C_TEXT);
-    if (cy + 140 < y + h) {
+    if (cy + 140 < y + h && !c->firmware[0]) {
         cy += 140;
         section_card(a, x, cy, colw, 84, IC_SETTINGS, "Kernel command line");
         text_wrap(a, F_MONO, 11, x + 16, cy + 48, colw - 32, 15, 2, C_DIM, c->cmdline[0] ? c->cmdline : "(empty)");
@@ -1896,6 +1975,8 @@ static void draw_media(struct app *a, int x, int y, int w)
     int n = 0;
     items[n++] = (typeof(items[0])){ BUNDLED_KERNEL, "Kernel (bundled)" };
     items[n++] = (typeof(items[0])){ BUNDLED_INITRD, "Initial ramdisk (bundled)" };
+    items[n++] = (typeof(items[0])){ FIRMWARE_PATH, "UEFI firmware (bundled)" };
+    items[n++] = (typeof(items[0])){ opnsense_disk() ? opnsense_disk() : OPNSENSE_DISK, "OPNsense disk (downloaded)" };
     for (int i = 0; i < MAX_VMS && n < 16; i++) {
         struct vm *v = &a->vms[i];
         if (!v->used) continue;
@@ -2459,10 +2540,16 @@ int main(int argc, char **argv)
     if (argc > 1 && !strcmp(argv[1], "--selftest")) { setvbuf(stdout, NULL, _IOLBF, 0); return selftest(a); }
 
     probe_host(a);
+    if (opnsense_disk()) {                                /* the firewall chosen at install */
+        struct vmcfg c;
+        cfg_defaults(a, &c, OS_OPNSENSE);
+        a->sel = vm_add(a, &c);
+    }
     if (a->have_bundled) {                                /* a ready-made machine, like a sample appliance */
         struct vmcfg c;
         cfg_defaults(a, &c, OS_ALPINE);
-        a->sel = vm_add(a, &c);
+        int i = vm_add(a, &c);
+        if (a->sel < 0) a->sel = i;
     }
     if (!a->kvm_ok) set_banner(a, 2, a->kvm_errno == EACCES
                               ? "Virtualization is not enabled for this domain (Domain Manager > Permissions > Virtualization)"

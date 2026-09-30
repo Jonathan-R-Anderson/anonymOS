@@ -211,6 +211,9 @@ private bool readGuestPhys(Vm* vm, ulong gpa, ubyte* dst, size_t len) @nogc noth
     }
     return true;
 }
+public bool mmioReadGuestPhys(Vm* vm, ulong gpa, ubyte* dst, size_t len) @nogc nothrow {
+    return readGuestPhys(vm, gpa, dst, len);
+}
 private bool readGuestPte64(Vm* vm, ulong gpa, out ulong v) @nogc nothrow {
     ubyte[8] b = 0;
     if (!readGuestPhys(vm, gpa, b.ptr, 8)) return false;

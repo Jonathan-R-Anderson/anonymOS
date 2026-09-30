@@ -75,10 +75,16 @@ enum uint MSR_IA32_SYSENTER_EIP    = 0x176;
 enum uint PIN_EXT_INT_EXITING      = 1u << 0;
 enum uint PROC_INTERRUPT_WINDOW    = 1u << 2;   // exit when the guest can take an interrupt
 enum uint PROC_HLT_EXITING         = 1u << 7;
+enum uint PROC_MWAIT_EXITING       = 1u << 10;
+enum uint PROC_CR8_LOAD_EXITING    = 1u << 19;  // a guest MOV to CR8 must not reach the HOST TPR
+enum uint PROC_CR8_STORE_EXITING   = 1u << 20;
+enum uint PROC_MONITOR_EXITING     = 1u << 29;
 enum uint PROC_UNCOND_IO_EXITING   = 1u << 24;
 enum uint PROC_ACTIVATE_SECONDARY  = 1u << 31;
 enum uint SEC_ENABLE_EPT           = 1u << 1;
 enum uint SEC_UNRESTRICTED_GUEST   = 1u << 7;
+enum uint SEC_ENABLE_RDTSCP        = 1u << 3;   // else RDTSCP / RDPID #UD in the guest
+enum uint SEC_ENABLE_INVPCID       = 1u << 12;  // else INVPCID #UD in the guest
 enum uint EXIT_HOST_ADDR_SPACE_SIZE = 1u << 9;
 enum uint EXIT_SAVE_EFER           = 1u << 20;
 enum uint EXIT_LOAD_EFER           = 1u << 21;
@@ -97,6 +103,13 @@ enum ulong VMCS_EXIT_MSR_LOAD_CNT  = 0x4010;
 enum ulong VMCS_ENTRY_CONTROLS     = 0x4012;
 enum ulong VMCS_ENTRY_MSR_LOAD_CNT = 0x4014;
 enum ulong VMCS_ENTRY_INTR_INFO    = 0x4016;
+enum ulong VMCS_ENTRY_EXC_ERRCODE  = 0x4018;
+enum ulong VMCS_ENTRY_INSTR_LEN    = 0x401A;
+enum ulong VMCS_EXIT_MSR_STORE_ADDR = 0x2006;
+enum ulong VMCS_EXIT_MSR_LOAD_ADDR  = 0x2008;
+enum ulong VMCS_ENTRY_MSR_LOAD_ADDR = 0x200A;
+enum ulong VMCS_IDT_VECTORING_INFO = 0x4408;
+enum ulong VMCS_IDT_VECTORING_ERR  = 0x440A;
 enum ulong VMCS_PROC_BASED2        = 0x401E;
 enum ulong VMCS_EPT_POINTER        = 0x201A;   // (verify fix: NOT 0x201C = EOI-exit-bitmap)
 enum ulong VMCS_LINK_POINTER       = 0x2800;
@@ -646,6 +659,17 @@ private uint vmxClampCtl(uint desired, uint msr) {
     return (desired | lo) & hi;
 }
 
+// Whether the CPU allows these secondary processor-based controls to be 1 -- the supported-CPUID
+// builder hides an instruction (INVPCID, RDTSCP/RDPID) the guest could not execute.  A host without
+// VMX (SVM: nothing intercepts these unless asked) answers true.
+public bool vmxSecondaryMayEnable(uint bits) {
+    uint a, b, c, d;
+    asm @nogc nothrow { mov EAX, 1; xor ECX, ECX; cpuid; mov a, EAX; mov b, EBX; mov c, ECX; mov d, EDX; }
+    if (!(c & (1u << 5))) return true;
+    if (!(cast(uint)(vmxRdmsr(IA32_VMX_PROCBASED_CTLS) >> 32) & PROC_ACTIVATE_SECONDARY)) return false;
+    return ((cast(uint)(vmxRdmsr(IA32_VMX_PROCBASED_CTLS2) >> 32)) & bits) == bits;
+}
+
 // VMX segment access-rights: 16 attribute bits + the 'unusable' bit at bit16 (NOT the SVM attrib=0).
 private uint vmxSegAr(const(KvmSegment)* s) {
     // A not-present segment is programmed UNUSABLE, as Linux's vmx_segment_access_rights does: a
@@ -657,6 +681,61 @@ private uint vmxSegAr(const(KvmSegment)* s) {
          | (cast(uint)s.avl << 12) | (cast(uint)s.l   << 13)
          | (cast(uint)s.db  << 14) | (cast(uint)s.g   << 15);
 }
+// Read one guest segment back (the inverse of vmxWriteSeg) after a VM exit.
+private void vmxReadSeg(uint idx, KvmSegment* s) {
+    s.selector = cast(ushort)vmxRead(VMCS_GUEST_ES_SEL + idx * 2);
+    s.limit    = cast(uint)vmxRead(VMCS_GUEST_ES_LIMIT + idx * 2);
+    s.base     = vmxRead(VMCS_GUEST_ES_BASE + idx * 2);
+    const uint ar = cast(uint)vmxRead(VMCS_GUEST_ES_AR + idx * 2);
+    s.type = cast(ubyte)(ar & 0xF);
+    s.s    = cast(ubyte)((ar >> 4) & 1);
+    s.dpl  = cast(ubyte)((ar >> 5) & 3);
+    s.present = cast(ubyte)((ar >> 7) & 1);
+    s.avl  = cast(ubyte)((ar >> 12) & 1);
+    s.l    = cast(ubyte)((ar >> 13) & 1);
+    s.db   = cast(ubyte)((ar >> 14) & 1);
+    s.g    = cast(ubyte)((ar >> 15) & 1);
+    s.unusable = cast(ubyte)((ar >> 16) & 1);
+}
+
+// Everything the guest may have changed since the last entry, saved into the vCPU's caches so the
+// next entry resumes it exactly (the whole VMCS guest area is reprogrammed every entry from these,
+// and KVM_GET_SREGS reads them).  Without this every exit to the VMM -- the guest's first serial
+// OUT -- rewound CR3, the GDT, the segments and EFER to the state the VMM had set at boot.
+private void vmxSaveGuestState(Vm* vm, Vcpu* vc, KvmSRegs* ms) {
+    import core.virt.lapic : hvFor;
+    const ulong cr0 = vmxRead(VMCS_GUEST_CR0), cr0sh = vmxRead(VMCS_CR0_READ_SHADOW);
+    const ulong cr0mask = vmxRead(VMCS_CR0_GH_MASK);
+    ms.cr0 = (cr0 & ~cr0mask) | (cr0sh & cr0mask);
+    ms.cr3 = vmxRead(VMCS_GUEST_CR3);
+    const ulong cr4 = vmxRead(VMCS_GUEST_CR4), cr4sh = vmxRead(VMCS_CR4_READ_SHADOW);
+    const ulong cr4mask = vmxRead(VMCS_CR4_GH_MASK);
+    ms.cr4 = (cr4 & ~cr4mask) | (cr4sh & cr4mask);
+    ms.efer = vmxRead(VMCS_GUEST_EFER);
+    vmxReadSeg(0, &ms.es); vmxReadSeg(1, &ms.cs); vmxReadSeg(2, &ms.ss);
+    vmxReadSeg(3, &ms.ds); vmxReadSeg(4, &ms.fs); vmxReadSeg(5, &ms.gs);
+    vmxReadSeg(6, &ms.ldt); vmxReadSeg(7, &ms.tr);
+    ms.gdt.base = vmxRead(VMCS_GUEST_GDTR_BASE); ms.gdt.limit = cast(ushort)vmxRead(VMCS_GUEST_GDTR_LIMIT);
+    ms.idt.base = vmxRead(VMCS_GUEST_IDTR_BASE); ms.idt.limit = cast(ushort)vmxRead(VMCS_GUEST_IDTR_LIMIT);
+    auto hv = hvFor(vm, vc, false);
+    if (hv !is null) {
+        hv.interruptibility = cast(uint)vmxRead(VMCS_GUEST_INTERRUPT);
+        hv.dr7         = vmxRead(VMCS_GUEST_DR7);
+        hv.debugctl    = vmxRead(VMCS_GUEST_DEBUGCTL);
+        hv.sysenterCs  = vmxRead(VMCS_GUEST_SYSENTER_CS);
+        hv.sysenterEsp = vmxRead(VMCS_GUEST_SYSENTER_ESP);
+        hv.sysenterEip = vmxRead(VMCS_GUEST_SYSENTER_EIP);
+        // An event the exit cut off mid-delivery (an interrupt/exception whose delivery hit an EPT
+        // fault or a host interrupt) is lost unless it is re-injected at the next entry.
+        const uint idt = cast(uint)vmxRead(VMCS_IDT_VECTORING_INFO);
+        if ((idt & 0x8000_0000u) != 0) {
+            hv.reinjectInfo = idt & ~(1u << 12);
+            hv.reinjectErr  = cast(uint)vmxRead(VMCS_IDT_VECTORING_ERR);
+            hv.reinjectLen  = cast(uint)vmxRead(VMCS_EXIT_INSTR_LEN);
+        }
+    }
+}
+
 // Program one guest segment by index (0=ES,1=CS,2=SS,3=DS,4=FS,5=GS,6=LDTR,7=TR).
 private void vmxWriteSeg(uint idx, const(KvmSegment)* s) {
     vmxWrite(VMCS_GUEST_ES_SEL   + idx * 2, s.selector);
@@ -678,12 +757,23 @@ private bool vmxProgramVmcs(Vm* vm, Vcpu* vc, KvmRegs* regs, const KvmSRegs* sre
     // vector iff the guest is interruptible; otherwise arm interrupt-window
     // exiting so we exit — and inject — the moment it becomes interruptible.
     // (Interruptibility-state is 0 in this model, so the gate is RFLAGS.IF.)
-    const InjectPlan plan = vmxPlanInjection(vc, regs.rflags, 0);
+    import core.virt.lapic : hvFor, VcpuHv;
+    VcpuHv* hv = hvFor(vm, vc, true);
+    const InjectPlan plan = (hv !is null) ? vmxPlanEvents(vm, vc, hv, regs.rflags)
+                                          : vmxPlanInjection(vc, regs.rflags, 0);
     const uint procExtra = plan.wantWindow ? PROC_INTERRUPT_WINDOW : 0;
     const uint proc = vmxClampCtl(PROC_HLT_EXITING | PROC_UNCOND_IO_EXITING
+                                  | PROC_CR8_LOAD_EXITING | PROC_CR8_STORE_EXITING
+                                  | PROC_MWAIT_EXITING | PROC_MONITOR_EXITING
                                   | PROC_ACTIVATE_SECONDARY | procExtra,
                                   useTrue ? IA32_VMX_TRUE_PROCBASED : IA32_VMX_PROCBASED_CTLS);
-    uint sec = vmxClampCtl(SEC_ENABLE_EPT | (guestLong ? 0 : SEC_UNRESTRICTED_GUEST),
+    // A guest MOV CR8 without CR8 exiting (and no TPR shadow) writes the HOST's physical TPR.
+    if (!(proc & PROC_CR8_LOAD_EXITING) || !(proc & PROC_CR8_STORE_EXITING)) {
+        klog("[vmx] CR8 exiting clamped away -- guest entry refused (it could write the host TPR)\n");
+        return false;
+    }
+    uint sec = vmxClampCtl(SEC_ENABLE_EPT | SEC_ENABLE_RDTSCP | SEC_ENABLE_INVPCID
+                           | (guestLong ? 0 : SEC_UNRESTRICTED_GUEST),
                            IA32_VMX_PROCBASED_CTLS2);
     const uint exitc = vmxClampCtl(EXIT_HOST_ADDR_SPACE_SIZE | EXIT_SAVE_EFER | EXIT_LOAD_EFER,
                                    useTrue ? IA32_VMX_TRUE_EXIT : IA32_VMX_EXIT_CTLS);
@@ -709,13 +799,31 @@ private bool vmxProgramVmcs(Vm* vm, Vcpu* vc, KvmRegs* regs, const KvmSRegs* sre
     vmxWrite(VMCS_EXCEPTION_BITMAP, 0);
     // explicit zeros (VMCS is opaque — do NOT rely on page-zeroing for checked fields)
     vmxWrite(VMCS_CR3_TARGET_COUNT, 0);
-    vmxWrite(VMCS_EXIT_MSR_STORE_CNT, 0);
-    vmxWrite(VMCS_EXIT_MSR_LOAD_CNT, 0);
-    vmxWrite(VMCS_ENTRY_MSR_LOAD_CNT, 0);
-    // VM-entry event injection: the resolved highest-priority pending vector
-    // (or 0 = none when nothing is deliverable this entry — see vmxPlanInjection).
-    // The CPU delivers it through the guest IDT on entry.
+    // The guest's syscall MSRs (+ KERNEL_GS_BASE, TSC_AUX): loaded from one area at entry and
+    // stored back into the SAME area at exit (so it always holds the live guest values -- SWAPGS
+    // changes KERNEL_GS_BASE with no exit at all), the host's reloaded at exit.
+    {
+        import core.virt.lapic : hvPhysOf, hvHostMsrsCapture;
+        const ulong hp = (hv !is null) ? hvPhysOf(vm, vc) : 0;
+        if (hp != 0 && hv.nSwap != 0) {
+            hvHostMsrsCapture(hv);
+            vmxWrite(VMCS_ENTRY_MSR_LOAD_ADDR, hp + 0);
+            vmxWrite(VMCS_EXIT_MSR_STORE_ADDR, hp + 0);
+            vmxWrite(VMCS_EXIT_MSR_LOAD_ADDR,  hp + 8 * 16);
+            vmxWrite(VMCS_ENTRY_MSR_LOAD_CNT, hv.nSwap);
+            vmxWrite(VMCS_EXIT_MSR_STORE_CNT, hv.nSwap);
+            vmxWrite(VMCS_EXIT_MSR_LOAD_CNT,  hv.nSwap);
+        } else {
+            vmxWrite(VMCS_EXIT_MSR_STORE_CNT, 0);
+            vmxWrite(VMCS_EXIT_MSR_LOAD_CNT, 0);
+            vmxWrite(VMCS_ENTRY_MSR_LOAD_CNT, 0);
+        }
+    }
+    // VM-entry event injection: a re-injected event, an exception the emulation raised, an NMI, or
+    // the LAPIC's highest deliverable vector (see vmxPlanEvents); 0 = nothing this entry.
     vmxWrite(VMCS_ENTRY_INTR_INFO, plan.info);
+    vmxWrite(VMCS_ENTRY_EXC_ERRCODE, plan.err);
+    vmxWrite(VMCS_ENTRY_INSTR_LEN, plan.len);
     vmxWrite(VMCS_LINK_POINTER, ~0UL);
     // EPTP = root | WB(6) | walk-length-1(3<<3)
     vmxWrite(VMCS_EPT_POINTER, (slatRootPhys(&vm.slat) & 0x000F_FFFF_FFFF_F000UL) | 6 | (3 << 3));
@@ -746,13 +854,24 @@ private bool vmxProgramVmcs(Vm* vm, Vcpu* vc, KvmRegs* regs, const KvmSRegs* sre
 
     // ---- guest misc + RIP/RSP/RFLAGS ----
     vmxWrite(VMCS_GUEST_EFER, sregs.efer);
-    vmxWrite(VMCS_GUEST_DR7, 0x400);
-    vmxWrite(VMCS_GUEST_DEBUGCTL, 0);
-    vmxWrite(VMCS_GUEST_ACTIVITY, 0);       // active
-    vmxWrite(VMCS_GUEST_INTERRUPT, 0);
-    vmxWrite(VMCS_GUEST_SYSENTER_CS, 0);
-    vmxWrite(VMCS_GUEST_SYSENTER_ESP, 0);
-    vmxWrite(VMCS_GUEST_SYSENTER_EIP, 0);
+    vmxWrite(VMCS_GUEST_ACTIVITY, 0);       // active (HLT is emulated, never a VMX activity state)
+    if (hv !is null) {
+        vmxWrite(VMCS_GUEST_DR7, hv.dr7 | 0x400);
+        vmxWrite(VMCS_GUEST_DEBUGCTL, hv.debugctl);
+        // Injecting an external interrupt requires no STI/MOV-SS blocking (vmxPlanEvents only does
+        // then); anything else keeps the shadow the guest was in.
+        vmxWrite(VMCS_GUEST_INTERRUPT, hv.interruptibility & 0xF);
+        vmxWrite(VMCS_GUEST_SYSENTER_CS, hv.sysenterCs);
+        vmxWrite(VMCS_GUEST_SYSENTER_ESP, hv.sysenterEsp);
+        vmxWrite(VMCS_GUEST_SYSENTER_EIP, hv.sysenterEip);
+    } else {
+        vmxWrite(VMCS_GUEST_DR7, 0x400);
+        vmxWrite(VMCS_GUEST_DEBUGCTL, 0);
+        vmxWrite(VMCS_GUEST_INTERRUPT, 0);
+        vmxWrite(VMCS_GUEST_SYSENTER_CS, 0);
+        vmxWrite(VMCS_GUEST_SYSENTER_ESP, 0);
+        vmxWrite(VMCS_GUEST_SYSENTER_EIP, 0);
+    }
     vmxWrite(VMCS_GUEST_RSP, regs.rsp);
     vmxWrite(VMCS_GUEST_RIP, regs.rip);
     vmxWrite(VMCS_GUEST_RFLAGS, regs.rflags | 0x2);   // reserved bit1 must be 1
@@ -858,6 +977,12 @@ public int vmxEnter(Vm* vm, Vcpu* vc, KvmRegs* regs, const KvmSRegs* sregs,
     // HOST_RSP/RIP are VMWRITTEN from INSIDE the asm (RSP after pushes, RIP = resume label).  On a
     // VM-exit the CPU returns to the resume label; the instruction after VMLAUNCH is entry-failure.
     int entryFail = 0;
+    // CR2 is not part of the VMCS: the guest's page-fault address must be in the real CR2 while it
+    // runs, and read back before any host code could fault and overwrite it.
+    ulong guestCr2In = 0, guestCr2Out = 0;
+    {   import core.virt.lapic : hvFor;
+        auto hvc = hvFor(vm, vc, false);
+        if (hvc !is null) guestCr2In = hvc.cr2; }
     {
         KvmRegs* r = regs;
         const ulong launchInsn = vc.launched ? 0xC3 : 0xC2;   // VMRESUME=0F01C3 / VMLAUNCH=0F01C2
@@ -881,6 +1006,8 @@ public int vmxEnter(Vm* vm, Vcpu* vc, KvmRegs* regs, const KvmSRegs* sregs,
             mov RCX, hostFpu;  db 0x48; db 0x0F; db 0xAE; db 0x01;   // FXSAVE64  [RCX] (host)
             mov RCX, guestFpu; db 0x48; db 0x0F; db 0xAE; db 0x09;   // FXRSTOR64 [RCX] (guest)
         Lfpu_in_done:;
+            mov RAX, guestCr2In;        // guest CR2 (read the D local while RBP is the host frame)
+            mov CR2, RAX;
             mov RBX, r;                 // RBX = regs (callee-saved across the guest via stack below)
             // save host GPRs
             push RBP; push RBX; push RCX; push RDX; push RSI; push RDI;
@@ -957,6 +1084,8 @@ public int vmxEnter(Vm* vm, Vcpu* vc, KvmRegs* regs, const KvmSRegs* sregs,
             mov entryFail, 0;
         Ltrans_done:;
             // Both paths land here with the host GPRs (so the RBP frame + D locals) restored.
+            mov RAX, CR2;               // the guest's CR2 (nothing since the exit could fault)
+            mov guestCr2Out, RAX;
             // 1) Descriptor-table limits: a VM exit left GDTR.limit = IDTR.limit = 0xFFFF.
             //    Same bases, so no segment register is reloaded.
             lea RAX, hostGdtr; db 0x0F; db 0x01; db 0x10;   // LGDT [RAX]
@@ -1010,6 +1139,13 @@ public int vmxEnter(Vm* vm, Vcpu* vc, KvmRegs* regs, const KvmSRegs* sregs,
     regs.rip    = vmxRead(VMCS_GUEST_RIP);
     regs.rsp    = vmxRead(VMCS_GUEST_RSP);
     regs.rflags = vmxRead(VMCS_GUEST_RFLAGS);
+    // ...and the rest of the guest state (the sregs passed in ARE the vCPU's cache)
+    if ((rawReason & 0x8000_0000UL) == 0) {
+        vmxSaveGuestState(vm, vc, cast(KvmSRegs*)sregs);
+        import core.virt.lapic : hvFor;
+        auto hvs = hvFor(vm, vc, false);
+        if (hvs !is null) hvs.cr2 = guestCr2Out;
+    }
     // A port OUT carries its data in the guest accumulator (AL/AX/EAX); the I/O exit
     // qualification does NOT include it.  Capture it from the (post-exit) guest RAX so
     // the COM1 console tap and KVM_EXIT_IO deliver the real bytes — mirrors svmEnter.
@@ -1117,7 +1253,12 @@ public void vmxInjectExtInt(Vcpu* vc, ubyte vector) @nogc nothrow {
         vc.pendingIntrInfo = 0x8000_0000u | vector;
 }
 
-struct InjectPlan { uint info; bool wantWindow; }
+struct InjectPlan {
+    uint info;        // VM-entry interruption-information (0 = no injection)
+    bool wantWindow;  // arm interrupt-window exiting: something is pending but not deliverable yet
+    uint err;         // error code (when info bit 11 is set)
+    uint len;         // instruction length (software interrupts / exceptions)
+}
 
 // Resolve the vCPU's pending interrupt into a VM-entry injection decision.
 //   - nothing pending             -> {info:0, wantWindow:false}
@@ -1126,6 +1267,51 @@ struct InjectPlan { uint info; bool wantWindow; }
 //   - pending & NOT interruptible -> {info:0, wantWindow:true} (arm window exit;
 //                                     the pending slot is kept for next time)
 // Interruptible = guest RFLAGS.IF set AND no STI/MOV-SS interrupt shadow.
+// What to inject at this entry, highest priority first: an event a VM exit interrupted mid-delivery,
+// an exception the in-kernel emulation raised, an NMI, then the LAPIC's highest deliverable vector
+// (moved IRR -> ISR here, as the CPU acknowledges it).  An external interrupt needs RFLAGS.IF and no
+// STI/MOV-SS shadow; otherwise interrupt-window exiting brings us back the moment it can go in.
+private InjectPlan vmxPlanEvents(Vm* vm, Vcpu* vc, imported!"core.virt.lapic".VcpuHv* hv, ulong rflags) @nogc nothrow {
+    import core.virt.lapic : lapicPollTimer, lapicPending, lapicAck;
+    InjectPlan p;
+    if ((hv.reinjectInfo & 0x8000_0000u) != 0) {
+        p.info = hv.reinjectInfo; p.err = hv.reinjectErr; p.len = hv.reinjectLen;
+        hv.reinjectInfo = 0;
+        return p;
+    }
+    if ((hv.excInfo & 0x8000_0000u) != 0) {
+        p.info = hv.excInfo; p.err = hv.excErr;
+        hv.excInfo = 0;
+        return p;
+    }
+    const bool shadowed = (hv.interruptibility & 0x3) != 0;
+    if (hv.nmiPending) {
+        if (!shadowed && (hv.interruptibility & 0x8) == 0) {
+            hv.nmiPending = false;
+            p.info = 0x8000_0000u | (2u << 8) | 2;      // valid | NMI | vector 2
+            return p;
+        }
+        p.wantWindow = true;
+    }
+    if (hv.lapicOn) {
+        lapicPollTimer(hv);
+        const int v = lapicPending(hv);
+        if (v >= 0) {
+            if (((rflags & (1UL << 9)) != 0) && !shadowed) {
+                lapicAck(hv, cast(uint)v);
+                p.info = 0x8000_0000u | cast(uint)v;    // valid | external | vector
+            } else {
+                p.wantWindow = true;
+            }
+        }
+        return p;
+    }
+    // no in-kernel LAPIC: the original single-slot path
+    const InjectPlan legacy = vmxPlanInjection(vc, rflags, hv.interruptibility);
+    p.info = legacy.info; p.wantWindow = p.wantWindow || legacy.wantWindow;
+    return p;
+}
+
 private InjectPlan vmxPlanInjection(Vcpu* vc, ulong guestRflags, uint interruptibility) @nogc nothrow {
     InjectPlan p;
     p.info = 0; p.wantWindow = false;

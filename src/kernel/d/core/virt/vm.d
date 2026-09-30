@@ -504,6 +504,15 @@ private uint vmApicToVcpu(Vm* vm, ubyte apicId) {
 public int vmRaiseIrqLine(Vm* vm, uint gsi, uint level) {
     if (vm is null) return -22;
     if (level == 0) return 0;             // de-assert: edge model, nothing queued
+    // In-kernel LAPIC (split irqchip): deliver the route's full MSI message -- trigger mode and
+    // delivery mode included -- so a level interrupt's EOI can reach the VMM's IOAPIC.
+    foreach (i; 0 .. vm.gsiRouteCount) {
+        const e = &vm.gsiRoutes[i];
+        if (e.gsi != gsi || e.type != KVM_IRQ_ROUTING_MSI) continue;
+        import core.virt.lapic : lapicDeliverMsi;
+        if (lapicDeliverMsi(vm, e.msi.addressLo, e.msi.addressHi, e.msi.data)) return 0;
+        break;
+    }
     ubyte apicId, vector;
     if (!vmResolveGsiVector(vm, gsi, apicId, vector)) return -22;
     return vmQueueExtInt(vm, vmApicToVcpu(vm, apicId), vector) ? 0 : -22;
@@ -514,6 +523,8 @@ public int vmRaiseIrqLine(Vm* vm, uint gsi, uint level) {
 // Returns 0 on success, -22 on a malformed message.
 public int vmSignalMsi(Vm* vm, uint addressLo, uint addressHi, uint data) {
     if (vm is null) return -22;
+    {   import core.virt.lapic : lapicDeliverMsi;
+        if (lapicDeliverMsi(vm, addressLo, addressHi, data)) return 0; }
     cast(void) addressHi;                 // 32-bit destination model (no x2APIC hi bits yet)
     const ubyte apicId = cast(ubyte)((addressLo >> 12) & 0xFF);
     const ubyte vector = cast(ubyte)(data & 0xFF);
@@ -909,6 +920,7 @@ public void vmTeardown(Vm* vm) {
         if (vc.cachePhys != 0) { free_phys_page(vc.cachePhys); vc.cachePhys = 0; }
         if (vc.cpuidPhys != 0) { free_phys_page(vc.cpuidPhys); vc.cpuidPhys = 0; }
         if (vc.xsavePhys != 0) { free_phys_page(vc.xsavePhys); vc.xsavePhys = 0; }
+        { import core.virt.lapic : hvRelease; hvRelease(vm, &vc); }
         vcpuReleaseCtrl(&vc);
         if (vc.objId != 0) { objRelease(vc.objId); vc.objId = 0; }
     }
@@ -983,6 +995,7 @@ public void vcpuRelease(Vcpu* vc) {
     // Close-path lookup must accept Dying VMs: a contained VM still needs
     // its refs dropped and its slot freed (vmCheckQuery, not vmCheck).
     Vm* vm = vmCheckQuery(vmObj, vmGen);
+    { import core.virt.lapic : hvRelease; if (vm !is null) hvRelease(vm, vc); }
     // The slot is immediately reusable (state back to Empty): closing a vCPU
     // fd destroys the vCPU, and the KVM id may be created again.
     *vc = Vcpu.init;

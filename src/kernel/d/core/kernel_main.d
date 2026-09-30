@@ -2061,9 +2061,19 @@ private bool vmmChProbeBootPresent() {
 // `CHGUEST=<elf> make iso` stages a PVH guest as boot module /guest-hello.elf; its presence makes
 // the probe BOOT that guest instead of only printing the version (tests/vmm/ch-hello/).
 private __gshared int g_chGuestBoot = -1;   // -1=unknown, 0=no, 1=yes (cached)
+// `CHLINUX=1 make iso` stages a real Linux guest (/guest-vmlinuz + /guest-initrd, from
+// tests/vmm/linux-guest): the probe then boots it to a serial shell -- the end-to-end proof of the
+// in-kernel LAPIC, CPUID/MSR emulation and state persistence a real OS needs.
+private __gshared bool g_chLinuxBoot = false;
+private __gshared immutable(char)*[20] g_chLinuxArgv = [
+    "/cloud-hypervisor", "-v", "--kernel", "/guest-vmlinuz", "--initramfs", "/guest-initrd",
+    "--cmdline", "console=ttyS0 panic=-1 no_timer_check",
+    "--cpus", "boot=1", "--memory", "size=128M", "--serial", "tty", "--console", "off",
+    "--seccomp", "false", null ];
 private bool vmmChGuestPresent() {
     if (g_chGuestBoot < 0) {
         g_chGuestBoot = 0;
+        g_chLinuxBoot = false;
         if (g_mboot_modules !is null && g_module_count > 0) {
             auto recs = cast(ubyte*)g_mboot_modules;
             for (int i = 0; i < g_module_count; i++) {
@@ -2072,6 +2082,7 @@ private bool vmmChGuestPresent() {
                 const(char)* modBase = modName;
                 for (const(char)* p = modName; *p != 0; p++) if (*p == '/') modBase = p + 1;
                 if (cstrEqK(modBase, "guest-hello.elf")) { g_chGuestBoot = 1; break; }
+                if (cstrEqK(modBase, "guest-vmlinuz"))   { g_chGuestBoot = 1; g_chLinuxBoot = true; break; }
             }
         }
     }
@@ -2106,9 +2117,11 @@ private void maybeSpawnCloudHypervisorProbe() {
     ulong savedCur = g_current_task_id;
     physSetActiveUntyped(g_tasks[t].untypedObjId);
     const bool bootGuest = vmmChGuestPresent();
-    klog(bootGuest ? "[ch] probe: booting /guest-hello.elf (-v --cpus boot=1 --memory size=32M --serial tty --console off --seccomp false)\n"
-                   : "[ch] probe: spawning /cloud-hypervisor --version (stdout/err -> serial)\n");
-    const ulong argv = bootGuest ? cast(ulong)g_chGuestArgv.ptr : cast(ulong)g_chVersionArgv.ptr;
+    klog(g_chLinuxBoot ? "[ch] probe: booting the Linux guest (/guest-vmlinuz + /guest-initrd, 128M, serial console)\n"
+         : bootGuest ? "[ch] probe: booting /guest-hello.elf (-v --cpus boot=1 --memory size=32M --serial tty --console off --seccomp false)\n"
+                     : "[ch] probe: spawning /cloud-hypervisor --version (stdout/err -> serial)\n");
+    const ulong argv = g_chLinuxBoot ? cast(ulong)g_chLinuxArgv.ptr
+                     : bootGuest ? cast(ulong)g_chGuestArgv.ptr : cast(ulong)g_chVersionArgv.ptr;
     long r = execveTask(t, cast(ulong)"/cloud-hypervisor\0".ptr, argv, 0);
     physSetActiveUntyped(savedUntyped);
     x64WriteCR3(savedCr3);
@@ -4743,6 +4756,27 @@ private void dispatchSyscall(int tid) {
         bootProgressEventHex("park", rax, g_parkScreenTrace);
         scheduleNext();
         return;
+    }
+
+    // KVM_RUN on a HALTED vCPU (in-kernel LAPIC): park the VMM's vCPU thread and re-run the ioctl
+    // each tick until the guest's timer, an MSI or an NMI can wake it -- the VMM never sees the
+    // wait.  A pending signal ends it with EINTR instead (VMMs kick vCPU threads with signals).
+    if (rax == 16 && ret == -11) {
+        import core.virt.kvm : kvmTakeHaltPark;
+        if (kvmTakeHaltPark(tid)) {
+            if (g_taskPendingSig[tid] != 0) {
+                task.regs[REG_RAX] = cast(ulong)(-4);
+            } else {
+                g_pollBlocked[tid]  = true;
+                g_pollDeadline[tid] = 0;
+                g_pollEpfd[tid]     = -1;
+                task.waiting        = true;
+                task.regs[REG_RIP] -= 2;
+                bootProgressEventHex("park", rax, g_parkScreenTrace);
+                scheduleNext();
+                return;
+            }
+        }
     }
 
     // TCP: a BLOCKING connect() still in its handshake, accept() with nothing queued, or write /

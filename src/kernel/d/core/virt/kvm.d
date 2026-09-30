@@ -46,6 +46,7 @@ private enum long E_OK    = 0;
 private enum long E_PERM  = -1;
 private enum long E_NOENT = -2;
 private enum long E_INTR  = -4;   // EINTR: KVM_RUN handed back without a guest-visible exit
+private enum long E_AGAIN = -11;  // a HALTED vCPU: the syscall layer parks the thread and re-runs KVM_RUN
 private enum long E_BADF  = -9;
 private enum long E_NOMEM = -12;
 private enum long E_ACCES = -13;
@@ -280,29 +281,22 @@ long kvmSystemIoctl(int tid, ulong cmd, ulong arg) {
         case KVM_GET_VCPU_MMAP_SIZE:
             return 4096; // one page: struct kvm_run
         case KVM_GET_SUPPORTED_CPUID: {
-            // arg -> struct kvm_cpuid2 { u32 nent, pad; struct kvm_cpuid_entry2 entries[] } with
-            // 40-byte entries (KvmCpuidEntry2).  Honest minimal list: the host leaves we vouch for,
-            // with REAL host values (never faked).  It used to write 32-byte entries, put the NEXT
-            // leaf number in `index` and swap ECX/EDX in leaf 0, so Cloud Hypervisor saw no leaf 1
-            // and panicked in configure_vcpu (assert!(apic_id_patched)).
+            // arg -> struct kvm_cpuid2 { u32 nent, pad; struct kvm_cpuid_entry2 entries[] } (40-byte
+            // entries).  What a guest may be told it has: the host's own values, minus what this
+            // hypervisor does not virtualize, plus what it does (see kvmBuildSupportedCpuid).
             if (!kvmUserOk(tid, arg, 8, true)) return E_FAULT;
             const uint nent = kvmUserRead!uint(arg);
-            enum uint PROVIDE = 4;
-            static immutable uint[PROVIDE] fns = [0x0000_0000, 0x0000_0001, 0x8000_0000, 0x8000_0001];
-            if (nent < PROVIDE) {
-                kvmUserWrite!uint(arg, PROVIDE);
+            KvmCpuidEntry2[80] list;
+            const uint n = kvmBuildSupportedCpuid(list.ptr, cast(uint)list.length);
+            if (nent < n) {
+                kvmUserWrite!uint(arg, n);
                 return E_BIG; // tell caller to retry with a bigger buffer
             }
             enum ulong ESZ = KvmCpuidEntry2.sizeof;   // 40
-            if (!kvmUserOk(tid, arg, 8 + PROVIDE * ESZ, true)) return E_FAULT;
-            kvmUserWrite!uint(arg, PROVIDE);
+            if (!kvmUserOk(tid, arg, 8 + n * ESZ, true)) return E_FAULT;
+            kvmUserWrite!uint(arg, n);
             kvmUserWrite!uint(arg + 4, 0);
-            foreach (i; 0 .. PROVIDE) {
-                KvmCpuidEntry2 e;                     // index=0, flags=0, padding=0
-                e.func = fns[i];
-                kvmHostCpuid(fns[i], &e.eax, &e.ebx, &e.ecx, &e.edx);
-                kvmUserCopyOut(arg + 8 + i * ESZ, &e, ESZ);
-            }
+            foreach (i; 0 .. n) kvmUserCopyOut(arg + 8 + i * ESZ, &list[i], ESZ);
             return 0;
         }
         case KVM_GET_MSR_INDEX_LIST: {
@@ -339,6 +333,111 @@ long kvmSystemIoctl(int tid, ulong cmd, ulong arg) {
 // Host CPUID (subleaf 0) for KVM_GET_SUPPORTED_CPUID.  Same safe form as vmx.d x64Cpuid: NO
 // `push RBX` (LDC may address params/locals RSP-relative, so a push skews every access and cpuid
 // runs a garbage leaf) and never inlined; LDC preserves RBX across inline asm that clobbers it.
+private void kvmHostCpuidSub(uint leaf, uint sub, uint* a, uint* b, uint* c, uint* d) {
+    uint ra, rb, rc, rd;
+    asm @nogc nothrow { mov EAX, leaf; mov ECX, sub; cpuid; mov ra, EAX; mov rb, EBX; mov rc, ECX; mov rd, EDX; }
+    *a = ra; *b = rb; *c = rc; *d = rd;
+}
+
+// The CPUID a guest may be offered.  Host values throughout (never invented), with three kinds of
+// edits a Linux guest depends on:
+//   * REMOVED what is not virtualized here: VMX/SMX, MONITOR/MWAIT, thermal/perf monitoring, MTRRs,
+//     SGX/PT/TSX, the speculation-control MSRs, XSAVES, PKU without PKRU in XCR0;
+//   * ADDED what the in-kernel LAPIC provides: x2APIC, TSC-deadline, ARAT, the hypervisor bit;
+//   * the KVM signature leaves (0x40000000/1) offering exactly kvmclock -- Linux then enables
+//     x2APIC (kvm_para_available) and learns the TSC rate without a PIT.
+// Leaf 0xD describes the HOST's XCR0: XCR0 is not switched, so the guest runs under the host's.
+private uint kvmBuildSupportedCpuid(KvmCpuidEntry2* o, uint cap) {
+    uint n = 0;
+    void add(uint fn, uint idx, uint fl, uint a, uint b, uint c, uint d) {
+        if (n >= cap) return;
+        KvmCpuidEntry2 e;
+        e.func = fn; e.index = idx; e.flags = fl; e.eax = a; e.ebx = b; e.ecx = c; e.edx = d;
+        o[n++] = e;
+    }
+    enum uint SIG = 1;                         // KVM_CPUID_FLAG_SIGNIFCANT_INDEX
+    uint a, b, c, d;
+    // XSAVE for the guest only if the HOST runs with CR4.OSXSAVE: XCR0 is not switched, so the guest
+    // gets the host's -- and without OSXSAVE that is x87 only (XGETBV itself would #UD).  The FPU
+    // is then switched with FXSAVE, and the guest is offered SSE but no XSAVE/AVX family.
+    ulong hostCr4;
+    asm @nogc nothrow { mov RAX, CR4; mov hostCr4, RAX; }
+    const bool hostXsave = (hostCr4 & (1UL << 18)) != 0;
+    kvmHostCpuidSub(0, 0, &a, &b, &c, &d);
+    const uint maxBasic = a < 0xD ? a : 0xD;
+    add(0, 0, 0, maxBasic, b, c, d);
+
+    kvmHostCpuidSub(1, 0, &a, &b, &c, &d);
+    c &= ~((1u << 3) | (1u << 4) | (1u << 5) | (1u << 6) | (1u << 7) | (1u << 8) | (1u << 11)
+           | (1u << 14) | (1u << 15) | (1u << 18) | (1u << 27));   // MONITOR DSCPL VMX SMX EST TM2 SDBG xTPR PDCM DCA OSXSAVE
+    c |= (1u << 21) | (1u << 24) | (1u << 31);                     // x2APIC, TSC-deadline, hypervisor
+    d &= ~((1u << 12) | (1u << 21) | (1u << 22) | (1u << 29) | (1u << 31));  // MTRR DS ACPI TM PBE
+    d |= (1u << 9);                                                // APIC
+    if (!hostXsave) c &= ~((1u << 12) | (1u << 26) | (1u << 28) | (1u << 29));   // FMA XSAVE AVX F16C
+    add(1, 0, 0, a, b, c, d);
+
+    if (maxBasic >= 2) { kvmHostCpuidSub(2, 0, &a, &b, &c, &d); add(2, 0, 0, a, b, c, d); }
+    if (maxBasic >= 4)
+        foreach (i; 0 .. 8) {
+            kvmHostCpuidSub(4, i, &a, &b, &c, &d);
+            if ((a & 0x1F) == 0) { add(4, i, SIG, 0, 0, 0, 0); break; }
+            add(4, i, SIG, a, b, c, d);
+        }
+    if (maxBasic >= 6) add(6, 0, 0, 1u << 2, 0, 0, 0);            // ARAT only
+    ulong hostXcr0 = 0;
+    if (maxBasic >= 7) {
+        kvmHostCpuidSub(7, 0, &a, &b, &c, &d);
+        b &= ~((1u << 2) | (1u << 4) | (1u << 11) | (1u << 12) | (1u << 14) | (1u << 15) | (1u << 25));
+        c &= ~((1u << 5) | (1u << 16) | (1u << 30));             // WAITPKG LA57 SGX_LC
+        d &= ~((1u << 15) | (1u << 18) | (1u << 20) | (1u << 26) | (1u << 27) | (1u << 28)
+               | (1u << 29) | (1u << 30) | (1u << 31));
+        if (hostXsave) {
+            uint lo, hi;
+            asm @nogc nothrow { xor ECX, ECX; db 0x0F; db 0x01; db 0xD0; mov lo, EAX; mov hi, EDX; }   // XGETBV
+            hostXcr0 = (cast(ulong)hi << 32) | lo;
+        } else {
+            b &= ~((1u << 5) | (1u << 16) | (1u << 17) | (1u << 21) | (1u << 26) | (1u << 27)
+                   | (1u << 28) | (1u << 30) | (1u << 31));        // AVX2 + AVX-512 family
+            c &= ~((1u << 1) | (1u << 6) | (1u << 11) | (1u << 12) | (1u << 14));
+            d &= ~((1u << 2) | (1u << 3) | (1u << 8) | (1u << 23));
+        }
+        if ((hostXcr0 & (1UL << 9)) == 0) c &= ~(1u << 3);        // PKU needs PKRU in XCR0
+        import core.virt.vmx : vmxSecondaryMayEnable, SEC_ENABLE_INVPCID, SEC_ENABLE_RDTSCP;
+        if (!vmxSecondaryMayEnable(SEC_ENABLE_INVPCID)) b &= ~(1u << 10);   // INVPCID would #UD
+        if (!vmxSecondaryMayEnable(SEC_ENABLE_RDTSCP)) c &= ~(1u << 22);    // RDPID would #UD
+        add(7, 0, SIG, 0, b, c, d);
+    }
+    if (maxBasic >= 0xB)
+        foreach (i; 0 .. 2) { kvmHostCpuidSub(0xB, i, &a, &b, &c, &d); add(0xB, i, SIG, a, b, c, d); }
+    if (maxBasic >= 0xD && hostXsave) {
+        kvmHostCpuidSub(0xD, 0, &a, &b, &c, &d);
+        add(0xD, 0, SIG, cast(uint)hostXcr0, b, b, cast(uint)(hostXcr0 >> 32));
+        kvmHostCpuidSub(0xD, 1, &a, &b, &c, &d);
+        add(0xD, 1, SIG, a & ~(1u << 3), 0, 0, 0);                // no XSAVES (IA32_XSS not virtualized)
+        foreach (i; 2 .. 32)
+            if (hostXcr0 & (1UL << i)) { kvmHostCpuidSub(0xD, i, &a, &b, &c, &d); add(0xD, i, SIG, a, b, c, d); }
+    }
+    add(0x4000_0000, 0, 0, 0x4000_0001, 0x4b4d564b, 0x564b4d56, 0x4d);          // "KVMKVMKVM"
+    add(0x4000_0001, 0, 0, (1u << 0) | (1u << 3) | (1u << 24), 0, 0, 0);         // kvmclock (+stable)
+
+    kvmHostCpuidSub(0x8000_0000, 0, &a, &b, &c, &d);
+    const uint maxExt = a < 0x8000_0008 ? a : 0x8000_0008;
+    add(0x8000_0000, 0, 0, maxExt, b, c, d);
+    if (maxExt >= 0x8000_0001) {
+        kvmHostCpuidSub(0x8000_0001, 0, &a, &b, &c, &d);
+        c &= ~(1u << 2);                                           // SVM
+        import core.virt.vmx : vmxSecondaryMayEnable, SEC_ENABLE_RDTSCP;
+        if (!vmxSecondaryMayEnable(SEC_ENABLE_RDTSCP)) d &= ~(1u << 27);    // RDTSCP would #UD
+        add(0x8000_0001, 0, 0, a, b, c, d);
+    }
+    foreach (fn; 0x8000_0002 .. 0x8000_0005)
+        if (maxExt >= fn) { kvmHostCpuidSub(fn, 0, &a, &b, &c, &d); add(fn, 0, 0, a, b, c, d); }
+    if (maxExt >= 0x8000_0006) { kvmHostCpuidSub(0x8000_0006, 0, &a, &b, &c, &d); add(0x8000_0006, 0, 0, a, b, c, d); }
+    if (maxExt >= 0x8000_0007) { kvmHostCpuidSub(0x8000_0007, 0, &a, &b, &c, &d); add(0x8000_0007, 0, 0, 0, 0, 0, d & (1u << 8)); }
+    if (maxExt >= 0x8000_0008) { kvmHostCpuidSub(0x8000_0008, 0, &a, &b, &c, &d); add(0x8000_0008, 0, 0, a, 0, 0, 0); }
+    return n;
+}
+
 private void kvmHostCpuid(uint leaf, uint* a, uint* b, uint* c, uint* d) {
     pragma(inline, false);
     uint ra, rb, rc, rd;
@@ -836,6 +935,22 @@ long kvmVcpuRun(int tid, uint vcpuObj, uint vcpuGen) {
         return E_INTR;
     }
 
+    // In-kernel LAPIC (split irqchip).  A vCPU that executed HLT stays out of the guest until
+    // something can wake it -- its timer, an MSI, an NMI.  Returning EAGAIN makes the syscall layer
+    // park the VMM's vCPU thread and re-run this KVM_RUN on the next tick (kernel_main.d), so an
+    // idle guest costs nothing and the VMM never sees the wait (Linux KVM blocks the same way).
+    {
+        import core.virt.lapic : hvFor, lapicWakeable;
+        auto hv = hvFor(vm, vc, true);
+        if (hv !is null) {
+            if (vm.splitIrqchip) hv.lapicOn = true;
+            if (hv.halted) {
+                if (!lapicWakeable(hv)) { g_kvmHaltParkTid = tid; return E_AGAIN; }
+                hv.halted = false;
+            }
+        }
+    }
+
     vc.state = VcpuState.Running;
     // Fail-soft availability BEFORE guest-state validation: without a ready
     // backend there is nothing to enter, and the VMM gets -ENODEV exactly
@@ -888,6 +1003,34 @@ long kvmVcpuRun(int tid, uint vcpuObj, uint vcpuGen) {
         // Persist the post-exit guest registers so KVM_GET_REGS and MMIO decode
         // see the current state (the entry loaded them into the local `regs`).
         foreach (i; 0 .. 18) vc.regs[i] = (&regs.rax)[i];
+        // The exits a real OS takes constantly are handled here, in the kernel: CPUID, MSRs, XSETBV,
+        // CR8, HLT, the xAPIC page... (core.virt.vcpuemu).  Only what the VMM owns goes out.
+        if (xi.kind == VirtExitKind.Intr) kvmExitStat(cast(uint)xi.hardwareReason, regs.rip, true);
+        if (xi.kind != VirtExitKind.Intr) {
+            import core.virt.vcpuemu : vcpuEmulate, EmuResult;
+            auto cp = kvmCpuidFor(vc, false);
+            const EmuResult er = vcpuEmulate(vm, vc, &regs, cast(KvmSRegs*)sregs, xi,
+                                             cp !is null ? cp.entries.ptr : null,
+                                             cp !is null ? cp.count : 0, run);
+            kvmExitStat(cast(uint)xi.hardwareReason, regs.rip, er != EmuResult.NotHandled);
+            if (er != EmuResult.NotHandled) {
+                foreach (i; 0 .. 18) vc.regs[i] = (&regs.rax)[i];
+                if (er == EmuResult.Resume) continue;
+                if (er == EmuResult.Halt) {
+                    vc.state = VcpuState.Runnable;
+                    g_kvmHaltParkTid = tid;
+                    return E_AGAIN;
+                }
+                // EoiExit: a level-triggered vector was EOI'd -- the VMM's IOAPIC re-evaluates the pin.
+                import core.virt.lapic : hvFor;
+                auto hv = hvFor(vm, vc, false);
+                run.exitReason = KVM_EXIT_IOAPIC_EOI;
+                run.u.vector = cast(ubyte)(hv !is null ? hv.eoiExitVector : 0);
+                if (hv !is null) hv.eoiExitVector = -1;
+                vc.state = VcpuState.Runnable;
+                return 0;
+            }
+        }
         VmExitAction act = virtDispatchExit(xi, run, vm, vc);
         // A HOST interrupt forced this exit (VMX external-interrupt exiting).  It was not
         // acknowledged, so it is still pending in the host LAPIC/PIC.  Hand control back the way
@@ -919,6 +1062,19 @@ long kvmVcpuRun(int tid, uint vcpuObj, uint vcpuGen) {
                     vc.regs[16] = regs.rip;           // KvmRegs index 16 = rip
                     continue;                          // resume the guest, no userspace exit
                 }
+            }
+            // MMIO WRITE to the VMM: the data is already in run.u.mmio, so the store is complete
+            // from the guest's side -- step past it now (Linux KVM does the same before exiting).
+            // Leaving RIP on the store re-executed it on every KVM_RUN: an IOAPIC index write
+            // looped forever.
+            if (acc.valid && acc.isWrite) {
+                regs.rip += acc.insnLen;
+                vc.regs[16] = regs.rip;
+            }
+            if (!acc.valid && g_mmioUndecodedLog < 8) {
+                ++g_mmioUndecodedLog;
+                klog("[kvm] MMIO exit with an undecodable instruction: gpa=0x"); klog_hex(run.u.mmio.physAddr);
+                klog(" rip=0x"); klog_hex(regs.rip); klog("\n");
             }
             // MMIO READ: remember what to complete on re-entry (userspace fills
             // run.u.mmio.data), then exit to userspace.
@@ -957,6 +1113,37 @@ long kvmVcpuRun(int tid, uint vcpuObj, uint vcpuGen) {
     run.exitReason = KVM_EXIT_INTR;
     vc.state = VcpuState.Runnable;
     return E_INTR;
+}
+
+// Exit statistics: counts by VMX basic reason, summarized at every power-of-two total (so a guest
+// that stops making progress shows where), and the first few exits left to the VMM with their RIP.
+private __gshared ulong[64] g_vexit;
+private __gshared ulong g_vexitTotal;
+private __gshared uint g_vexitLines, g_vexitUnhandledLog, g_mmioUndecodedLog;
+private void kvmExitStat(uint reason, ulong rip, bool handled) {
+    ++g_vexit[reason & 63];
+    ++g_vexitTotal;
+    if (!handled && reason != 1 && g_vexitUnhandledLog < 24) {
+        ++g_vexitUnhandledLog;
+        klog("[vcpu] exit to VMM: reason="); klog_dec(reason); klog(" rip=0x"); klog_hex(rip); klog("\n");
+    }
+    const ulong t = g_vexitTotal;
+    if ((t & (t - 1)) != 0 || g_vexitLines >= 40) return;
+    ++g_vexitLines;
+    klog("[vcpu] exits="); klog_dec(g_vexitTotal);
+    klog(" cpuid="); klog_dec(g_vexit[10]); klog(" rdmsr="); klog_dec(g_vexit[31]); klog(" wrmsr="); klog_dec(g_vexit[32]);
+    klog(" io="); klog_dec(g_vexit[30]); klog(" ept="); klog_dec(g_vexit[48]); klog(" hlt="); klog_dec(g_vexit[12]);
+    klog(" hostint="); klog_dec(g_vexit[1]); klog(" window="); klog_dec(g_vexit[7]); klog(" cr="); klog_dec(g_vexit[28]);
+    klog(" exc="); klog_dec(g_vexit[0]); klog(" rip=0x"); klog_hex(rip); klog("\n");
+}
+
+// A KVM_RUN that returned EAGAIN for a halted vCPU records its task here; the syscall dispatcher
+// (kernel_main.d) takes it and parks the thread instead of returning EAGAIN to the VMM.
+__gshared int g_kvmHaltParkTid = -1;
+public bool kvmTakeHaltPark(int tid) {
+    if (g_kvmHaltParkTid != tid) return false;
+    g_kvmHaltParkTid = -1;
+    return true;
 }
 
 // vCPU-fd ioctl dispatch.
@@ -1068,16 +1255,31 @@ long kvmVcpuIoctl(int tid, uint vcpuObj, uint vcpuGen, ulong cmd, ulong arg) {
             return 0;
         }
         case KVM_GET_LAPIC: {
-            // Later tier: local-APIC state lives in the kernel APIC model.
-            // Return zeros (honest "not modeled") rather than fake state.
+            // The in-kernel LAPIC's register image (struct kvm_lapic_state: 1024 bytes, xAPIC layout).
+            import core.virt.lapic : hvFor, lapicRead, APIC_PROCPRI, APIC_TMCCT;
             if (!kvmUserOk(tid, arg, 1024, true)) return E_FAULT;
-            foreach (i; 0 .. 1024) kvmUserWrite!ubyte(arg + i, 0);
+            Vm* lvm = vmCheck(vc.vmObj, vc.vmGen);
+            auto hv = hvFor(lvm, vc, true);
+            if (hv is null) return E_NOMEM;
+            uint[256] img = hv.lapic.regs;
+            img[APIC_PROCPRI >> 2] = lapicRead(hv, APIC_PROCPRI);
+            img[APIC_TMCCT >> 2]   = lapicRead(hv, APIC_TMCCT);
+            kvmUserCopyOut(arg, img.ptr, 1024);
             return 0;
         }
         case KVM_SET_LAPIC: {
+            // Cloud Hypervisor reads the LAPIC, sets LINT0 = ExtINT / LINT1 = NMI, and writes it back.
+            import core.virt.lapic : hvFor;
             if (!kvmUserOk(tid, arg, 1024, false)) return E_FAULT;
+            Vm* lvm = vmCheck(vc.vmObj, vc.vmGen);
+            auto hv = hvFor(lvm, vc, true);
+            if (hv is null) return E_NOMEM;
+            uint[256] img;
+            kvmUserCopyIn(img.ptr, arg, 1024);
+            hv.lapic.regs = img;
+            hv.lapicOn = true;
             vc.lapicSet = true;
-            return 0; // accepted; applied when the APIC model lands
+            return 0;
         }
         case KVM_SET_CPUID2: {
             if (!kvmUserOk(tid, arg, 8, false)) return E_FAULT;
@@ -1102,8 +1304,20 @@ long kvmVcpuIoctl(int tid, uint vcpuObj, uint vcpuGen, ulong cmd, ulong arg) {
             if (virtValidateMsrs(n ? tmp.ptr : null, n) != 0) return E_INVAL;
             auto fx = kvmCacheFor(vc, true);
             if (fx is null) return E_NOMEM;
-            fx.msrCount = n;
-            foreach (i; 0 .. n) fx.msrs[i] = tmp[i];
+            // merge into the cache (a later SET_MSRS with other indices must not drop earlier ones)
+            foreach (i; 0 .. n) {
+                bool hit = false;
+                foreach (j; 0 .. fx.msrCount) if (fx.msrs[j].index == tmp[i].index) { fx.msrs[j] = tmp[i]; hit = true; break; }
+                if (!hit && fx.msrCount < KVM_CACHE_MAX_MSRS) fx.msrs[fx.msrCount++] = tmp[i];
+            }
+            {   // ...and into the live vCPU state the guest will see
+                import core.virt.lapic : hvFor;
+                import core.virt.vcpuemu : emuMsrWrite;
+                Vm* mvm = vmCheck(vc.vmObj, vc.vmGen);
+                auto hv = hvFor(mvm, vc, true);
+                if (hv !is null)
+                    foreach (i; 0 .. n) cast(void)emuMsrWrite(mvm, vc, hv, &fx.sregs, tmp[i].index, tmp[i].data);
+            }
             return cast(long)n; // Linux returns the number applied
         }
         case KVM_GET_MSRS: {
@@ -1118,7 +1332,15 @@ long kvmVcpuIoctl(int tid, uint vcpuObj, uint vcpuGen, ulong cmd, ulong arg) {
             foreach (i; 0 .. n) {
                 uint idx = kvmUserRead!uint(arg + 8 + i*16);
                 ulong data = 0;
-                if (c !is null) {
+                bool live = false;
+                {
+                    import core.virt.lapic : hvFor;
+                    import core.virt.vcpuemu : emuMsrRead;
+                    Vm* mvm = vmCheck(vc.vmObj, vc.vmGen);
+                    auto hv = hvFor(mvm, vc, false);
+                    if (hv !is null && c !is null) live = emuMsrRead(mvm, vc, hv, &c.sregs, idx, data);
+                }
+                if (!live && c !is null) {
                     foreach (j; 0 .. c.msrCount) {
                         if (c.msrs[j].index == idx) { data = c.msrs[j].data; break; }
                     }
@@ -1129,7 +1351,9 @@ long kvmVcpuIoctl(int tid, uint vcpuObj, uint vcpuGen, ulong cmd, ulong arg) {
             return cast(long)n;
         }
         case KVM_NMI: {
-            vc.lapicSet = vc.lapicSet; // no-op marker: NMI queued when APIC lands
+            import core.virt.lapic : hvFor;
+            auto hv = hvFor(vmCheck(vc.vmObj, vc.vmGen), vc, true);
+            if (hv !is null) { hv.nmiPending = true; hv.halted = false; }
             return 0;
         }
         case KVM_SET_TSC_KHZ: {

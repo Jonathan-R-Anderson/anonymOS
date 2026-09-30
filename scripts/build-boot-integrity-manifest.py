@@ -25,6 +25,8 @@ EXCLUDED_MODULES = {
     "pfsense.iso",
     "guest-hello.elf",      # CHGUEST= VMM test guest (test images only)
     "epin-chprobe.conf",    # CHPROBE=1 VMM test marker (test images only)
+    "guest-vmlinuz",        # CHLINUX=1 VMM test guest kernel (test images only)
+    "guest-initrd",         # CHLINUX=1 VMM test guest initramfs (test images only)
     "install.json",
     "zksync-attestation.json",
 }

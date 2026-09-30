@@ -231,6 +231,9 @@ __gshared const(char)*[MAX_TASKS] g_taskExecName;
 // appgate: the objstore app a task is running (index + 1; 0 = not an objstore app).  The app's grant
 // key is "store:<name>", and a /proc/self/exe re-exec must keep it (execName is just "store-app").
 __gshared ushort[MAX_TASKS] g_taskStoreApp1;
+// Installed-package provenance of the task's image: 1-based package record (0 = not a package
+// program), so a /proc/self/exe re-exec keeps its appgate key ("pkg:<name>").
+__gshared ushort[MAX_TASKS] g_taskPkg1;
 
 // NATIVE_OBJECT_ABI §3: per-task personality. true = the AnonymOS native shell context
 // (may call the native object ABI HOS_SYS_QUERY); false = Linux personality (the native
@@ -557,6 +560,7 @@ private int initTaskSlot(int i) {
     // whatever last occupied this slot.
     g_taskExecName[i]  = null;
     g_taskStoreApp1[i] = 0;
+    g_taskPkg1[i] = 0;
     g_tasks[i].active = true;
     g_tasks[i].processLeaderTid = i;
     g_tasks[i].mmapNext = 0x700000000000UL;

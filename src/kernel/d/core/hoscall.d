@@ -786,9 +786,24 @@ public long configfsRender(int id, char* buf, size_t buflen) {
                             e.host == AppHost.System);
                 first = false;
             }
+            // Installed packages (Software Center): one row per package, "pkg:<name>" -- installed
+            // system-wide by System, delegable to other domains like any application.
+            {
+                import core.syscalls.posix : pkgInstalledAt;
+                for (uint i = 0;; ++i) {
+                    const(char)* pn = pkgInstalledAt(i);
+                    if (pn is null) break;
+                    char[64] key = 0; size_t kl = 0;
+                    foreach (ch; "pkg:") key[kl++] = ch;
+                    for (size_t k = 0; pn[k] != 0 && kl + 1 < key.length; ++k) key[kl++] = pn[k];
+                    appsJsonRow(b, first, key.ptr, kl, true, true);
+                    first = false;
+                }
+            }
             foreach (uint i; 0 .. appPortCount()) {
                 auto a = appPortAt(i);
                 if (a is null || appRegByAppId(a.app.ptr) !is null) continue;   // registry apps done above
+                if (a.app[0] == 'p' && a.app[1] == 'k' && a.app[2] == 'g' && a.app[3] == ':') continue;  // listed above
                 appsJsonRow(b, first, a.app.ptr, a.appLen, true, false);
                 first = false;
             }

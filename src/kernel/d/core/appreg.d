@@ -235,6 +235,20 @@ public const(AppRegEntry)* appRegLookup(const(char)* image) {
 
 public const(AppRegEntry)* appRegStoreEntry() { return &g_appRegStore; }
 
+// Every program of an INSTALLED package (Software Center) is classified by this one row; its grant
+// key is "pkg:<name>".  An application, hosted by System (an install is system-wide, made by the
+// administrator), delegable: the Domain Manager ports a package to a domain like any application.
+static immutable AppRegEntry g_appRegPkg =
+    AppRegEntry("installed-package", null, APP, SYH, DNO, null, DLG);
+public const(AppRegEntry)* appRegPkgEntry() { return &g_appRegPkg; }
+
+// "pkg:<name>" of a package that is actually installed.
+public bool appRegIsPkgKey(const(char)* appId) {
+    import core.syscalls.posix : softwarePkgInstalled;
+    return appId !is null && appId[0] == 'p' && appId[1] == 'k' && appId[2] == 'g' && appId[3] == ':'
+        && softwarePkgInstalled(appId + 4);
+}
+
 // A row's grant key as a C string (table literals are NUL-terminated), or null.
 public const(char)* appRegKey(const(AppRegEntry)* e) {
     return (e is null || e.appId is null) ? null : e.appId.ptr;
@@ -263,6 +277,7 @@ public bool appRegIsStoreKey(const(char)* key) {
 // May the Domain Manager delegate `appId` to another domain?
 public bool appRegIsDelegable(const(char)* appId) {
     if (appRegIsStoreKey(appId)) return true;
+    if (appRegIsPkgKey(appId)) return true;
     auto e = appRegByAppId(appId);
     return e !is null && e.cls == AppCls.App && (e.flags & AF_DELEGABLE) != 0;
 }

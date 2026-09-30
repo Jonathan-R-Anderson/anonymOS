@@ -5757,6 +5757,10 @@ private struct RtNode {
     // domain-private node SHADOWS a same-named shared node for its own domain only (copy-on-write),
     // and is invisible to every other domain — see rtFindChild.  APPENDED, never inserted.
     uint   ownerDom;
+    // Software Center provenance: 1-based index into g_pkgRecs of the package whose verified
+    // install placed this file (0 = not a package file).  Only such files may be exec'd -- a file a
+    // program writes itself is never a program (appgate: only classified images run).  APPENDED.
+    ushort pkgIdx;
 }
 
 __gshared RtNode[RT_MAX_NODES] g_rt;
@@ -6084,6 +6088,7 @@ private int rtCreate(int parent, const(char)* name, size_t len, ubyte kind,
     g_rt[idx].dataPhys = 0;
     g_rt[idx].size     = 0;
     g_rt[idx].cap      = 0;
+    g_rt[idx].pkgIdx   = 0;
     // DM6.2 per-domain isolation: stamp the node with the writing task's domain (0 = shared).  A
     // domain-bound write therefore creates a node PRIVATE to that domain that shadows any shared
     // same-named node for that domain only, and is invisible to every other domain (see rtFindChild).
@@ -7351,6 +7356,54 @@ public bool softwareCatalogPin(const(char)* name, const(char)* wantBase,
     return verOut[0] != 0 && sumOut[0] != 0 && baseOut[0] != 0;
 }
 
+/// A package's runtime dependencies from the image catalog's HOSDEP1 trailer: space-separated
+/// PACKAGE names (resolved at build time from APKINDEX D:/p:), for the same apk record
+/// softwareCatalogPin would pick.  Returns false when the package is unknown or the catalog carries
+/// no dependency trailer; true with an empty string when it has no dependencies.
+public bool softwareCatalogDeps(const(char)* name, char* out_, size_t cap) @nogc nothrow {
+    if (name is null || name[0] == 0 || cap == 0) return false;
+    out_[0] = 0;
+    ulong phys, size;
+    if (!findBootModule("/software-catalog.bin\0".ptr, phys, size) || phys == 0 || size < 52) return false;
+    auto b = cast(const(ubyte)*)phys_to_virt(phys);
+    static uint rd32(const(ubyte)* p) { return p[0] | (p[1] << 8) | (p[2] << 16) | (cast(uint)p[3] << 24); }
+    immutable string magic = "HOSSOFT1";
+    foreach (i; 0 .. 8) if (b[i] != magic[i]) return false;
+    const uint repoCount = rd32(b + 12), pkgCount = rd32(b + 16);
+    const uint repoOff = rd32(b + 20), pkgOff = rd32(b + 24), strOff = rd32(b + 28), strLen = rd32(b + 32);
+    if (cast(ulong)repoOff + 40UL * repoCount > size || cast(ulong)pkgOff + 28UL * pkgCount > size
+        || cast(ulong)strOff + strLen > size) return false;
+    const ulong t1 = cast(ulong)strOff + strLen;
+    immutable string m1 = "HOSSUM1\0", m2 = "HOSDEP1\0";
+    if (t1 + 12 > size) return false;
+    foreach (i; 0 .. 8) if (b[t1 + i] != cast(ubyte)m1[i]) return false;
+    const(ubyte)* sums = b + t1 + 12;
+    const ulong t2 = t1 + 12 + 4UL * pkgCount;
+    if (t2 + 12 + 4UL * pkgCount > size) return false;
+    foreach (i; 0 .. 8) if (b[t2 + i] != cast(ubyte)m2[i]) return false;
+    if (rd32(b + t2 + 8) != pkgCount) return false;
+    const(ubyte)* deps = b + t2 + 12;
+    const(char)* str(uint off) { return (off < strLen) ? cast(const(char)*)(b + strOff + off) : "".ptr; }
+    static bool eq(const(char)* a, const(char)* c) {
+        size_t i = 0; for (; a[i] != 0 && c[i] != 0; ++i) if (a[i] != c[i]) return false; return a[i] == c[i];
+    }
+    foreach (i; 0 .. pkgCount) {
+        const(ubyte)* rec = b + pkgOff + 28UL * i;
+        if (!eq(str(rd32(rec)), name)) continue;
+        const uint ri = rec[24] | (rec[25] << 8);
+        if (ri >= repoCount) continue;
+        const(ubyte)* rr = b + repoOff + 40UL * ri;
+        if (!eq(str(rd32(rr + 8)), "apk".ptr) || rr[28] == 0) continue;
+        if (rd32(sums + 4UL * i) == 0) continue;
+        const(char)* d = str(rd32(deps + 4UL * i));
+        size_t k = 0;
+        for (; d[k] != 0 && k + 1 < cap; ++k) out_[k] = d[k];
+        out_[k] = 0;
+        return true;
+    }
+    return false;
+}
+
 // The request line: "<pkgmgr> <name> <baseurl> <version> <control-checksum>".  The last three come
 // from softwareCatalogPin -- the fetcher downloads exactly that version and refuses anything whose
 // hashes do not chain back to that checksum.
@@ -7466,6 +7519,122 @@ public int softwareApkTryComplete(const(char)* name, uint dom) @nogc nothrow {
 //     /usr/lib, so libwayland-client.so.0 in lib/ would replace the system library for EVERY
 //     program, the Domain Manager included).
 // Returns null if allowed, else a short reason.
+// ── installed packages (Software Center) ──────────────────────────────────────────────────────
+// One record per package a verified install placed; rtfs nodes point back at it (RtNode.pkgIdx).
+// The appgate key of every program in the package is "pkg:<name>", so the Domain Manager
+// delegates a PACKAGE (all of its commands) to a domain -- the unit a user installs.
+enum int PKG_REC_MAX = 128;
+private struct PkgRec { bool used; ubyte nameLen; char[48] name; char[40] ver; uint files; uint cmds; uint dom; }
+private __gshared PkgRec[PKG_REC_MAX] g_pkgRecs;
+
+// Find or create a package's record; 1-based index, 0 when the table is full.
+private int pkgRecFor(const(char)* name, const(char)* ver) @nogc nothrow {
+    size_t n = 0; while (name[n] != 0 && n < 47) ++n;
+    int free_ = -1;
+    foreach (i, ref r; g_pkgRecs) {
+        if (!r.used) { if (free_ < 0) free_ = cast(int)i; continue; }
+        if (r.nameLen == n) {
+            bool eq = true;
+            foreach (k; 0 .. n) if (r.name[k] != name[k]) { eq = false; break; }
+            if (eq) return cast(int)i + 1;
+        }
+    }
+    if (free_ < 0) return 0;
+    auto r = &g_pkgRecs[free_];
+    r.used = true; r.nameLen = cast(ubyte)n; r.files = 0; r.cmds = 0; r.dom = 0;
+    foreach (k; 0 .. n) r.name[k] = name[k];
+    r.name[n] = 0;
+    size_t v = 0;
+    if (ver !is null) while (ver[v] != 0 && v < 39) { r.ver[v] = ver[v]; ++v; }
+    r.ver[v] = 0;
+    return free_ + 1;
+}
+
+/// Installed packages that provide COMMANDS, for /config/apps.json and the Domain Manager: name of
+/// record `i` (0-based over those records), or null past the end.  A library-only package is never
+/// exec'd, so there is nothing to delegate -- it is not listed.
+public const(char)* pkgInstalledAt(uint i) @nogc nothrow {
+    uint k = 0;
+    foreach (ref r; g_pkgRecs) {
+        if (!r.used || r.cmds == 0) continue;
+        if (k == i) return r.name.ptr;
+        ++k;
+    }
+    return null;
+}
+
+/// Is `name` an installed package?  (appgate: only an installed package's key can be delegated.)
+public bool softwarePkgInstalled(const(char)* name) @nogc nothrow {
+    if (name is null) return false;
+    foreach (ref r; g_pkgRecs) {
+        if (!r.used) continue;
+        size_t k = 0;
+        while (k < r.nameLen && name[k] == r.name[k]) ++k;
+        if (k == r.nameLen && name[k] == 0) return true;
+    }
+    return false;
+}
+
+private __gshared char[48][MAX_TASKS] g_rtExecNames;   // stable exec names for rtfs-loaded images
+
+/// fork: a child whose parent runs an installed program gets its OWN copy of the image name (the
+/// parent's buffer is rewritten if the parent execs again).  Returns the name to record, or `nm`.
+public const(char)* rtExecNameInherit(int parentTid, int childTid, const(char)* nm) @nogc nothrow {
+    if (parentTid < 0 || parentTid >= MAX_TASKS || childTid < 0 || childTid >= MAX_TASKS) return nm;
+    if (nm !is g_rtExecNames[parentTid].ptr) return nm;
+    g_rtExecNames[childTid] = g_rtExecNames[parentTid];
+    return g_rtExecNames[childTid].ptr;
+}
+
+/// exec of an INSTALLED program: `path` names an rtfs file that a verified package install placed.
+/// Returns true with the image's physical base/size (rtfs payloads are physically contiguous, so the
+/// ELF loader takes them exactly like a boot module), a stable per-task name, and the package's
+/// appgate key ("pkg:<name>") written into keyOut.  A file anything else wrote is never an image.
+public bool rtExecImage(const(char)* path, int tid, ulong* phys, ulong* size, const(char)** name,
+                        int* pkg1) @nogc nothrow {
+    initFdTable();
+    if (path is null || path[0] != '/' || tid < 0 || tid >= MAX_TASKS) return false;
+    int par; const(char)* lf; size_t ll;
+    const int idx = rtResolve(path, par, lf, ll);
+    if (idx <= 0 || g_rt[idx].kind != RT_REG || g_rt[idx].pkgIdx == 0) return false;
+    if (g_rt[idx].data is null || g_rt[idx].dataPhys == 0 || g_rt[idx].size < 64) return false;
+    const(ubyte)* d = g_rt[idx].data;
+    if (d[0] != 0x7F || d[1] != 'E' || d[2] != 'L' || d[3] != 'F') return false;
+    // the caller must be allowed to READ it (a confined domain sees only what its namespace binds)
+    if (nsPathVerdict(path, openRightsForFlags(0)) != 0) return false;
+    const int pk = g_rt[idx].pkgIdx - 1;
+    if (pk < 0 || pk >= PKG_REC_MAX || !g_pkgRecs[pk].used) return false;
+    *phys = g_rt[idx].dataPhys;
+    *size = g_rt[idx].size;
+    size_t n = g_rt[idx].nameLen < 47 ? g_rt[idx].nameLen : 47;
+    foreach (k; 0 .. n) g_rtExecNames[tid][k] = g_rt[idx].name[k];
+    g_rtExecNames[tid][n] = 0;
+    *name = g_rtExecNames[tid].ptr;
+    *pkg1 = pk + 1;
+    return true;
+}
+
+/// The appgate key of installed package `pkg1` (1-based record): "pkg:<name>" into buf; null if none.
+public const(char)* pkgKeyFor(int pkg1, char* buf, size_t cap) @nogc nothrow {
+    const int pk = pkg1 - 1;
+    if (pk < 0 || pk >= PKG_REC_MAX || !g_pkgRecs[pk].used || cap < 8) return null;
+    size_t o = 0;
+    foreach (ch; "pkg:") buf[o++] = ch;
+    foreach (k; 0 .. g_pkgRecs[pk].nameLen) if (o + 1 < cap) buf[o++] = g_pkgRecs[pk].name[k];
+    buf[o] = 0;
+    return buf;
+}
+
+/// Forget a package record (the boot self-test's synthetic package must not look installed).
+private void pkgRecDrop(const(char)* name) @nogc nothrow {
+    foreach (ref r; g_pkgRecs) {
+        if (!r.used) continue;
+        size_t k = 0;
+        while (k < r.nameLen && name[k] == r.name[k]) ++k;
+        if (k == r.nameLen && name[k] == 0) { r.used = false; return; }
+    }
+}
+
 private const(char)* softwarePlacementRefusal(const(ubyte)* rel, uint rlen) @nogc nothrow {
     if (rlen == 0 || rlen > 400) return "bad length".ptr;
     if (rel[0] == '/') return "absolute path".ptr;
@@ -7561,6 +7730,21 @@ private int softwareApkInstallDoneInner(const(char)* name) @nogc nothrow {
     if (mi < 0 || g_rt[mi].kind != RT_REG || g_rt[mi].data is null) return -1;
 
     int placed = 0, refused = 0;
+    // The .done marker's first two tokens are "<pkgmgr> <name>", the third the version.
+    char[48] pkgName = 0; char[40] pkgVer = 0;
+    {
+        const(ubyte)* d = g_rt[di].data; uint sz = g_rt[di].size;
+        uint i = 0, tok = 0;
+        while (i < sz && d[i] != '\n' && tok < 3) {
+            while (i < sz && d[i] == ' ') ++i;
+            uint st = i;
+            while (i < sz && d[i] != ' ' && d[i] != '\n') ++i;
+            if (tok == 1) { uint k = 0; for (; k < i - st && k < 47; ++k) pkgName[k] = cast(char)d[st + k]; pkgName[k] = 0; }
+            if (tok == 2) { uint k = 0; for (; k < i - st && k < 39; ++k) pkgVer[k]  = cast(char)d[st + k]; pkgVer[k] = 0; }
+            ++tok;
+        }
+    }
+    const int pkgRec = (pkgName[0] != 0) ? pkgRecFor(pkgName.ptr, pkgVer.ptr) : 0;
     const(ubyte)* md = g_rt[mi].data;
     uint msz = g_rt[mi].size;
     uint p = 0;
@@ -7571,6 +7755,20 @@ private int softwareApkInstallDoneInner(const(char)* name) @nogc nothrow {
         if (p < msz) ++p;                              // skip the newline
         if (rlen == 0) continue;
 
+        // "@<rel>\t<target>": a symlink from the package (a library's soname link, a command alias).
+        if (md[start] == '@') {
+            uint tab = start + 1;
+            while (tab < start + rlen && md[tab] != '\t') ++tab;
+            if (tab >= start + rlen) continue;
+            const uint plen = tab - (start + 1);
+            const(ubyte)* lp = md + start + 1;
+            {   const(char)* why = softwarePlacementRefusal(lp, plen);
+                if (why !is null) { ++refused; continue; } }
+            const int li = rtAddSymlink(cast(const(char)*)lp, plen,
+                                        cast(const(char)*)(md + tab + 1), start + rlen - (tab + 1));
+            if (li > 0) { g_rt[li].pkgIdx = cast(ushort)pkgRec; ++placed; }
+            continue;
+        }
         // src = "<stageDir>/<rel>" (absolute), resolve it, then place at the relative <rel>.
         char[600] src = void; size_t sl = 0;
         for (uint k = 0; k < sdl && sl + 1 < src.length; ++k) src[sl++] = stageDir[k];
@@ -7596,6 +7794,32 @@ private int softwareApkInstallDoneInner(const(char)* name) @nogc nothrow {
         // rtAddFile takes a RELATIVE path (no leading '/'); the manifest paths are already relative.
         rtAddFile(cast(const(char)*)(md + start), rlen, g_rt[si].data, g_rt[si].size);
         ++placed;
+        // Tag the placed node with its package, make commands executable, and drop the staged
+        // copy (it doubled every package against the 64 MiB rtfs cap).
+        {
+            char[600] dst = void; size_t dstLen = 0;
+            dst[dstLen++] = '/';
+            for (uint k = 0; k < rlen && dstLen + 1 < dst.length; ++k) dst[dstLen++] = cast(char)md[start + k];
+            dst[dstLen] = 0;
+            int dpar; const(char)* dlf; size_t dll;
+            const int ni = rtResolve(dst.ptr, dpar, dlf, dll);
+            if (ni > 0 && g_rt[ni].kind == RT_REG) {
+                g_rt[ni].pkgIdx = cast(ushort)pkgRec;
+                bool cmd = false;
+                for (uint k = 0; k + 4 <= rlen; ++k)
+                    if ((md[start + k] == 'b' && md[start + k + 1] == 'i' && md[start + k + 2] == 'n' && md[start + k + 3] == '/')
+                        || (k + 8 <= rlen && md[start + k] == 'l' && md[start + k + 1] == 'i' && md[start + k + 2] == 'b'
+                            && md[start + k + 3] == 'e' && md[start + k + 4] == 'x' && md[start + k + 5] == 'e'
+                            && md[start + k + 6] == 'c' && md[start + k + 7] == '/')) { cmd = true; break; }
+                if (cmd) g_rt[ni].mode = cast(ushort)0x1ED;   // 0755
+                if (pkgRec > 0) { ++g_pkgRecs[pkgRec - 1].files; if (cmd) ++g_pkgRecs[pkgRec - 1].cmds; }
+            }
+            if (si > 0 && si != ni) {
+                rtFreeData(g_rt[si]);
+                g_rt[si].kind = RT_FREE;
+                g_rt[si].parent = -1;
+            }
+        }
     }
     return placed;
 }
@@ -7646,8 +7870,13 @@ public void softwareApkInstallSelfTest() @nogc nothrow {
                          && rtResolve("/home/user/planted\0".ptr, par, lf, ll) < 0;
     ok = ok && refusedAll;
 
+    // provenance: the placed file is tagged with its package and, as a command, executable
+    ok = ok && g_rt[idx].pkgIdx != 0 && (g_rt[idx].mode & 0x40) != 0;
     klog(ok ? "[software] apk-install self-test PASS (placed /usr/bin/hosselftest; refused a module shadow, a shell rc, a path outside the software trees)\n"
             : "[software] apk-install self-test FAIL\n");
+    // leave no trace: the synthetic package is neither a file nor an installed package afterwards
+    if (idx > 0 && g_rt[idx].kind == RT_REG) { rtFreeData(g_rt[idx]); g_rt[idx].kind = RT_FREE; g_rt[idx].parent = -1; }
+    pkgRecDrop("hosselftest\0".ptr);
 
     // Integrity: the catalog can pin a real Alpine package (version + control checksum) and refuses
     // a name it does not list -- the kernel half of the verified-download chain.
@@ -7784,6 +8013,34 @@ private void rtAddFile(const(char)* rel, size_t relLen, const(ubyte)* data, uint
         if (cur < 0) { rtAddFileFail(rel, relLen, "cannot create a parent directory\0".ptr); return; }
         ++i;                          // skip '/'
     }
+}
+
+// A package's symlink (rel is RELATIVE, like rtAddFile's): creates parent directories, never
+// replaces an existing node.  Returns the node index, or -1.
+private int rtAddSymlink(const(char)* rel, size_t relLen, const(char)* target, size_t tlen) {
+    if (tlen == 0 || tlen > 255) return -1;
+    int cur = 0;
+    size_t i = 0;
+    while (i < relLen) {
+        const size_t cstart = i;
+        while (i < relLen && rel[i] != '/') ++i;
+        const size_t clen = i - cstart;
+        const bool isLast = (i >= relLen);
+        if (clen == 0) { ++i; continue; }
+        if (isLast) {
+            if (rtFindChild(cur, rel + cstart, clen) >= 0) return -1;
+            const int idx = rtCreate(cur, rel + cstart, clen, RT_LNK, cast(ushort)0x1FF, 0, 0);
+            if (idx < 0) return -1;
+            if (!rtEnsureCap(g_rt[idx], cast(uint)tlen)) { g_rt[idx].kind = RT_FREE; g_rt[idx].parent = -1; return -1; }
+            foreach (k; 0 .. tlen) g_rt[idx].data[k] = cast(ubyte)target[k];
+            g_rt[idx].size = cast(uint)tlen;
+            return idx;
+        }
+        cur = rtMkdirChild(cur, rel + cstart, clen);
+        if (cur < 0) return -1;
+        ++i;
+    }
+    return -1;
 }
 
 // Publish the WIRED link state where the desktop panel can read it.

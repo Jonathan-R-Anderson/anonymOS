@@ -123,56 +123,151 @@ public bool softwareControlWrite(const(char)* cmd, size_t len) {
         return false;
     }
 
-    // 4. Network is up: hand the fetch to the userspace helper, which speaks HTTP through the LKL
-    //    socket shim (the kernel has no HTTP client and should not grow one).  The helper writes
-    //    its own progress into /run/pkg/<name>.log; the status here reports the hand-off honestly
-    //    rather than claiming an install that has not finished.
-    // 3. Pin the package to this image's catalog: the version, the repository URL and -- the point --
-    //    the checksum the download must match all come from the catalog shipped in the image, never
-    //    from the request, the mirror or the mirror's index.  A package the catalog cannot pin cannot
-    //    be verified, so it is not installed.
-    char[64] pver = 0, psum = 0;
-    char[SW_ARG_MAX] pbase = 0;
+    // 3. Plan the install: the package and every dependency it is missing, dependencies FIRST.
+    //    The dependency names come from the image's catalog (resolved at build time from the
+    //    repository's own index), never from the mirror or the request, and each is pinned and
+    //    verified exactly like the package itself.  What the OS already provides (its libc, busybox,
+    //    the base layout) and what is already installed are skipped.
     {
-        import core.syscalls.posix : softwareCatalogPin;
-        if (!softwareCatalogPin(name.ptr, url.ptr, pver.ptr, pver.length, psum.ptr, psum.length,
-                                pbase.ptr, pbase.length)) {
-            swSet("refused ", name[0 .. nl],
-                  " cannot be verified: this image's catalog has no checksum for it, so a download could not be checked.");
-            return false;
-        }
-        klog("[software] pinned "); klog(name.ptr); klog(" "); klog(pver.ptr);
-        klog(" control="); klog(psum.ptr); klog("\n");
-    }
-
-    {
-        import core.kernel_main : softwareSpawnFetcher;
         import core.syscalls.posix : softwareCallerDomain;
         import core.domain : domainSystemId;
-        // Capture the requesting domain BEFORE the spawn: spawning the fetcher makes it the current
+        g_swQN = 0; g_swQPos = 0; g_swVisitN = 0;
+        g_swTargetLen = 0;
+        for (uint i = 0; i < nl && i + 1 < g_swTarget.length; ++i) g_swTarget[g_swTargetLen++] = name[i];
+        g_swTarget[g_swTargetLen] = 0;
+        uint ul = 0;
+        for (; url[ul] != 0 && ul + 1 < g_swTargetUrl.length; ++ul) g_swTargetUrl[ul] = url[ul];
+        g_swTargetUrl[ul] = 0;
+        if (!swPlan(g_swTarget.ptr, 0) || g_swQN == 0) {
+            swSet("refused ", name[0 .. nl], " cannot be installed: a dependency is not in this image's catalog",
+                  " (or the dependency tree is too large).");
+            return false;
+        }
+        // Capture the requesting domain BEFORE any spawn: spawning the fetcher makes it the current
         // task, so reading it afterwards always answered "domain 0".  appgate: the Software Center
         // runs in the System domain, and an install made from System is SYSTEM-WIDE (the shared
-        // base) -- which domains may then run it is the Domain Manager's delegation, not where the
-        // files landed.
+        // base) -- which domains may then run it is the Domain Manager's delegation.
         const uint reqDom = softwareCallerDomain();
-        const uint placeDom = (reqDom == domainSystemId()) ? 0 : reqDom;
-        if (softwareSpawnFetcher(mgr.ptr, name.ptr, pbase.ptr, pver.ptr, psum.ptr)) {
-            // Clear any stale markers from a previous install of the same package BEFORE arming the
-            // poll, so softwarePoll() cannot fire on an old .done while this fetch is still running.
-            swClearMarkers(name.ptr, nl);
-            g_swPendLen = 0;
-            for (uint i = 0; i < nl && i + 1 < g_swPendName.length; ++i) { g_swPendName[i] = name[i]; ++g_swPendLen; }
-            g_swPendName[g_swPendLen] = 0;
-            // The async placement installs into the domain captured above.
-            g_swPendDom = placeDom;
-            g_swPendActive = true;
-            swSet("busy fetching ", name[0 .. nl],
-                  " from the Alpine mirror (hos-pkg-fetch); watch Logs, filter 'pkg'.");
-            return true;
-        }
-        swSet("refused could not start the package fetcher (hos-pkg-fetch is not staged in this image)");
+        g_swPendDom = (reqDom == domainSystemId()) ? 0 : reqDom;
+        klog("[software] plan for "); klog(g_swTarget.ptr); klog(":");
+        foreach (i; 0 .. g_swQN) { klog(" "); klog(g_swQ[i].ptr); }
+        klog("\n");
+    }
+    return swStartNext();
+}
+
+// ── the install queue ──────────────────────────────────────────────────────────────────────────
+enum int SW_Q_MAX = 32;
+enum int SW_DEPTH_MAX = 10;
+__gshared char[48][SW_Q_MAX] g_swQ;           // packages to install, in order (dependencies first)
+__gshared uint g_swQN = 0, g_swQPos = 0;
+__gshared char[48][SW_Q_MAX * 2] g_swVisit;   // names being / already planned (cycle guard)
+__gshared uint g_swVisitN = 0;
+__gshared char[512][SW_DEPTH_MAX + 1] g_swDepBuf;   // per-depth dependency lists (no stack growth)
+__gshared char[48] g_swTarget;                // what the user asked for
+__gshared uint g_swTargetLen = 0;
+__gshared char[SW_ARG_MAX] g_swTargetUrl;
+
+private bool swNameEq(const(char)* a, const(char)* b) {
+    size_t i = 0;
+    for (; a[i] != 0 && b[i] != 0; ++i) if (a[i] != b[i]) return false;
+    return a[i] == b[i];
+}
+
+// Provided by the OS itself: its musl is the loader every program already uses, busybox supplies the
+// shell and core utilities, and the base layout is the root filesystem.  Installing Alpine's copies
+// would shadow the system's own (and placement refuses most of those paths anyway).
+private bool swBaseProvided(const(char)* n) {
+    static immutable string[12] base = ["musl", "busybox", "busybox-binsh", "alpine-baselayout",
+        "alpine-baselayout-data", "alpine-keys", "alpine-release", "apk-tools", "libc-utils",
+        "musl-utils", "scanelf", "ssl_client"];
+    foreach (b; base) {
+        size_t i = 0;
+        for (; i < b.length && n[i] == b[i]; ++i) {}
+        if (i == b.length && n[i] == 0) return true;
+    }
+    return false;
+}
+
+private bool swVisited(const(char)* n) {
+    foreach (i; 0 .. g_swVisitN) if (swNameEq(g_swVisit[i].ptr, n)) return true;
+    return false;
+}
+
+// Post-order walk of the dependency graph from the catalog: every missing dependency is queued
+// before the package that needs it.
+private bool swPlan(const(char)* name, int depth) {
+    import core.syscalls.posix : softwareCatalogDeps, softwarePkgInstalled;
+    if (depth > SW_DEPTH_MAX) return false;
+    if (swVisited(name)) return true;                 // queued already, or a cycle: fine either way
+    if (depth > 0 && (swBaseProvided(name) || softwarePkgInstalled(name))) return true;
+    if (g_swVisitN >= g_swVisit.length) return false;
+    {   size_t k = 0;
+        for (; name[k] != 0 && k + 1 < 48; ++k) g_swVisit[g_swVisitN][k] = name[k];
+        g_swVisit[g_swVisitN][k] = 0; ++g_swVisitN; }
+    char* deps = g_swDepBuf[depth].ptr;
+    if (!softwareCatalogDeps(name, deps, g_swDepBuf[depth].length)) return false;
+    size_t p = 0;
+    while (deps[p] != 0) {
+        while (deps[p] == ' ') ++p;
+        if (deps[p] == 0) break;
+        char[48] dep = 0; size_t dl = 0;
+        while (deps[p] != 0 && deps[p] != ' ') { if (dl + 1 < dep.length) dep[dl++] = deps[p]; ++p; }
+        dep[dl] = 0;
+        if (!swPlan(dep.ptr, depth + 1)) return false;
+        deps = g_swDepBuf[depth].ptr;                  // (same buffer; deeper levels use their own)
+    }
+    if (g_swQN >= SW_Q_MAX) return false;
+    size_t k = 0;
+    for (; name[k] != 0 && k + 1 < 48; ++k) g_swQ[g_swQN][k] = name[k];
+    g_swQ[g_swQN][k] = 0;
+    ++g_swQN;
+    return true;
+}
+
+private uint swLen(const(char)* s) { uint n = 0; while (s[n] != 0) ++n; return n; }
+
+// Pin + fetch the next queued package.
+private bool swStartNext() {
+    import core.kernel_main : softwareSpawnFetcher;
+    import core.syscalls.posix : softwareCatalogPin;
+    const(char)* nm = g_swQ[g_swQPos].ptr;
+    const uint nl = swLen(nm);
+    const bool isTarget = swNameEq(nm, g_swTarget.ptr);
+    char[64] pver = 0, psum = 0;
+    char[SW_ARG_MAX] pbase = 0;
+    if (!softwareCatalogPin(nm, isTarget ? g_swTargetUrl.ptr : null, pver.ptr, pver.length,
+                            psum.ptr, psum.length, pbase.ptr, pbase.length)) {
+        swSet("refused ", nm[0 .. nl],
+              " cannot be verified: this image's catalog has no checksum for it, so a download could not be checked.");
+        g_swPendActive = false;
         return false;
     }
+    klog("[software] pinned "); klog(nm); klog(" "); klog(pver.ptr);
+    klog(" control="); klog(psum.ptr); klog("\n");
+    if (!softwareSpawnFetcher("apk\0".ptr, nm, pbase.ptr, pver.ptr, psum.ptr)) {
+        swSet("refused could not start the package fetcher (hos-pkg-fetch is not staged in this image)");
+        g_swPendActive = false;
+        return false;
+    }
+    // Clear any stale markers from a previous install of the same package BEFORE arming the poll,
+    // so softwarePoll() cannot fire on an old .done while this fetch is still running.
+    swClearMarkers(nm, nl);
+    g_swPendLen = 0;
+    for (uint i = 0; i < nl && i + 1 < g_swPendName.length; ++i) { g_swPendName[i] = nm[i]; ++g_swPendLen; }
+    g_swPendName[g_swPendLen] = 0;
+    g_swPendActive = true;
+    if (g_swQN > 1) {
+        char[24] prog = 0; uint pl = 0;
+        void pnum(uint v) { if (v >= 10) pnum(v / 10); prog[pl++] = cast(char)('0' + v % 10); }
+        pnum(g_swQPos + 1); foreach (ch; " of ") prog[pl++] = ch; pnum(g_swQN);
+        swSet("busy installing ", nm[0 .. nl], isTarget ? " (" : " for ",
+              isTarget ? prog[0 .. pl] : g_swTarget[0 .. g_swTargetLen],
+              isTarget ? ") from the Alpine mirror; watch Logs, filter 'pkg'." : " -- a dependency; watch Logs, filter 'pkg'.");
+    } else {
+        swSet("busy fetching ", nm[0 .. nl], " from the Alpine mirror (hos-pkg-fetch); watch Logs, filter 'pkg'.");
+    }
+    return true;
 }
 
 // Build "/run/pkg/<name><suffix>" (NUL-terminated) into dst; used to probe/clear the fetcher markers.
@@ -205,12 +300,24 @@ public void softwarePoll() {
     import core.syscalls.posix : softwareApkTryComplete;
     const int rc = softwareApkTryComplete(g_swPendName.ptr, g_swPendDom);
     if (rc >= 0) {
-        swSet("ok installed ", g_swPendName[0 .. g_swPendLen],
-              " into this domain's filesystem (see Logs, filter 'pkg').");
         g_swPendActive = false;
+        ++g_swQPos;
+        if (g_swQPos < g_swQN) { swStartNext(); return; }     // next package in the plan
+        if (g_swQN > 1) {
+            char[8] nd = 0; uint l = 0; uint v = g_swQN - 1;
+            if (v >= 10) nd[l++] = cast(char)('0' + v / 10);
+            nd[l++] = cast(char)('0' + v % 10);
+            swSet("ok installed ", g_swTarget[0 .. g_swTargetLen], " and ", nd[0 .. l],
+                  " dependencies into this domain's filesystem (see Logs, filter 'pkg').");
+        } else {
+            swSet("ok installed ", g_swPendName[0 .. g_swPendLen],
+                  " into this domain's filesystem (see Logs, filter 'pkg').");
+        }
     } else if (rc == -2) {
+        const bool dep = !swNameEq(g_swPendName.ptr, g_swTarget.ptr);
         swSet("refused could not fetch or unpack ", g_swPendName[0 .. g_swPendLen],
-              " (see Logs, filter 'pkg').");
+              dep ? " (a dependency of " : "", dep ? g_swTarget[0 .. g_swTargetLen] : "",
+              dep ? "; see Logs, filter 'pkg')." : " (see Logs, filter 'pkg').");
         g_swPendActive = false;
     }
     // rc == -1: still pending — keep polling.

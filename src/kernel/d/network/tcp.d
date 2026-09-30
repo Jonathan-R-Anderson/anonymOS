@@ -107,6 +107,9 @@ private __gshared uint   g_tcpIsnBump;
 
 // counters for the boot log / diagnostics
 __gshared ulong g_tcpSegsIn, g_tcpSegsOut, g_tcpRetransmits, g_tcpBadCsum, g_tcpResetsSent;
+__gshared ulong g_tcpOoo, g_tcpDupData, g_tcpZeroWnd, g_tcpWndUpd, g_tcpOverrun;
+private __gshared ulong g_tcpNextDump;
+private __gshared uint  g_tcpDumpN;
 
 // ── helpers ────────────────────────────────────────────────────────────────────────────────────
 
@@ -190,6 +193,7 @@ private bool sendSeg(ref TcpConn c, uint seq, ubyte flags, bool fromRing, size_t
     pkt[12] = cast(ubyte)((hlen / 4) << 4);
     pkt[13] = flags;
     const uint wnd = curWindow(c);
+    if (wnd == 0) ++g_tcpZeroWnd;
     put16(pkt.ptr + 14, wnd);
     pkt[16] = 0; pkt[17] = 0;               // checksum
     pkt[18] = 0; pkt[19] = 0;               // urgent pointer
@@ -514,10 +518,11 @@ export extern(C) void tcpHandlePacket(const(ubyte)* data, size_t len,
     if (plen > 0 || fin) {
         if (seqLT(segSeq, c.rcvNxt)) {
             const uint dup = c.rcvNxt - segSeq;
-            if (dup >= plen + (fin ? 1 : 0)) { sendAck(*c); output(id, false); return; }  // all old
+            if (dup >= plen + (fin ? 1 : 0)) { ++g_tcpDupData; sendAck(*c); output(id, false); return; }  // all old
             if (dup <= plen) { payload += dup; plen -= dup; segSeq = c.rcvNxt; }
         }
         if (segSeq != c.rcvNxt) {                  // out of order: ask for the hole
+            ++g_tcpOoo;
             sendAck(*c);
             output(id, false);
             return;
@@ -530,7 +535,7 @@ export extern(C) void tcpHandlePacket(const(ubyte)* data, size_t len,
                 c.onData(id, payload, n);
             } else {
                 const uint room = rxFree(*c);
-                if (n > room) { n = room; fin = false; }   // the sender overran our window: drop the tail
+                if (n > room) { n = room; fin = false; ++g_tcpOverrun; }   // the sender overran our window: drop the tail
                 size_t pos = (c.rxHead + c.rxLen) & (TCP_RXBUF - 1);
                 foreach (i; 0 .. n) { c.rx[pos] = payload[i]; pos = (pos + 1) & (TCP_RXBUF - 1); }
                 c.rxLen += n;
@@ -584,6 +589,7 @@ private void listenerSyn(int lid, const ref IPv4Address src, ushort sport, ushor
 /// Drive retransmission and TIME_WAIT; call from the kernel tick with a monotonic millisecond clock.
 export extern(C) void tcpTick(ulong nowMs) @nogc nothrow {
     g_tcpNow = nowMs ? nowMs : 1;
+    if (g_tcpNow >= g_tcpNextDump) { g_tcpNextDump = g_tcpNow + 5000; tcpDump(); }
     foreach (i; 0 .. TCP_MAX_CONN) {
         auto c = &g_tcp[i];
         if (!c.used) continue;
@@ -611,6 +617,32 @@ export extern(C) void tcpTick(ulong nowMs) @nogc nothrow {
         c.finSent = false;
         output(id, true);
         if (c.rtoAt == 0 && c.txLen > 0) c.rtoAt = g_tcpNow + c.rto;   // keep probing a shut window
+    }
+}
+
+// Every 5 s while any connection is open (bounded): each connection's state, so a stalled transfer
+// shows WHICH side is waiting -- our window, their data, or a hole we keep asking for.
+private void tcpDump() @nogc nothrow {
+    import core.io : klog, klog_dec;
+    if (g_tcpDumpN >= 60) return;
+    bool any = false;
+    foreach (i; 0 .. TCP_MAX_CONN) {
+        auto c = &g_tcp[i];
+        if (!c.used || c.st == TCPState.CLOSED || c.st == TCPState.LISTEN) continue;
+        if (!any) {
+            any = true; ++g_tcpDumpN;
+            klog("[tcp] stats in="); klog_dec(g_tcpSegsIn); klog(" out="); klog_dec(g_tcpSegsOut);
+            klog(" ooo="); klog_dec(g_tcpOoo); klog(" dup="); klog_dec(g_tcpDupData);
+            klog(" zerownd="); klog_dec(g_tcpZeroWnd); klog(" wndupd="); klog_dec(g_tcpWndUpd);
+            klog(" overrun="); klog_dec(g_tcpOverrun); klog(" rexmit="); klog_dec(g_tcpRetransmits);
+            klog(" badcsum="); klog_dec(g_tcpBadCsum); klog("\n");
+        }
+        klog("[tcp]   #"); klog_dec(i); klog(" st="); klog_dec(cast(ulong)c.st);
+        klog(" rx="); klog_dec(c.rxLen); klog(" adv="); klog_dec(c.advWnd);
+        klog(" rcvNxt="); klog_dec(c.rcvNxt - c.irs); klog(" tx="); klog_dec(c.txLen);
+        klog(" una="); klog_dec(c.sndUna - c.iss); klog(" max="); klog_dec(c.sndMax - c.iss);
+        klog(" swnd="); klog_dec(c.sndWnd); klog(" fin="); klog_dec(c.peerFin ? 1 : 0);
+        klog(" owned="); klog_dec(c.owned ? 1 : 0); klog("\n");
     }
 }
 
@@ -707,8 +739,10 @@ export extern(C) long tcpRead(int id, ubyte* buf, size_t len) @nogc nothrow {
         // Reopen the window the peer is waiting on (it may be sitting on a zero window).
         const uint w = curWindow(*c);
         if (c.st != TCPState.CLOSED && c.st != TCPState.TIME_WAIT && c.st != TCPState.LISTEN &&
-            (w >= c.advWnd + 2 * c.mss || (c.advWnd < c.mss && w >= c.mss)))
+            (w >= c.advWnd + 2 * c.mss || (c.advWnd < c.mss && w >= c.mss))) {
+            ++g_tcpWndUpd;
             sendAck(*c);
+        }
         return cast(long)n;
     }
     if (c.peerFin) return 0;

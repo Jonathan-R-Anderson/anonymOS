@@ -44,6 +44,11 @@ FORMAT
                 u32 sizeKb (download), u32 instKb (installed), u16 repoIdx, u16 category
   trailer (after the string pool) "HOSSUM1\0", u32 count, u32 strOff[count]: each package's apk
           control checksum ("Q1<base64 SHA-1>", APKINDEX C:), 0 = none
+  trailer2 (after trailer) "HOSDEP1\0", u32 count, u32 strOff[count]: each apk package's runtime
+          dependencies as space-separated PACKAGE NAMES (APKINDEX D: resolved through the p:
+          provides of main + community at build time -- "so:libstdc++.so.6" -> "libstdc++"),
+          0 = none.  The kernel installs a package's missing dependencies first, each pinned and
+          verified like the package itself, so the mirror never decides what gets installed.
 """
 import gzip, io, os, re, struct, sys, tarfile, time, urllib.request, xml.etree.ElementTree as ET
 
@@ -134,6 +139,7 @@ def parse_apk(blob):
             # control's .PKGINFO datahash).  Shipping it in the image means the mirror, the
             # network and the mirror's own index are never trusted.
             "sum": f.get("C", ""),
+            "D": f.get("D", ""), "p": f.get("p", ""),
         }
 
 
@@ -378,6 +384,7 @@ def main():
 
     cat_offs = [s(c) for c in CATEGORIES]
     repo_recs, pkg_recs, sum_offs = [], [], []
+    apk_raw = []            # per package record: (name, D, p) for apk packages, None otherwise
     for ri, repo in enumerate(REPOS):
         pkgs, total = harvest(repo, limit, offline)
         if pkgs is None:
@@ -390,6 +397,7 @@ def main():
                                         min(p["inst"] // 1024, 0xFFFFFFFF),
                                         ri, categorize(p)))
             sum_offs.append(s(p["sum"]) if p.get("sum") else 0)
+            apk_raw.append((p["name"], p.get("D", ""), p.get("p", "")) if repo["kind"] == "apk" else None)
         repo_recs.append(struct.pack("<IIIIIIIBBBBII",
                                      s(repo["name"]), s(repo["distro"]), s(repo["pkgmgr"]),
                                      s(repo["base"]), s(repo["arch"]),
@@ -397,6 +405,40 @@ def main():
                                      0, repo["accent"]))
         print("  %-28s %6d of %6d packages%s" %
               (repo["name"], len(pkgs), total, "  [installable here]" if repo["installable"] else ""))
+
+    # Dependencies: resolve every apk D: token to the package that provides it.
+    provider = {}
+    for rec in apk_raw:
+        if rec is None:
+            continue
+        name, _, provides = rec
+        provider.setdefault(name, name)
+    for rec in apk_raw:
+        if rec is None:
+            continue
+        name, _, provides = rec
+        for tok in provides.split():
+            provider.setdefault(re.split(r"[<>=~]", tok, maxsplit=1)[0], name)
+    dep_offs, unresolved = [], 0
+    for rec in apk_raw:
+        if rec is None:
+            dep_offs.append(0)
+            continue
+        name, deps, _ = rec
+        out_names = []
+        for tok in deps.split():
+            if tok.startswith("!"):
+                continue                        # a conflict, not a dependency
+            key = re.split(r"[<>=~]", tok, maxsplit=1)[0]
+            prov = provider.get(key)
+            if prov is None:
+                unresolved += 1
+                continue
+            if prov != name and prov not in out_names:
+                out_names.append(prov)
+        dep_offs.append(s(" ".join(out_names)) if out_names else 0)
+    print("  dependencies: %d apk packages, %d with dependencies, %d unresolvable tokens" %
+          (sum(1 for r in apk_raw if r), sum(1 for o in dep_offs if o), unresolved))
 
     HDR = 52
     repo_off = HDR + 4 * len(cat_offs)
@@ -418,6 +460,8 @@ def main():
         #   control checksum, 0 = none (non-apk repositories).
         f.write(b"HOSSUM1\0" + struct.pack("<I", len(sum_offs)))
         f.write(b"".join(struct.pack("<I", o) for o in sum_offs))
+        f.write(b"HOSDEP1\0" + struct.pack("<I", len(dep_offs)))
+        f.write(b"".join(struct.pack("<I", o) for o in dep_offs))
     print("[software-catalog] %s: %d packages from %d repositories, %.1f MiB" %
           (out, len(pkg_recs), len(repo_recs), os.path.getsize(out) / 1048576.0))
     if not pkg_recs:

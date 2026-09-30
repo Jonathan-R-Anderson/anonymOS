@@ -1010,7 +1010,9 @@ private int forkTask(int parentTid) {
     if (parentTid >= 0 && parentTid < MAX_TASKS && childTid >= 0 && childTid < MAX_TASKS) {
         g_taskExecModPhys[childTid] = g_taskExecModPhys[parentTid];
         g_taskExecModSize[childTid] = g_taskExecModSize[parentTid];
-        g_taskExecName[childTid]    = g_taskExecName[parentTid];
+        g_taskExecName[childTid]    = rtExecNameInherit(parentTid, childTid, g_taskExecName[parentTid]);
+        {   import core.task : g_taskPkg1;
+            g_taskPkg1[childTid] = g_taskPkg1[parentTid]; }
         // NATIVE_OBJECT_ABI §3: the native personality is inherited across fork (native
         // helpers the shell spawns stay native; a Linux fork stays Linux).
         g_taskNativeAbi[childTid]   = g_taskNativeAbi[parentTid];
@@ -1195,6 +1197,7 @@ private long execveTask(int tid, ulong pathPtr, ulong argvPtr, ulong envpPtr) {
     const(char)* execName = null;
     ulong modPhys = 0;
     ulong modSize = 0;
+    int   pkg1 = 0;           // an INSTALLED program: its package record (appgate key "pkg:<name>")
 
     // Track A A4: /proc/self/exe re-exec (busybox standalone applet dispatch) resolves
     // to THIS task's own loaded binary, recorded on its last successful exec.
@@ -1203,6 +1206,8 @@ private long execveTask(int tid, ulong pathPtr, ulong argvPtr, ulong envpPtr) {
         modPhys  = g_taskExecModPhys[tid];
         modSize  = g_taskExecModSize[tid];
         execName = g_taskExecName[tid];
+        {   import core.task : g_taskPkg1;
+            pkg1 = g_taskPkg1[tid]; }
     }
 
     // Track A A4: follow a leading RT-overlay symlink chain (e.g. /bin/cat -> /busybox)
@@ -1230,6 +1235,16 @@ private long execveTask(int tid, ulong pathPtr, ulong argvPtr, ulong envpPtr) {
                 break;
             }
         }
+    }
+
+    // Software Center: an INSTALLED program -- an rtfs file a verified package install placed (and
+    // only such a file: nothing a program wrote itself is ever run).  Its payload is physically
+    // contiguous, so it loads exactly like a boot module.  Checked after the boot modules, so an
+    // installed file can never stand in for a system image (placement refuses those names anyway).
+    if (modPhys == 0) {
+        int pk = 0;
+        if (rtExecImage(path, tid, &modPhys, &modSize, &execName, &pk)) pkg1 = pk;
+        else { modPhys = 0; modSize = 0; }
     }
 
     // F4.2: a persisted app object — /objects/apps/<app>/executable — launched from
@@ -1296,6 +1311,11 @@ private long execveTask(int tid, ulong pathPtr, ulong argvPtr, ulong envpPtr) {
         const(AppRegEntry)* reg;
         const(char)* key;
         if (storeIdx >= 0) { reg = appRegStoreEntry(); key = appgateStoreKey(storeIdx, storeKey[]); }
+        else if (pkg1 > 0) {
+            import core.appreg : appRegPkgEntry;
+            reg = appRegPkgEntry();
+            key = pkgKeyFor(pkg1, storeKey.ptr, storeKey.length);
+        }
         else               { reg = appRegLookup(execName); key = appRegKey(reg); }
         const uint callerDom = g_tasks[tid].domainObjId;
         const uint sys = domainSystemId();
@@ -1355,8 +1375,9 @@ private long execveTask(int tid, ulong pathPtr, ulong argvPtr, ulong envpPtr) {
         g_taskExecModPhys[tid] = modPhys;
         g_taskExecModSize[tid] = modSize;
         g_taskExecName[tid]    = execName;
-        {   import core.task : g_taskStoreApp1;
-            g_taskStoreApp1[tid] = (storeIdx >= 0) ? cast(ushort)(storeIdx + 1) : 0; }
+        {   import core.task : g_taskStoreApp1, g_taskPkg1;
+            g_taskStoreApp1[tid] = (storeIdx >= 0) ? cast(ushort)(storeIdx + 1) : 0;
+            g_taskPkg1[tid]      = cast(ushort)pkg1; }
         // NATIVE_OBJECT_ABI §3 / Z4a.5: enter the native personality iff this is the
         // trusted /hos-sh image, OR a native-shell launch of zsh — requested via /hos-zsh,
         // a symlink to the shared zsh boot module (the *request path* marks it native, the

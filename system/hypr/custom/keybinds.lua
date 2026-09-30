@@ -75,6 +75,6 @@ hl.bind("CTRL + SUPER + ALT + Slash", hl.dsp.exec_cmd("/wl-editor /home/user/.co
 -- by class in custom/rules.lua, so fixed-size windows never tile-cover the normal
 -- desktop.  SUPER+SPACE is free on this build (only SUPER+ALT+Space was bound).
 hl.bind("SUPER + SPACE",         hl.dsp.workspace.toggle_special("overlay"),
-        { description = "Toggle overlay plane" })
+        { description = "Overlay: Show or hide the overlay plane" })
 hl.bind("SUPER + SHIFT + SPACE", hl.dsp.window.move({ workspace = "special:overlay" }),
-        { description = "Send focused window to the overlay plane" })
+        { description = "Overlay: Send the focused window to the overlay plane" })

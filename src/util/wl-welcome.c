@@ -78,41 +78,7 @@ struct app {
 static void log_line(const char *s) { fputs(s, stdout); fputc('\n', stdout); fflush(stdout); }
 
 /* ── the shortcuts, from the compositor ────────────────────────────────────────────────────── */
-static char *hypr_request(const char *req)
-{
-    DIR *d = opendir(HYPR_DIR);
-    if (!d) return NULL;
-    char path[256] = "";
-    struct dirent *e;
-    while ((e = readdir(d))) {
-        if (e->d_name[0] == '.') continue;
-        snprintf(path, sizeof path, HYPR_DIR "/%s/.socket.sock", e->d_name);
-        break;
-    }
-    closedir(d);
-    if (!path[0]) return NULL;
-    int fd = socket(AF_UNIX, SOCK_STREAM | SOCK_CLOEXEC, 0);
-    if (fd < 0) return NULL;
-    struct sockaddr_un sa; memset(&sa, 0, sizeof sa);
-    sa.sun_family = AF_UNIX;
-    snprintf(sa.sun_path, sizeof sa.sun_path, "%s", path);
-    if (connect(fd, (struct sockaddr *)&sa, sizeof sa) < 0) { close(fd); return NULL; }
-    if (write(fd, req, strlen(req)) < 0) { close(fd); return NULL; }
-    size_t cap = 1 << 16, n = 0;
-    char *b = malloc(cap);
-    for (;;) {
-        if (!b) break;
-        struct pollfd p = { .fd = fd, .events = POLLIN };
-        if (poll(&p, 1, 2000) <= 0) break;
-        ssize_t r = read(fd, b + n, cap - n - 1);
-        if (r <= 0) break;
-        n += (size_t)r;
-        if (n + 1 >= cap) { cap *= 2; char *nb = realloc(b, cap); if (!nb) { free(b); b = NULL; break; } b = nb; }
-    }
-    close(fd);
-    if (b) b[n] = 0;
-    return b;
-}
+#define hypr_request hos_hypr_request
 
 static int json_int(const char *p, const char *end, const char *key)
 {
@@ -307,6 +273,8 @@ static void load_shortcuts(struct app *a)
     free(js);
     /* One heading per group: a stable sort by the order the groups were first seen in. */
     char order[32][40]; int ng = 0;
+    for (int i = 0; i < a->nsc; i++)          /* the overlay plane leads: it is the desktop's own gesture */
+        if (!strcmp(a->sc[i].group, "Overlay")) { snprintf(order[ng++], sizeof order[0], "Overlay"); break; }
     for (int i = 0; i < a->nsc; i++) {
         int k = 0; while (k < ng && strcmp(order[k], a->sc[i].group)) k++;
         if (k == ng && ng < 32) snprintf(order[ng++], sizeof order[0], "%s", a->sc[i].group);

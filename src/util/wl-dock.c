@@ -465,7 +465,8 @@ static void draw_app_icon(struct app *a, cairo_t *cr, const struct appent *e, co
     hos_domain_badge(cr, &a->font, x, y, s, dom_of(a, pl));
 }
 
-static int pins_area_h(struct app *a, int h) { (void)a; return h - BUTTON_H; }
+/* Two buttons below the pins: the overlay plane (npins + 1), then all applications (npins). */
+static int pins_area_h(struct app *a, int h) { (void)a; return h - 2 * BUTTON_H; }
 static int pin_y(struct app *a, int i) { return TOP_PAD + i * (ICON + GAP) - a->scroll; }
 static int max_scroll(struct app *a, int h)
 {
@@ -500,6 +501,27 @@ static void draw_launcher_button(struct app *a, cairo_t *cr, double x, double y,
             cairo_set_source_rgba(cr, 1, 1, 1, a->open ? 1 : 0.88);
             cairo_fill(cr);
         }
+}
+
+/* The overlay plane's button: two stacked windows, the front one lifted -- the floating layer above
+ * the tiled desktop (SUPER+SPACE). */
+static void draw_overlay_button(struct app *a, cairo_t *cr, double x, double y, double s, int hot)
+{
+    (void)a;
+    if (hot) {
+        hos_rr_path(cr, x - 5, y - 5, s + 10, s + 10, 12);
+        cairo_set_source_rgba(cr, 1, 1, 1, 0.12);
+        cairo_fill(cr);
+    }
+    hos_rr_path(cr, x + s * 0.08, y + s * 0.12, s * 0.62, s * 0.50, s * 0.08);
+    cairo_set_source_rgba(cr, 1, 1, 1, 0.34);
+    cairo_fill(cr);
+    hos_rr_path(cr, x + s * 0.30, y + s * 0.38, s * 0.62, s * 0.50, s * 0.08);
+    cairo_set_source_rgba(cr, 1, 1, 1, 0.92);
+    cairo_fill(cr);
+    cairo_rectangle(cr, x + s * 0.30, y + s * 0.38 + s * 0.12, s * 0.62, s * 0.035);
+    cairo_set_source_rgba(cr, 0.06, 0.07, 0.09, 0.55);
+    cairo_fill(cr);
 }
 
 static void draw_dock(struct app *a, cairo_t *cr, int w, int h)
@@ -542,12 +564,13 @@ static void draw_dock(struct app *a, cairo_t *cr, int w, int h)
         cairo_pattern_add_color_stop_rgba(g, 1, 0.06, 0.07, 0.09, 0.9);
         cairo_rectangle(cr, 0, area - 18, w - 1, 18); cairo_set_source(cr, g); cairo_fill(cr); cairo_pattern_destroy(g);
     }
-    /* the launcher button, below a separator */
+    /* the overlay and launcher buttons, below a separator */
     cairo_rectangle(cr, 10, area + 0.5, w - 20, 1);
     cairo_set_source_rgba(cr, 1, 1, 1, 0.14);
     cairo_fill(cr);
     const double bs = ICON;
-    draw_launcher_button(a, cr, (w - bs) / 2.0, area + (BUTTON_H - bs) / 2.0, bs, a->hover_pin == a->npins);
+    draw_overlay_button(a, cr, (w - bs) / 2.0, area + (BUTTON_H - bs) / 2.0, bs, a->hover_pin == a->npins + 1);
+    draw_launcher_button(a, cr, (w - bs) / 2.0, area + BUTTON_H + (BUTTON_H - bs) / 2.0, bs, a->hover_pin == a->npins);
 }
 
 /* drawer geometry (surface coordinates; the panel slides in from x < 0) */
@@ -798,7 +821,7 @@ static void tip_show(struct app *a, int idx)
 {
     if (a->tip.s) surf_destroy(&a->tip);
     if (idx < 0 || a->offscreen) return;
-    const char *text = "Applications";
+    const char *text = idx == a->npins + 1 ? "Overlay  (SUPER+SPACE)" : "Applications";
     if (idx < a->npins) { const struct appent *e = app_for_exec(a, a->pins[idx]); text = e ? e->name : a->pins[idx]; }
     char *tipbuf = a->tip_text;
     snprintf(tipbuf, sizeof a->tip_text, "%s", text);
@@ -807,7 +830,8 @@ static void tip_show(struct app *a, int idx)
     cairo_t *cr = cairo_create(cs);
     const int tw = (int)hos_text_width(cr, &a->font, 14, tipbuf) + 24;
     cairo_destroy(cr); cairo_surface_destroy(cs);
-    const int y = idx < a->npins ? pin_y(a, idx) : a->dock.h - BUTTON_H + (BUTTON_H - ICON) / 2;
+    const int y = idx < a->npins ? pin_y(a, idx)
+                : a->dock.h - (idx == a->npins + 1 ? 2 : 1) * BUTTON_H + (BUTTON_H - ICON) / 2;
     a->tip.s = wl_compositor_create_surface(a->compositor);
     a->tip.ls = zwlr_layer_shell_v1_get_layer_surface(a->layer_shell, a->tip.s, NULL, ZWLR_LAYER_SHELL_V1_LAYER_OVERLAY, "dock-tip");
     zwlr_layer_surface_v1_add_listener(a->tip.ls, &ls_listener, &a->tip);
@@ -826,7 +850,8 @@ static int dock_hit(struct app *a, double x, double y)
 {
     (void)x;
     const int area = pins_area_h(a, a->dock.h);
-    if (y >= area) return a->npins;                       /* the launcher button */
+    if (y >= area + BUTTON_H) return a->npins;            /* the launcher button */
+    if (y >= area) return a->npins + 1;                   /* the overlay plane */
     for (int i = 0; i < a->npins; i++) { const int py = pin_y(a, i); if (y >= py - GAP / 2 && y < py + ICON + GAP / 2) return i; }
     return -1;
 }
@@ -852,6 +877,40 @@ static void p_motion(void *d, struct wl_pointer *p, uint32_t t, wl_fixed_t x, wl
         if (h != a->hover_tile) { a->hover_tile = h; redraw_drawer(a); }
     }
 }
+/* Is the overlay plane (Hyprland's special:overlay) showing?  1 yes, 0 no, -1 unknown; *ws gets the
+ * active normal workspace. */
+static int overlay_shown(int *ws)
+{
+    char *js = hos_hypr_request("j/monitors");
+    if (!js) return -1;
+    const int shown = strstr(js, "\"special:overlay\"") != NULL;
+    const char *aw = ws ? strstr(js, "\"activeWorkspace\"") : NULL;
+    if (aw) {
+        const char *id = strstr(aw, "\"id\"");
+        if (id) { id += 4; while (*id == ' ' || *id == ':') id++; *ws = atoi(id); }
+    }
+    free(js);
+    return shown;
+}
+/* Show or hide the overlay plane -- what SUPER+SPACE does.  Hiding goes back to the active workspace:
+ * on this compositor build a second toggle_special does not reliably hide it, a workspace switch does. */
+static void overlay_toggle(struct app *a)
+{
+    if (a->open) drawer_close(a);
+    int ws = 1;
+    const int shown = overlay_shown(&ws);
+    if (shown == 1) {
+        char cmd[128];
+        snprintf(cmd, sizeof cmd, "eval hl.dispatch(hl.dsp.focus({ workspace = %d }))", ws > 0 ? ws : 1);
+        free(hos_hypr_request(cmd));
+        if (overlay_shown(NULL) == 1) free(hos_hypr_request("eval hl.dispatch(hl.dsp.workspace.toggle_special(\"overlay\"))"));
+        log_line("DOCK: overlay hidden");
+    } else {
+        free(hos_hypr_request("eval hl.dispatch(hl.dsp.workspace.toggle_special(\"overlay\"))"));
+        log_line("DOCK: overlay shown");
+    }
+}
+
 static void toggle_pin(struct app *a, const char *exec)
 {
     const int i = pinned_index(a, exec);
@@ -869,6 +928,7 @@ static void p_button(void *d, struct wl_pointer *p, uint32_t se, uint32_t t, uin
     if (a->ptr_surface == a->dock.s) {
         const int h = dock_hit(a, a->px, a->py);
         if (h == a->npins && left) drawer_toggle(a);
+        else if (h == a->npins + 1 && left) overlay_toggle(a);
         else if (h >= 0 && h < a->npins) {
             if (left) { char ex[256]; snprintf(ex, sizeof ex, "%s", a->pins[h]); if (a->open) drawer_close(a); launch(a, ex); }
             else if (right) { char ex[256]; snprintf(ex, sizeof ex, "%s", a->pins[h]); a->hover_pin = -1; tip_show(a, -1); toggle_pin(a, ex); }

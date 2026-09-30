@@ -25,6 +25,11 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <dirent.h>
+#include <poll.h>
+#include <sys/socket.h>
+#include <sys/un.h>
+#include <unistd.h>
 
 #define HOS_ACCENT  0x0d8577u
 #define HOS_ACCENT2 0x14a595u
@@ -586,6 +591,44 @@ static inline void hos_domain_badge(cairo_t *cr, struct hos_font *f, double x, d
     /* dark text on a light domain colour, white on a dark one */
     const double lum = 0.299 * ((d->color >> 16) & 0xff) + 0.587 * ((d->color >> 8) & 0xff) + 0.114 * (d->color & 0xff);
     hos_text(cr, f, px, bx + 3.5, by + 1.5, lum > 150 ? 0x10141au : 0xffffffu, 1, d->abbr);
+}
+
+/* One request to the compositor's IPC socket (Hyprland: "j/binds", "j/monitors", "eval <lua>");
+ * returns its reply (malloc'd, NUL-terminated) or NULL. */
+#define HOS_HYPR_DIR "/run/user/1000/hypr"
+static __attribute__((unused)) char *hos_hypr_request(const char *req)
+{
+    DIR *d = opendir(HOS_HYPR_DIR);
+    if (!d) return NULL;
+    char path[256] = "";
+    struct dirent *e;
+    while ((e = readdir(d))) {
+        if (e->d_name[0] == '.') continue;
+        snprintf(path, sizeof path, HOS_HYPR_DIR "/%s/.socket.sock", e->d_name);
+        break;
+    }
+    closedir(d);
+    if (!path[0]) return NULL;
+    int fd = socket(AF_UNIX, SOCK_STREAM | SOCK_CLOEXEC, 0);
+    if (fd < 0) return NULL;
+    struct sockaddr_un sa; memset(&sa, 0, sizeof sa);
+    sa.sun_family = AF_UNIX;
+    snprintf(sa.sun_path, sizeof sa.sun_path, "%s", path);
+    if (connect(fd, (struct sockaddr *)&sa, sizeof sa) < 0 || write(fd, req, strlen(req)) < 0) { close(fd); return NULL; }
+    size_t cap = 1 << 16, n = 0;
+    char *b = malloc(cap);
+    for (;;) {
+        if (!b) break;
+        struct pollfd p = { .fd = fd, .events = POLLIN };
+        if (poll(&p, 1, 2000) <= 0) break;
+        ssize_t r = read(fd, b + n, cap - n - 1);
+        if (r <= 0) break;
+        n += (size_t)r;
+        if (n + 1 >= cap) { cap *= 2; char *nb = realloc(b, cap); if (!nb) { free(b); b = NULL; break; } b = nb; }
+    }
+    close(fd);
+    if (b) b[n] = 0;
+    return b;
 }
 
 #endif /* HOS_SHELL_UI_H */

@@ -62,12 +62,25 @@ static void plog(const char *fmt, ...)
 
 /* Record a failed install so the kernel's poll stops waiting and reports "failed" rather than
  * leaving the status stuck at "busy".  Returns 1 so callers can `return fail_exit(name);`. */
+/* Publish a marker the kernel polls for ATOMICALLY: written in full under a temporary name, then
+ * renamed into place.  Created in place, the kernel could see it between the create and the write
+ * -- an empty marker -- and report a good install as failed. */
+static void write_marker(const char *path, const char *text)
+{
+    char tmp[512];
+    snprintf(tmp, sizeof tmp, "%s.tmp", path);
+    int f = open(tmp, O_WRONLY | O_CREAT | O_TRUNC, 0644);
+    if (f < 0) return;
+    ssize_t w = write(f, text, strlen(text)); (void)w;
+    close(f);
+    rename(tmp, path);
+}
+
 static int fail_exit(const char *name)
 {
     char fp[256];
     snprintf(fp, sizeof fp, "/run/pkg/%s.fail", name);
-    int f = open(fp, O_WRONLY | O_CREAT | O_TRUNC, 0644);
-    if (f >= 0) { ssize_t w = write(f, "failed\n", 7); (void)w; close(f); }
+    write_marker(fp, "failed\n");
     return 1;
 }
 
@@ -100,7 +113,7 @@ static ssize_t read_full(int fd, void *buf, size_t len)
 /* mkdir -p for every parent directory of a file path (the file itself is not created). */
 static void mkdir_parents(const char *path)
 {
-    char tmp[1024];
+    char tmp[8192];
     snprintf(tmp, sizeof tmp, "%s", path);
     for (char *p = tmp + 1; *p; p++) {
         if (*p == '/') { *p = 0; mkdir(tmp, 0755); *p = '/'; }
@@ -234,6 +247,10 @@ static int ustar_extract_data(const char *tarpath, const char *stagedir, int man
 
     unsigned char hdr[512];
     int count = 0;
+    /* A PAX extended header ('x': "path=" / "linkpath=" records) or a GNU long name ('L'/'K')
+     * replaces the next entry's name / link target -- how a tar carries paths longer than the
+     * 100-byte ustar fields. */
+    char long_name[4096] = "", long_link[4096] = "";
     for (;;) {
         ssize_t r = read_full(in, hdr, 512);
         if (r <= 0) break;
@@ -248,9 +265,36 @@ static int ustar_extract_data(const char *tarpath, const char *stagedir, int man
         unsigned long size = oct(hdr + 124, 12);
         unsigned long padded = (size + 511) & ~511UL;
 
-        char full[280];
-        if (prefix[0]) snprintf(full, sizeof full, "%s/%s", prefix, name);
-        else           snprintf(full, sizeof full, "%s", name);
+        if (typeflag == 'x' || typeflag == 'L' || typeflag == 'K') {
+            char *meta = malloc(padded + 1);
+            if (!meta || (padded && read_full(in, meta, padded) != (ssize_t)padded)) { free(meta); break; }
+            meta[size] = 0;
+            if (typeflag == 'L') snprintf(long_name, sizeof long_name, "%s", meta);
+            else if (typeflag == 'K') snprintf(long_link, sizeof long_link, "%s", meta);
+            else {
+                for (char *r = meta; r < meta + size; ) {            /* "<len> <key>=<value>\n" */
+                    char *sp = memchr(r, ' ', (size_t)(meta + size - r));
+                    long rl = strtol(r, NULL, 10);
+                    if (!sp || rl <= 0 || r + rl > meta + size) break;
+                    char *kv = sp + 1, *end = r + rl - 1;         /* end: the record's '\n' */
+                    char *eq = memchr(kv, '=', (size_t)(end - kv));
+                    if (eq) {
+                        size_t vl = (size_t)(end - eq - 1);
+                        if (!strncmp(kv, "path=", 5) && vl < sizeof long_name) { memcpy(long_name, eq + 1, vl); long_name[vl] = 0; }
+                        if (!strncmp(kv, "linkpath=", 9) && vl < sizeof long_link) { memcpy(long_link, eq + 1, vl); long_link[vl] = 0; }
+                    }
+                    r += rl;
+                }
+            }
+            free(meta);
+            continue;
+        }
+
+        char full[4096];
+        if (long_name[0])   snprintf(full, sizeof full, "%s", long_name);
+        else if (prefix[0]) snprintf(full, sizeof full, "%s/%s", prefix, name);
+        else                snprintf(full, sizeof full, "%s", name);
+        long_name[0] = 0;
         char *rel = full;
         if (rel[0] == '.' && rel[1] == '/') rel += 2;   /* strip leading "./" */
 
@@ -258,7 +302,7 @@ static int ustar_extract_data(const char *tarpath, const char *stagedir, int man
         int is_data    = (rel[0] != '.' && rel[0] != 0 && rel[0] != '/');
 
         if (is_regular && is_data) {
-            char dst[1200];
+            char dst[8192];
             snprintf(dst, sizeof dst, "%s/%s", stagedir, rel);
             mkdir_parents(dst);
             int out = open(dst, O_WRONLY | O_CREAT | O_TRUNC, 0755);
@@ -277,7 +321,7 @@ static int ustar_extract_data(const char *tarpath, const char *stagedir, int man
             unsigned long pad = padded - size;
             while (pad > 0) { unsigned char t[512]; ssize_t g = read_full(in, t, pad < 512 ? pad : 512); if (g <= 0) break; pad -= (size_t)g; }
             if (!werr) {
-                char line[300];
+                char line[4100];
                 int ln = snprintf(line, sizeof line, "%s\n", rel);
                 ssize_t w = write(manifest_fd, line, (size_t)ln); (void)w;
                 count++;
@@ -289,9 +333,11 @@ static int ustar_extract_data(const char *tarpath, const char *stagedir, int man
              * libstdc++.so.6.0.32).  Dropping these left programs unable to load their libraries
              * ("Error loading shared library libstdc++.so.6").  Recorded in the manifest as
              * "@<path>\t<target>"; the kernel creates it (placement rules apply to the path). */
-            char target[101]; memcpy(target, hdr + 157, 100); target[100] = 0;
+            char target[4096];
+            if (long_link[0]) snprintf(target, sizeof target, "%s", long_link);
+            else { memcpy(target, hdr + 157, 100); target[100] = 0; }
             if (target[0] && !strchr(target, '\n') && !strchr(target, '\t')) {
-                char line[420];
+                char line[8200];
                 int ln = snprintf(line, sizeof line, "@%s\t%s\n", rel, target);
                 if (ln > 0 && ln < (int)sizeof line) { ssize_t w = write(manifest_fd, line, (size_t)ln); (void)w; count++; }
             }
@@ -302,6 +348,7 @@ static int ustar_extract_data(const char *tarpath, const char *stagedir, int man
             unsigned long skip = padded;
             while (skip > 0) { unsigned char t[512]; ssize_t g = read_full(in, t, skip < 512 ? skip : 512); if (g <= 0) break; skip -= (size_t)g; }
         }
+        long_link[0] = 0;
     }
     close(in);
     return count;
@@ -411,20 +458,19 @@ static void b64_encode(const unsigned char *in, size_t n, char *out)
     out[o] = 0;
 }
 
-/* One gzip stream of the .apk: where it lies in the file, its hashes, and (for small streams, i.e.
- * the control segment) its decompressed tar, so .PKGINFO can be read without a second pass. */
-#define APK_MAX_MEMBERS 8
-#define APK_KEEP_MAX    (256 * 1024)
+/* One gzip stream of the .apk: where it lies in the file and its hashes.  The list grows as streams
+ * are found; the control segment is decompressed again, whole, once it has been identified. */
 struct apk_member {
     long start, end;
     unsigned char sha1[20], sha256[32];
-    unsigned char *tar; size_t tarlen; int overflow;
 };
+static int gunzip_range(const char *inpath, long start, long end, int outfd,
+                        unsigned char **mem, size_t *memlen);
 
 /* Walk every gzip stream of the .apk at path, hashing each stream's compressed bytes.  zlib
  * reports how far into the input each stream ended (avail_in on Z_STREAM_END), which is what
  * makes the per-stream byte ranges exact. */
-static int apk_scan(const char *path, struct apk_member *m, int *nm)
+static int apk_scan(const char *path, struct apk_member **mp, int *nm)
 {
     int fd = open(path, O_RDONLY);
     if (fd < 0) return -1;
@@ -432,9 +478,11 @@ static int apk_scan(const char *path, struct apk_member *m, int *nm)
     if (inflateInit2(&zs, 15 + 16) != Z_OK) { close(fd); return -1; }
     unsigned char in[16384], out[16384];
     sha1_ctx s1; sha256_ctx s2;
-    int cur = 0, rc = 0; long off = 0;
-    *nm = 0;
-    memset(&m[0], 0, sizeof m[0]); m[0].start = 0; sha1_init(&s1); sha256_init(&s2);
+    int cur = 0, rc = 0, cap = 4; long off = 0;
+    struct apk_member *m = calloc((size_t)cap, sizeof *m);
+    *mp = m; *nm = 0;
+    if (!m) { inflateEnd(&zs); close(fd); return -1; }
+    m[0].start = 0; sha1_init(&s1); sha256_init(&s2);
     for (;;) {
         ssize_t n = read(fd, in, sizeof in);
         if (n < 0) { if (errno == EINTR) continue; rc = -1; break; }
@@ -448,18 +496,16 @@ static int apk_scan(const char *path, struct apk_member *m, int *nm)
             sha1_update(&s1, in + pos, used); sha256_update(&s2, in + pos, used);
             size_t have = sizeof out - zs.avail_out;
             struct apk_member *mm = &m[cur];
-            if (have && !mm->overflow) {
-                if (mm->tarlen + have > APK_KEEP_MAX) { free(mm->tar); mm->tar = NULL; mm->tarlen = 0; mm->overflow = 1; }
-                else { unsigned char *nb = realloc(mm->tar, mm->tarlen + have);
-                       if (!nb) { rc = -1; break; }
-                       mm->tar = nb; memcpy(mm->tar + mm->tarlen, out, have); mm->tarlen += have; }
-            }
             pos += used;
             if (r == Z_STREAM_END) {
                 mm->end = off + (long)pos;
                 sha1_final(&s1, mm->sha1); sha256_final(&s2, mm->sha256);
-                if (++cur >= APK_MAX_MEMBERS) { rc = -1; break; }
-                memset(&m[cur], 0, sizeof m[cur]); m[cur].start = mm->end;
+                if (++cur >= cap) {
+                    struct apk_member *nb = realloc(m, (size_t)cap * 2 * sizeof *m);
+                    if (!nb) { rc = -1; break; }
+                    m = nb; *mp = m; cap *= 2;
+                }
+                memset(&m[cur], 0, sizeof m[cur]); m[cur].start = m[cur - 1].end;
                 sha1_init(&s1); sha256_init(&s2);
                 inflateReset(&zs);
                 continue;
@@ -511,11 +557,11 @@ static int pkginfo_field(const unsigned char *tar, size_t len, const char *key, 
  * the data segment's byte range -- the only bytes that will be unpacked. */
 static int apk_verify(const char *path, const char *q1sum, long *dstart, long *dend)
 {
-    struct apk_member m[APK_MAX_MEMBERS];
+    struct apk_member *m = NULL;
+    unsigned char *ctar = NULL; size_t ctarlen = 0;
     int nm = 0;
-    memset(m, 0, sizeof m);
     int rc = -1;
-    if (apk_scan(path, m, &nm) != 0 || nm < 2) { plog("[pkg] VERIFY FAILED: not a well-formed .apk (%d streams)", nm); goto out; }
+    if (apk_scan(path, &m, &nm) != 0 || nm < 2) { plog("[pkg] VERIFY FAILED: not a well-formed .apk (%d streams)", nm); goto out; }
     int ctrl = -1;
     for (int i = 0; i < nm; i++) {
         char b64[40], q1[48];
@@ -526,7 +572,8 @@ static int apk_verify(const char *path, const char *q1sum, long *dstart, long *d
     if (ctrl < 0) { plog("[pkg] VERIFY FAILED: no control segment matches the catalog checksum %s", q1sum); goto out; }
     if (ctrl + 1 != nm - 1) { plog("[pkg] VERIFY FAILED: the data segment is not the last stream"); goto out; }
     char dh[80];
-    if (m[ctrl].overflow || !m[ctrl].tar || pkginfo_field(m[ctrl].tar, m[ctrl].tarlen, "datahash", dh, sizeof dh) != 0) {
+    if (gunzip_range(path, m[ctrl].start, m[ctrl].end, -1, &ctar, &ctarlen) != 0 ||
+        pkginfo_field(ctar, ctarlen, "datahash", dh, sizeof dh) != 0) {
         plog("[pkg] VERIFY FAILED: the control segment has no .PKGINFO datahash"); goto out; }
     char hex[65];
     for (int i = 0; i < 32; i++) snprintf(hex + 2*i, 3, "%02x", m[ctrl + 1].sha256[i]);
@@ -535,20 +582,31 @@ static int apk_verify(const char *path, const char *q1sum, long *dstart, long *d
     plog("[pkg] verified: control segment matches the catalog (%s); data segment SHA-256 matches .PKGINFO", q1sum);
     rc = 0;
 out:
-    for (int i = 0; i < APK_MAX_MEMBERS; i++) free(m[i].tar);
+    free(ctar);
+    free(m);
     return rc;
 }
 
 /* Inflate ONLY bytes [start, end) of inpath (one verified gzip stream) to outpath. */
 static int gunzip_range_to_file(const char *inpath, long start, long end, const char *outpath)
 {
+    int out = open(outpath, O_WRONLY | O_CREAT | O_TRUNC, 0644);
+    if (out < 0) return -1;
+    int rc = gunzip_range(inpath, start, end, out, NULL, NULL);
+    close(out);
+    return rc;
+}
+
+/* Inflate bytes [start, end) of inpath (one gzip stream) into outfd, or -- outfd < 0 -- into a
+ * growing heap buffer (*mem, *memlen). */
+static int gunzip_range(const char *inpath, long start, long end, int out,
+                        unsigned char **mem, size_t *memlen)
+{
     int in = open(inpath, O_RDONLY);
     if (in < 0) return -1;
-    int out = open(outpath, O_WRONLY | O_CREAT | O_TRUNC, 0644);
-    if (out < 0) { close(in); return -1; }
-    if (lseek(in, start, SEEK_SET) != start) { close(in); close(out); return -1; }
+    if (lseek(in, start, SEEK_SET) != start) { close(in); return -1; }
     z_stream zs; memset(&zs, 0, sizeof zs);
-    if (inflateInit2(&zs, 15 + 16) != Z_OK) { close(in); close(out); return -1; }
+    if (inflateInit2(&zs, 15 + 16) != Z_OK) { close(in); return -1; }
     unsigned char inbuf[16384], outbuf[16384];
     long left = end - start; int rc = -1;
     while (left > 0) {
@@ -561,13 +619,18 @@ static int gunzip_range_to_file(const char *inpath, long start, long end, const 
             zs.next_out = outbuf; zs.avail_out = sizeof outbuf;
             r = inflate(&zs, Z_NO_FLUSH);
             size_t have = sizeof outbuf - zs.avail_out;
-            if (have) { ssize_t w = write(out, outbuf, have); (void)w; }
+            if (have && out >= 0) { ssize_t w = write(out, outbuf, have); (void)w; }
+            else if (have) {
+                unsigned char *nb = realloc(*mem, *memlen + have);
+                if (!nb) { r = Z_MEM_ERROR; break; }
+                *mem = nb; memcpy(nb + *memlen, outbuf, have); *memlen += have;
+            }
         }
         if (r == Z_STREAM_END) { rc = 0; break; }
         if (r != Z_OK && r != Z_BUF_ERROR) break;
     }
     inflateEnd(&zs);
-    close(in); close(out);
+    close(in);
     return rc;
 }
 
@@ -670,12 +733,10 @@ int main(int argc, char **argv)
      *    kernel can rtAddFile each file and report the real install verdict on /config/software.status. */
     char donepath[256];
     snprintf(donepath, sizeof donepath, "/run/pkg/%s.done", name);
-    int done = open(donepath, O_WRONLY | O_CREAT | O_TRUNC, 0644);
-    if (done >= 0) {
-        char line[700];
-        int ln = snprintf(line, sizeof line, "apk %s %s %s %s %d\n", name, ver, stagedir, manifestpath, nfiles);
-        ssize_t w = write(done, line, (size_t)ln); (void)w;
-        close(done);
+    {
+        char line[1400];
+        snprintf(line, sizeof line, "apk %s %s %s %s %d\n", name, ver, stagedir, manifestpath, nfiles);
+        write_marker(donepath, line);
     }
     plog("[pkg] staged %d files for %s-%s; kernel will place them (cap-gated) — see /run/pkg/%s.done",
          nfiles, name, ver, name);

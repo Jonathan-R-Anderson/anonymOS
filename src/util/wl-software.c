@@ -157,7 +157,7 @@ struct app {
     int   shift;
 
     /* install */
-    char  status[192];
+    char  status[512];
     int   status_kind;                /* 0 info, 1 working, 2 ok, 3 refused/error */
     int   action_fd;
 };
@@ -491,7 +491,7 @@ static void read_status_file(struct app *a)
 {
     int fd = open("/config/software.status", O_RDONLY);
     if (fd < 0) return;
-    char buf[192];
+    char buf[512];
     ssize_t n = read(fd, buf, sizeof buf - 1);
     close(fd);
     if (n <= 0) return;

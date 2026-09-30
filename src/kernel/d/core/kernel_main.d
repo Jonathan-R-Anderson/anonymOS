@@ -1903,6 +1903,28 @@ private __gshared immutable(char)*[3] g_vmAutostartArgv = [ "/wl-vmm", "--autost
 private enum int   VMFETCH_MAX_ATTEMPTS = 4;
 private enum ulong VMFETCH_FIRST_MS = 20_000, VMFETCH_RETRY_MS = 15 * 60_000;
 
+// TEST IMAGES ONLY: an image built with AUTOPKG=<name> carries /autopkg; once the network is up and
+// the desktop has settled, ask the Software Center to install that package, exactly as its Install
+// button would (System context -> system-wide).  Absent module = nothing happens.
+private __gshared bool  g_autoPkgDone = false;
+private __gshared ulong g_autoPkgAtMs = 0;
+private void maybeAutoPkg() {
+    if (g_autoPkgDone || !g_netConfigured || !g_guiClientStarted) return;
+    const ulong now = pitMs();
+    if (g_autoPkgAtMs == 0) { g_autoPkgAtMs = now + 15_000; return; }
+    if (now < g_autoPkgAtMs) return;
+    g_autoPkgDone = true;
+    import core.syscalls.posix : softwareAutoPkg;
+    import core.software : softwareControlWrite;
+    char[64] name = 0;
+    if (!softwareAutoPkg(name.ptr, name.length)) return;
+    char[96] cmd = 0; size_t n = 0;
+    foreach (c; "install apk ") cmd[n++] = c;
+    for (size_t i = 0; name[i] != 0 && n + 1 < cmd.length; ++i) cmd[n++] = name[i];
+    klog("[software] TEST: AUTOPKG install of "); klog(name.ptr); klog("\n");
+    softwareControlWrite(cmd.ptr, n);
+}
+
 private bool vmFetchRunning() {
     const int t = g_vmFetchTid;
     if (t <= 0 || t >= MAX_TASKS || !g_tasks[t].active || g_tasks[t].exited) return false;
@@ -5780,6 +5802,7 @@ private void kernelLoop() {
         maybeEpollDump();      // ROADMAP 2.3: is the compositor watching the new client fd?
         maybeSyncNtp();        // NTP: set the wall clock from pool.ntp.org, with retries
         maybeVmStoreWork();    // the firewall chosen at install: download it, then start it headless
+        maybeAutoPkg();        // TEST IMAGES ONLY: AUTOPKG=<name> installs a package headlessly
         maybeSpawnLklTest();   // L2: boot LKL on EpinAnonymOS (musl + a thread-based timer host-op)
         //maybeSpawnNetLaunch(); // H3: standalone wpa (superseded by NM, which drives wpa itself at M5)
         maybeSpawnWpa();            // M5: launch wpa_supplicant (D-Bus) just before NM

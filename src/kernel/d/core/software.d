@@ -24,7 +24,7 @@ import core.io : klog, klog_hex;
 
 @nogc nothrow:
 
-enum size_t SW_STATUS_MAX = 192;
+enum size_t SW_STATUS_MAX = 512;
 enum size_t SW_ARG_MAX    = 96;
 
 __gshared char[SW_STATUS_MAX] g_swStatus;
@@ -55,6 +55,8 @@ private void swSet(string kind, const(char)[] a = null, const(char)[] b = null,
     put(a); put(b); put(c); put(d);
     g_swStatus[n] = 0;
     g_swStatusLen = n;
+    // Verdicts go to the log too (the per-package progress is already there as "pinned" lines).
+    if (kind.length < 4 || kind[0 .. 4] != "busy") { klog("[software] "); klog(g_swStatus.ptr); klog("\n"); }
 }
 
 private bool swEq(const(char)* s, uint len, string lit) {
@@ -131,16 +133,20 @@ public bool softwareControlWrite(const(char)* cmd, size_t len) {
     {
         import core.syscalls.posix : softwareCallerDomain;
         import core.domain : domainSystemId;
-        g_swQN = 0; g_swQPos = 0; g_swVisitN = 0;
+        g_swQN = 0; g_swQPos = 0;
         g_swTargetLen = 0;
         for (uint i = 0; i < nl && i + 1 < g_swTarget.length; ++i) g_swTarget[g_swTargetLen++] = name[i];
         g_swTarget[g_swTargetLen] = 0;
         uint ul = 0;
         for (; url[ul] != 0 && ul + 1 < g_swTargetUrl.length; ++ul) g_swTargetUrl[ul] = url[ul];
         g_swTargetUrl[ul] = 0;
-        if (!swPlan(g_swTarget.ptr, 0) || g_swQN == 0) {
-            swSet("refused ", name[0 .. nl], " cannot be installed: a dependency is not in this image's catalog",
-                  " (or the dependency tree is too large).");
+        const int planned = swPlan(g_swTarget.ptr, g_swTargetLen);
+        if (planned != 0 || g_swQN == 0) {
+            swSet("refused ", name[0 .. nl],
+                  planned == -2 ? " cannot be installed: out of memory while planning its dependencies."
+                                : " cannot be installed: it or a dependency is not in this image's catalog.",
+                  planned == -1 && g_swMissingLen ? " Missing: " : "",
+                  planned == -1 ? g_swMissing[0 .. g_swMissingLen] : "");
             return false;
         }
         // Capture the requesting domain BEFORE any spawn: spawning the fetcher makes it the current
@@ -149,24 +155,29 @@ public bool softwareControlWrite(const(char)* cmd, size_t len) {
         // base) -- which domains may then run it is the Domain Manager's delegation.
         const uint reqDom = softwareCallerDomain();
         g_swPendDom = (reqDom == domainSystemId()) ? 0 : reqDom;
-        klog("[software] plan for "); klog(g_swTarget.ptr); klog(":");
-        foreach (i; 0 .. g_swQN) { klog(" "); klog(g_swQ[i].ptr); }
+        klog("[software] plan for "); klog(g_swTarget.ptr); klog(" ("); swKlogDec(g_swQN); klog(" packages):");
+        foreach (i; 0 .. g_swQN) { klog(" "); klog(swQName(i)); }
         klog("\n");
     }
     return swStartNext();
 }
 
 // ── the install queue ──────────────────────────────────────────────────────────────────────────
-enum int SW_Q_MAX = 32;
-enum int SW_DEPTH_MAX = 10;
-__gshared char[48][SW_Q_MAX] g_swQ;           // packages to install, in order (dependencies first)
-__gshared uint g_swQN = 0, g_swQPos = 0;
-__gshared char[48][SW_Q_MAX * 2] g_swVisit;   // names being / already planned (cycle guard)
-__gshared uint g_swVisitN = 0;
-__gshared char[512][SW_DEPTH_MAX + 1] g_swDepBuf;   // per-depth dependency lists (no stack growth)
-__gshared char[48] g_swTarget;                // what the user asked for
+// The plan is the target's whole missing-dependency closure, dependencies first, as catalog record
+// indices.  Its working arrays are sized from the catalog (a closure can never hold more records
+// than the catalog has) and allocated on the first install, so there is no cap on how many
+// packages one install brings in, nor on how deep the dependency graph goes.
+__gshared int*   g_swQ;            // records to install, in order
+__gshared uint   g_swQN = 0, g_swQPos = 0;
+__gshared ubyte* g_swMark;         // per record: 0 unseen, 1 on the walk's stack, 2 planned/skipped
+__gshared int*   g_swStkRec;       // the walk's explicit stack: record ...
+__gshared uint*  g_swStkPos;       // ... and how far into its dependency list it has got
+__gshared uint   g_swCap = 0;      // records the arrays hold (the catalog's record count)
+__gshared char[48] g_swTarget;     // what the user asked for
 __gshared uint g_swTargetLen = 0;
 __gshared char[SW_ARG_MAX] g_swTargetUrl;
+__gshared char[64] g_swMissing;    // the dependency the catalog lacks, for the refusal
+__gshared uint g_swMissingLen = 0;
 
 private bool swNameEq(const(char)* a, const(char)* b) {
     size_t i = 0;
@@ -174,55 +185,100 @@ private bool swNameEq(const(char)* a, const(char)* b) {
     return a[i] == b[i];
 }
 
+private void swKlogDec(uint v) {
+    char[12] t = 0; int k = 11;
+    do { t[--k] = cast(char)('0' + v % 10); v /= 10; } while (v && k > 0);
+    klog(t.ptr + k);
+}
+
+private const(char)* swQName(uint i) {
+    import core.syscalls.posix : softwareCatalogName;
+    return softwareCatalogName(g_swQ[i]);
+}
+
 // Provided by the OS itself: its musl is the loader every program already uses, busybox supplies the
 // shell and core utilities, and the base layout is the root filesystem.  Installing Alpine's copies
 // would shadow the system's own (and placement refuses most of those paths anyway).
-private bool swBaseProvided(const(char)* n) {
+private bool swBaseProvided(const(char)* n, size_t len) {
     static immutable string[12] base = ["musl", "busybox", "busybox-binsh", "alpine-baselayout",
         "alpine-baselayout-data", "alpine-keys", "alpine-release", "apk-tools", "libc-utils",
         "musl-utils", "scanelf", "ssl_client"];
     foreach (b; base) {
+        if (b.length != len) continue;
         size_t i = 0;
-        for (; i < b.length && n[i] == b[i]; ++i) {}
-        if (i == b.length && n[i] == 0) return true;
+        for (; i < len && n[i] == b[i]; ++i) {}
+        if (i == len) return true;
     }
     return false;
 }
 
-private bool swVisited(const(char)* n) {
-    foreach (i; 0 .. g_swVisitN) if (swNameEq(g_swVisit[i].ptr, n)) return true;
-    return false;
+private bool swAlloc(uint n) {
+    import memory.mm : alloc_phys_pages;
+    import core.exports : phys_to_virt;
+    if (g_swCap >= n && g_swQ !is null) return true;
+    static ulong pages(size_t bytes) { return (bytes + 4095) / 4096; }
+    const ulong q = alloc_phys_pages(pages(n * int.sizeof)), m = alloc_phys_pages(pages(n));
+    const ulong sr = alloc_phys_pages(pages(n * int.sizeof)), sp = alloc_phys_pages(pages(n * uint.sizeof));
+    if (q == 0 || m == 0 || sr == 0 || sp == 0) return false;   // (a failed first install keeps what it got)
+    g_swQ = cast(int*)phys_to_virt(q);
+    g_swMark = cast(ubyte*)phys_to_virt(m);
+    g_swStkRec = cast(int*)phys_to_virt(sr);
+    g_swStkPos = cast(uint*)phys_to_virt(sp);
+    g_swCap = n;
+    return true;
 }
 
 // Post-order walk of the dependency graph from the catalog: every missing dependency is queued
-// before the package that needs it.
-private bool swPlan(const(char)* name, int depth) {
-    import core.syscalls.posix : softwareCatalogDeps, softwarePkgInstalled;
-    if (depth > SW_DEPTH_MAX) return false;
-    if (swVisited(name)) return true;                 // queued already, or a cycle: fine either way
-    if (depth > 0 && (swBaseProvided(name) || softwarePkgInstalled(name))) return true;
-    if (g_swVisitN >= g_swVisit.length) return false;
-    {   size_t k = 0;
-        for (; name[k] != 0 && k + 1 < 48; ++k) g_swVisit[g_swVisitN][k] = name[k];
-        g_swVisit[g_swVisitN][k] = 0; ++g_swVisitN; }
-    char* deps = g_swDepBuf[depth].ptr;
-    if (!softwareCatalogDeps(name, deps, g_swDepBuf[depth].length)) return false;
-    size_t p = 0;
-    while (deps[p] != 0) {
-        while (deps[p] == ' ') ++p;
-        if (deps[p] == 0) break;
-        char[48] dep = 0; size_t dl = 0;
-        while (deps[p] != 0 && deps[p] != ' ') { if (dl + 1 < dep.length) dep[dl++] = deps[p]; ++p; }
-        dep[dl] = 0;
-        if (!swPlan(dep.ptr, depth + 1)) return false;
-        deps = g_swDepBuf[depth].ptr;                  // (same buffer; deeper levels use their own)
+// before the package that needs it; what the OS provides and what is installed are skipped; a
+// cycle is broken where it closes (apk does the same).  0 = planned, -1 = something is not in the
+// catalog (named in g_swMissing), -2 = no memory for the walk.
+private int swPlan(const(char)* name, size_t len) {
+    import core.syscalls.posix : softwareCatalogCount, softwareCatalogFind, softwareCatalogDepsOf,
+                                 softwarePkgInstalled;
+    g_swMissingLen = 0;
+    const uint n = softwareCatalogCount();
+    if (n == 0) return -1;
+    if (!swAlloc(n)) return -2;
+    foreach (i; 0 .. n) g_swMark[i] = 0;
+    void missing(const(char)* m, size_t l) {
+        g_swMissingLen = 0;
+        foreach (i; 0 .. l) if (g_swMissingLen + 1 < g_swMissing.length) g_swMissing[g_swMissingLen++] = m[i];
     }
-    if (g_swQN >= SW_Q_MAX) return false;
-    size_t k = 0;
-    for (; name[k] != 0 && k + 1 < 48; ++k) g_swQ[g_swQN][k] = name[k];
-    g_swQ[g_swQN][k] = 0;
-    ++g_swQN;
-    return true;
+    const int root = softwareCatalogFind(name, len);
+    if (root < 0) { missing(name, len); return -1; }
+    uint sp = 0;
+    g_swStkRec[sp] = root; g_swStkPos[sp] = 0; ++sp;
+    g_swMark[root] = 1;
+    while (sp > 0) {
+        const int rec = g_swStkRec[sp - 1];
+        const(char)* deps = softwareCatalogDepsOf(rec);
+        uint p = g_swStkPos[sp - 1];
+        while (deps[p] == ' ') ++p;
+        if (deps[p] == 0) {                            // all of its dependencies are planned
+            --sp;
+            g_swMark[rec] = 2;
+            g_swQ[g_swQN++] = rec;
+            continue;
+        }
+        const uint d0 = p;
+        while (deps[p] != 0 && deps[p] != ' ') ++p;
+        g_swStkPos[sp - 1] = p;
+        const(char)* dn = deps + d0;
+        const size_t dl = p - d0;
+        if (swBaseProvided(dn, dl)) continue;
+        const int dr = softwareCatalogFind(dn, dl);
+        if (dr < 0) { missing(dn, dl); return -1; }
+        if (g_swMark[dr] != 0) continue;               // planned, or on the stack (a cycle)
+        if (softwarePkgInstalled(softwareCatalogName_(dr))) { g_swMark[dr] = 2; continue; }
+        g_swMark[dr] = 1;
+        g_swStkRec[sp] = dr; g_swStkPos[sp] = 0; ++sp;
+    }
+    return 0;
+}
+
+private const(char)* softwareCatalogName_(int rec) {
+    import core.syscalls.posix : softwareCatalogName;
+    return softwareCatalogName(rec);
 }
 
 private uint swLen(const(char)* s) { uint n = 0; while (s[n] != 0) ++n; return n; }
@@ -231,7 +287,7 @@ private uint swLen(const(char)* s) { uint n = 0; while (s[n] != 0) ++n; return n
 private bool swStartNext() {
     import core.kernel_main : softwareSpawnFetcher;
     import core.syscalls.posix : softwareCatalogPin;
-    const(char)* nm = g_swQ[g_swQPos].ptr;
+    const(char)* nm = swQName(g_swQPos);
     const uint nl = swLen(nm);
     const bool isTarget = swNameEq(nm, g_swTarget.ptr);
     char[64] pver = 0, psum = 0;
@@ -304,9 +360,9 @@ public void softwarePoll() {
         ++g_swQPos;
         if (g_swQPos < g_swQN) { swStartNext(); return; }     // next package in the plan
         if (g_swQN > 1) {
-            char[8] nd = 0; uint l = 0; uint v = g_swQN - 1;
-            if (v >= 10) nd[l++] = cast(char)('0' + v / 10);
-            nd[l++] = cast(char)('0' + v % 10);
+            char[12] nd = 0; uint l = 0;
+            void pn(uint v) { if (v >= 10) pn(v / 10); nd[l++] = cast(char)('0' + v % 10); }
+            pn(g_swQN - 1);
             swSet("ok installed ", g_swTarget[0 .. g_swTargetLen], " and ", nd[0 .. l],
                   " dependencies into this domain's filesystem (see Logs, filter 'pkg').");
         } else {

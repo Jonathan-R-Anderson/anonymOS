@@ -1799,6 +1799,12 @@ stage-iso-tree: kernel.elf $(WLSOFTWARE_BIN) $(PKGFETCH_BIN) $(VMFETCH_BIN) $(SO
 		printf '\n    module_path: boot():/autoinstall\n' >> cd/boot/limine/limine.conf; \
 		echo "Included autoinstall trigger (TEST IMAGE -- will install to disk unattended)"; \
 	fi
+	@# TEST IMAGES: AUTOPKG=<name> asks the Software Center to install <name> once the network is up.
+	@if [ -n "$(AUTOPKG)" ]; then \
+		printf '%s' "$(AUTOPKG)" > cd/autopkg; \
+		printf '\n    module_path: boot():/autopkg\n' >> cd/boot/limine/limine.conf; \
+		echo "Included AUTOPKG=$(AUTOPKG) (TEST IMAGE -- installs a package unattended)"; \
+	else rm -f cd/autopkg; fi
 	@if [ "$(AUTOINSTALL_HIDDEN)" = "1" ]; then \
 		printf 'hiddeninstall-test' > cd/hiddeninstall-test; \
 		printf '\n    module_path: boot():/hiddeninstall-test\n' >> cd/boot/limine/limine.conf; \

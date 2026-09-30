@@ -2366,7 +2366,7 @@ private long fileObjRead(ObjHeader* oh, void* _buf, ulong _count) {
 
     if (f.type == FileType.FD_RTFILE) {
         const int idx = cast(int)cast(size_t)f.backend;
-        if (idx < 0 || idx >= RT_MAX_NODES || g_rt[idx].kind != RT_REG)
+        if (idx < 0 || idx >= g_rtNodes || g_rt[idx].kind != RT_REG)
             return negErrno(EBADF);
         // Disk-backed (an imported ISO): bytes live in a target-disk region, not RAM.
         {
@@ -2593,7 +2593,7 @@ private long fileObjWrite(ObjHeader* oh, const(void)* buf, ulong count) {
 
     if (f.type == FileType.FD_RTFILE) {
         const int idx = cast(int)cast(size_t)f.backend;
-        if (idx < 0 || idx >= RT_MAX_NODES || g_rt[idx].kind != RT_REG)
+        if (idx < 0 || idx >= g_rtNodes || g_rt[idx].kind != RT_REG)
             return cast(ssize_t)negErrno(EBADF);
         // Disk-backed: data is null and the size is gigabytes, so rtEnsureCap would copy from a
         // null pointer.  An imported ISO is read-only; the VM store writes through to its partition
@@ -3221,7 +3221,59 @@ private int appsRenderIdentity(ObjAppEntry* e, ubyte* dst, uint cap) {
 
 // ── F2: /config declarative JSON views over the kernel tables ─────────────────
 __gshared int g_configDirIdx = -1;                   // RT node index of /config
-__gshared char[8192] g_configBuf;                    // rendered JSON (sequential open→read)
+// Rendered /config documents.  Each open gets its OWN buffer, as large as the document (a shared
+// fixed buffer truncated apps.json once enough packages were installed, and a second open rewrote
+// what the first was still reading).  The buffer lives until the last fd that refers to it -- dups
+// and fork copies included -- is closed.
+private struct CfgDoc { char* p; ulong phys; size_t pages; }
+private __gshared CfgDoc* g_cfgDocs;
+private __gshared uint    g_cfgDocN, g_cfgDocCap;
+private __gshared ulong   g_cfgDocsPhys;
+
+// Render document `cfgId`; returns the buffer (registered) and its length in `len` (< 0: the
+// renderer's error; 0 with null: out of memory).
+private char* cfgDocRender(int cfgId, out long len) {
+    import memory.mm : alloc_phys_pages, free_phys_pages;
+    len = 0;
+    for (size_t cap = 16384; ; cap *= 2) {
+        const size_t pages = cap / 4096;
+        const ulong phys = alloc_phys_pages(pages);
+        if (phys == 0) return null;
+        char* p = cast(char*)phys_to_virt(phys);
+        const long n = configfsRender(cfgId, p, cap - 1);
+        if (n >= 0 && cast(size_t)n + 3 >= cap) { free_phys_pages(phys, pages); continue; }   // did not fit
+        if (n < 0) { free_phys_pages(phys, pages); len = n; return null; }
+        if (g_cfgDocN == g_cfgDocCap) {                              // grow the registry
+            const uint ncap = g_cfgDocCap ? g_cfgDocCap * 2 : 32;
+            const size_t rp = (ncap * CfgDoc.sizeof + 4095) / 4096;
+            const ulong rphys = alloc_phys_pages(rp);
+            if (rphys == 0) { free_phys_pages(phys, pages); return null; }
+            auto nd = cast(CfgDoc*)phys_to_virt(rphys);
+            foreach (i; 0 .. g_cfgDocN) nd[i] = g_cfgDocs[i];
+            if (g_cfgDocs !is null) free_phys_pages(g_cfgDocsPhys, (g_cfgDocCap * CfgDoc.sizeof + 4095) / 4096);
+            g_cfgDocs = nd; g_cfgDocsPhys = rphys; g_cfgDocCap = ncap;
+        }
+        g_cfgDocs[g_cfgDocN++] = CfgDoc(p, phys, pages);
+        len = n;
+        return p;
+    }
+}
+
+// An FD_FILE is closing: if it refers to a rendered document that no other fd (in any process)
+// still refers to, free the document.  The closing fd itself still counts as one reference.
+private void cfgDocRelease(void* backend) {
+    import memory.mm : free_phys_pages;
+    foreach (i; 0 .. g_cfgDocN) {
+        if (cast(void*)g_cfgDocs[i].p !is backend) continue;
+        uint refs = 0;
+        foreach (t; 0 .. FDTAB_COUNT)
+            foreach (ref e; g_fdTabs[t])
+                if (e.type == FileType.FD_FILE && e.backend is backend && ++refs > 1) return;
+        free_phys_pages(g_cfgDocs[i].phys, g_cfgDocs[i].pages);
+        g_cfgDocs[i] = g_cfgDocs[--g_cfgDocN];
+        return;
+    }
+}
 
 // ── F3: /system immutable base views over the active Generation + components ───
 private enum ulong SYNTHDIR_SYSCUR = 0x59CC0700;     // tags the /system/current synthetic dir
@@ -4470,15 +4522,18 @@ public int sys_open(const(char)* path, int flags) {
         const int cfgId = configfsParse(path);
         if (cfgId > 0) {
             if ((flags & 3) != O_RDONLY) return negErrno(EROFS);  // read-only for now (F2.2 = writable)
-            const long clen = configfsRender(cfgId, g_configBuf.ptr, g_configBuf.length - 1);
+            long clen;
+            char* doc = cfgDocRender(cfgId, clen);
+            if (doc is null && clen == 0) return negErrno(ENOMEM);
             if (clen > 0) {
                 g_fdTable[fd].type     = FileType.FD_FILE;
                 g_fdTable[fd].flags    = flags & ~(O_WRONLY | O_RDWR);
                 g_fdTable[fd].offset   = 0;
-                g_fdTable[fd].backend  = cast(void*)g_configBuf.ptr;
+                g_fdTable[fd].backend  = cast(void*)doc;
                 g_fdTable[fd].fileSize = cast(ulong)clen;
                 return publishActiveFdReturn(fd);
             }
+            if (doc !is null) cfgDocRelease(doc);
             if (clen < 0) return negErrno(ENOENT);
         }
     }
@@ -4782,6 +4837,8 @@ private long fileObjClose(ObjHeader* oh) {
         else kvmVcpuFdClosed(objId, gen);
     } else if (f.type == FileType.FD_SOCKET) {
         closeLocalSocket(f);
+    } else if (f.type == FileType.FD_FILE) {
+        if (g_cfgDocN != 0) cfgDocRelease(f.backend);   // a rendered /config document
     } else if (f.type == FileType.FD_TUN) {
         // CH dup()s its TAP fds (try_clone), and fds are copied on fork: the port goes away with
         // the LAST fd that refers to it.
@@ -4981,9 +5038,9 @@ private long fileObjStat(ObjHeader* oh, ulong _statBuf) {
             writeLinuxStat(_statBuf, 0x4000 | 0x01ED, 0); // S_IFDIR | 0755
         } else if (f.type == FileType.FD_RTDIR) {
             const int idx = cast(int)cast(size_t)f.backend;
-            const uint uid = (idx >= 0 && idx < RT_MAX_NODES) ? g_rt[idx].uid : userCurrentUid();
-            const uint gid = (idx >= 0 && idx < RT_MAX_NODES) ? g_rt[idx].gid : userCurrentGid();
-            const uint dmode = (idx >= 0 && idx < RT_MAX_NODES) ? g_rt[idx].mode : 0x1ED;
+            const uint uid = (idx >= 0 && idx < g_rtNodes) ? g_rt[idx].uid : userCurrentUid();
+            const uint gid = (idx >= 0 && idx < g_rtNodes) ? g_rt[idx].gid : userCurrentGid();
+            const uint dmode = (idx >= 0 && idx < g_rtNodes) ? g_rt[idx].mode : 0x1ED;
             writeLinuxStatOwned(_statBuf, 0x4000 | dmode, 0, uid, gid); // S_IFDIR | mode
         } else if (fileIsDevNull(f) || f.type == FileType.FD_CONSOLE) {
             clearLinuxStat(_statBuf);
@@ -5022,11 +5079,11 @@ private long fileObjStat(ObjHeader* oh, ulong _statBuf) {
             *cast(uint*)(_statBuf + 32) = userCurrentGid();
         } else if (f.type == FileType.FD_RTFILE) {
             const int idx = cast(int)cast(size_t)f.backend;
-            const uint sz = (idx >= 0 && idx < RT_MAX_NODES) ? g_rt[idx].size : 0;
-            const uint uid = (idx >= 0 && idx < RT_MAX_NODES) ? g_rt[idx].uid : userCurrentUid();
-            const uint gid = (idx >= 0 && idx < RT_MAX_NODES) ? g_rt[idx].gid : userCurrentGid();
-            const uint fmode = (idx >= 0 && idx < RT_MAX_NODES) ? g_rt[idx].mode : 0x1B6;
-            const uint ftype = (idx >= 0 && idx < RT_MAX_NODES && g_rt[idx].kind == RT_LNK)
+            const uint sz = (idx >= 0 && idx < g_rtNodes) ? g_rt[idx].size : 0;
+            const uint uid = (idx >= 0 && idx < g_rtNodes) ? g_rt[idx].uid : userCurrentUid();
+            const uint gid = (idx >= 0 && idx < g_rtNodes) ? g_rt[idx].gid : userCurrentGid();
+            const uint fmode = (idx >= 0 && idx < g_rtNodes) ? g_rt[idx].mode : 0x1B6;
+            const uint ftype = (idx >= 0 && idx < g_rtNodes && g_rt[idx].kind == RT_LNK)
                                ? 0xA000 : 0x8000;          // S_IFLNK : S_IFREG
             writeLinuxStatOwned(_statBuf, ftype | fmode, sz, uid, gid);
         } else if (f.type == FileType.FD_KLOG) {
@@ -5236,7 +5293,7 @@ public int mmapCopyFileRange(int fd, ulong off, ubyte* dst, ulong len) {
         }
         case FileType.FD_RTFILE: {
             int idx = cast(int)cast(size_t)f.backend;
-            if (idx < 0 || idx >= RT_MAX_NODES || g_rt[idx].kind != RT_REG) return 0;
+            if (idx < 0 || idx >= g_rtNodes || g_rt[idx].kind != RT_REG) return 0;
             // Disk-backed (an imported ISO): data is null, so the loop below would map zeros.
             // Fill the page from disk instead.  (fileObjMmap returns -ENODEV for this node, but
             // the kernel_main mmap handler treats any backing <= 0 as "no object backing" and
@@ -5852,8 +5909,16 @@ private const(char)[] displayInfoContent() {
 // Track A (SHELL_AND_COMMANDS_ROADMAP A2): node count raised from 1024 so a full
 // FHS tree + ~380 /bin applet symlinks + user files fit; symlinks (RT_LNK) added;
 // payload pages are now freed on grow/unlink (no more leak) with byte accounting.
-private enum int    RT_MAX_NODES = 12288;   // Z8: +~1018 zsh function/completion nodes
-private enum size_t RT_NAME_MAX  = 96;
+// The node table grows in chunks of RT_CHUNK nodes, allocated when the last free node is taken:
+// there is no file-count limit short of memory (the byte cap below is what bounds the fs).  Nodes
+// never move once allocated -- a chunk is never reallocated -- so `ref RtNode`s and `RtNode*`s stay
+// valid while the table grows.  g_rtNodes is the number of nodes that exist: every valid index is
+// below it.  RT_INITIAL_NODES are allocated at rtInit (the boot tree is ~5 k nodes).
+private enum int    RT_CHUNK_SHIFT   = 12;
+private enum int    RT_CHUNK         = 1 << RT_CHUNK_SHIFT;          // 4096 nodes (~600 KiB)
+private enum int    RT_CHUNK_DIR     = 4096;   // 16 M nodes: past what any RAM can hold in pages
+private enum int    RT_INITIAL_NODES = 3 * RT_CHUNK;
+private enum size_t RT_NAME_MAX  = 255;           // Linux's NAME_MAX (nameLen is a ubyte)
 private enum ulong  RT_MIN_CAP_BYTES = 64UL * 1024 * 1024;   // tmpfs soft cap floor (ENOSPC past it)
 // The cap: a quarter of RAM, at least 64 MiB.  It was a flat 64 MiB, which a VM snapshot (the guest's
 // whole memory image) or a large package could not fit in on any machine.
@@ -5890,10 +5955,97 @@ private struct RtNode {
     // Software Center provenance: 1-based index into g_pkgRecs of the package whose verified
     // install placed this file (0 = not a package file).  Only such files may be exec'd -- a file a
     // program writes itself is never a program (appgate: only classified images run).  APPENDED.
-    ushort pkgIdx;
+    uint   pkgIdx;
+    // The (parent, name) lookup index (rtFindChild): the next node in this node's bucket, and the
+    // bucket it is linked into (-1 = none).  A freed node stays linked until it is reused (lookups
+    // skip free nodes), so the many places that free a node need not touch the index.  APPENDED.
+    int    hnext   = -1;
+    int    hbucket = -1;
 }
 
-__gshared RtNode[RT_MAX_NODES] g_rt;
+private struct RtTable {
+    RtNode*[RT_CHUNK_DIR] chunk;
+    ref RtNode opIndex(size_t i) @nogc nothrow { return chunk[i >> RT_CHUNK_SHIFT][i & (RT_CHUNK - 1)]; }
+}
+__gshared RtTable g_rt;
+__gshared int     g_rtNodes = 0;             // nodes allocated (a multiple of RT_CHUNK)
+
+// Add one chunk of free nodes.  False when memory is exhausted.
+private bool rtGrow() @nogc nothrow {
+    import memory.mm : alloc_phys_pages;
+    const int c = g_rtNodes >> RT_CHUNK_SHIFT;
+    if (c >= RT_CHUNK_DIR) return false;
+    const size_t pages = (RT_CHUNK * RtNode.sizeof + 4095) / 4096;
+    const ulong phys = alloc_phys_pages(pages);
+    if (phys == 0) return false;
+    auto nodes = cast(RtNode*)phys_to_virt(phys);
+    foreach (i; 0 .. RT_CHUNK) { nodes[i] = RtNode.init; nodes[i].parent = -1; }
+    g_rt.chunk[c] = nodes;
+    g_rtNodes += RT_CHUNK;
+    return true;
+}
+
+// ── (parent, name) -> node index ──────────────────────────────────────────────────────────────
+// Every path component is one rtFindChild; with the node count unbounded a linear scan would make
+// each open() slower as packages are installed.  One bucket per node, resized as the table grows.
+private __gshared int*  g_rtHash;            // bucket heads (-1 = empty); null until rtInit
+private __gshared uint  g_rtHashBuckets;     // a power of two
+private __gshared ulong g_rtHashPhys;
+
+private uint rtHashOf(int parent, const(char)* name, size_t len) @nogc nothrow {
+    uint h = 2166136261u ^ cast(uint)parent;
+    foreach (i; 0 .. len) { h ^= cast(ubyte)name[i]; h *= 16777619u; }
+    h ^= h >> 15;
+    return h & (g_rtHashBuckets - 1);
+}
+private void rtHashInsert(int idx) @nogc nothrow {
+    if (g_rtHash is null || idx <= 0) return;
+    const uint b = rtHashOf(g_rt[idx].parent, g_rt[idx].name.ptr, g_rt[idx].nameLen);
+    g_rt[idx].hnext = g_rtHash[b];
+    g_rt[idx].hbucket = cast(int)b;
+    g_rtHash[b] = idx;
+}
+private void rtHashRemove(int idx) @nogc nothrow {
+    if (g_rtHash is null || idx <= 0) return;
+    const int b = g_rt[idx].hbucket;
+    if (b < 0) return;
+    int* link = &g_rtHash[b];
+    while (*link >= 0) {
+        if (*link == idx) { *link = g_rt[idx].hnext; break; }
+        link = &g_rt[*link].hnext;
+    }
+    g_rt[idx].hnext = -1;
+    g_rt[idx].hbucket = -1;
+}
+// (Re)build the index with one bucket per node.  False when memory is exhausted (lookups then fall
+// back to scanning, as they do before rtInit).
+private bool rtHashRebuild() @nogc nothrow {
+    import memory.mm : alloc_phys_pages, free_phys_pages;
+    uint nb = 1024;
+    while (nb < cast(uint)g_rtNodes) nb <<= 1;
+    const size_t pages = (nb * int.sizeof + 4095) / 4096;
+    const ulong phys = alloc_phys_pages(pages);
+    if (phys == 0) return false;
+    if (g_rtHash !is null) free_phys_pages(g_rtHashPhys, (g_rtHashBuckets * int.sizeof + 4095) / 4096);
+    g_rtHash = cast(int*)phys_to_virt(phys);
+    g_rtHashPhys = phys;
+    g_rtHashBuckets = nb;
+    foreach (b; 0 .. nb) g_rtHash[b] = -1;
+    for (int i = 1; i < g_rtNodes; ++i) {
+        g_rt[i].hnext = -1; g_rt[i].hbucket = -1;
+        if (g_rt[i].kind != RT_FREE) rtHashInsert(i);
+    }
+    return true;
+}
+
+// The index of a node given by reference (-1 when it is not in the table).
+private int rtIndexOf(ref RtNode n) @nogc nothrow {
+    foreach (c; 0 .. g_rtNodes >> RT_CHUNK_SHIFT) {
+        RtNode* base = g_rt.chunk[c];
+        if (&n >= base && &n < base + RT_CHUNK) return cast(int)((c << RT_CHUNK_SHIFT) + (&n - base));
+    }
+    return -1;
+}
 __gshared bool  g_rtInitialized = false;
 __gshared ulong g_rtBytes = 0;               // total bytes backing RT payloads (for the cap + df)
 
@@ -6072,7 +6224,7 @@ public void isoStoreForgetAll() {
     g_vmStoreState = VMSTORE_NONE; g_vmStoreNode = -1;  // the VM store node goes with them
     foreach (i; 0 .. n) {
         const int node = nodes[i];
-        if (node <= 0 || node >= RT_MAX_NODES || g_rt[node].kind != RT_REG) continue;
+        if (node <= 0 || node >= g_rtNodes || g_rt[node].kind != RT_REG) continue;
         inotifyNotify(g_rt[node].parent, IN_DELETE_F, g_rt[node].name.ptr, g_rt[node].nameLen);
         rtFreeData(g_rt[node]);
         g_rt[node].kind   = RT_FREE;
@@ -6247,8 +6399,10 @@ private ulong vmStoreImageBytes(ulong first, ulong last) {
 }
 
 private void vmStoreName(int node, const(char)* nm, size_t len) {
+    rtHashRemove(node);
     g_rt[node].nameLen = cast(ubyte)len;
     foreach (i; 0 .. len) g_rt[node].name[i] = nm[i];
+    rtHashInsert(node);
 }
 
 /// Boot: expose the store (installed systems only, after /home is restored -- /vmstore is never
@@ -6321,11 +6475,16 @@ private void vmStoreForget(ulong dbLba) {
 // to catch slots freed below it.
 __gshared int g_rtAllocHint = 1;
 private int rtAllocNode() {
-    for (int i = g_rtAllocHint; i < RT_MAX_NODES; ++i)   // index 0 reserved for root
+    if (g_rtNodes == 0) return -1;                       // before rtInit (index 0 is the root)
+    for (int i = g_rtAllocHint; i < g_rtNodes; ++i)      // index 0 reserved for root
         if (g_rt[i].kind == RT_FREE) { g_rtAllocHint = i + 1; return i; }
-    for (int i = 1; i < g_rtAllocHint && i < RT_MAX_NODES; ++i)
+    for (int i = 1; i < g_rtAllocHint && i < g_rtNodes; ++i)
         if (g_rt[i].kind == RT_FREE) { g_rtAllocHint = i + 1; return i; }
-    return -1;
+    const int first = g_rtNodes;                         // every node is in use: add a chunk
+    if (!rtGrow()) return -1;
+    if (g_rtHash !is null && cast(uint)g_rtNodes > g_rtHashBuckets) rtHashRebuild();
+    g_rtAllocHint = first + 1;
+    return first;
 }
 
 private bool rtNameEndsWith(ref const(RtNode) n, string suffix) {
@@ -6359,7 +6518,10 @@ private int rtFindChild(int parent, const(char)* name, size_t len) {
     const uint dom = rtCurrentDomain();
     const uint sys = (dom == 0) ? rtSystemDom() : 0;
     int sharedHit = -1, sysHit = -1;
-    for (int i = 1; i < RT_MAX_NODES; ++i) {
+    // Candidates: the (parent, name) bucket, or every node before the index exists.
+    const bool indexed = g_rtHash !is null;
+    int i = indexed ? g_rtHash[rtHashOf(parent, name, len)] : 1;
+    for (; indexed ? i >= 0 : i < g_rtNodes; i = indexed ? g_rt[i].hnext : i + 1) {
         if (g_rt[i].kind == RT_FREE) continue;
         if (g_rt[i].parent != parent) continue;
         if (!rtNameEq(g_rt[i], name, len)) continue;
@@ -6389,7 +6551,7 @@ enum uint RT_OWNER_GONE = 0xFFFF_FFFFu;
 public void rtScrubDomain(uint domObjId) @nogc nothrow {
     if (domObjId == 0 || domObjId == RT_OWNER_GONE) return;
     uint n = 0;
-    for (int i = 1; i < RT_MAX_NODES; ++i)
+    for (int i = 1; i < g_rtNodes; ++i)
         if (g_rt[i].kind != RT_FREE && g_rt[i].ownerDom == domObjId) { g_rt[i].ownerDom = RT_OWNER_GONE; ++n; }
     if (n != 0) {
         klog("[appgate] deleted domain's private files retired: "); klog_dec(n); klog("\n");
@@ -6414,6 +6576,7 @@ private int rtCreate(int parent, const(char)* name, size_t len, ubyte kind,
     // Hooked here rather than at each caller, because this is the single place a node comes into
     // existence -- the same reason the persistence flag is set at the one place bytes change.
     inotifyNotify(parent, IN_CREATE_F, name, len);
+    rtHashRemove(idx);                               // a reused slot leaves its old bucket
     g_rt[idx].kind    = kind;
     g_rt[idx].parent  = parent;
     g_rt[idx].mode    = mode;
@@ -6421,6 +6584,7 @@ private int rtCreate(int parent, const(char)* name, size_t len, ubyte kind,
     g_rt[idx].gid     = gid;
     g_rt[idx].nameLen = cast(ubyte)len;
     foreach (i; 0 .. len) g_rt[idx].name[i] = name[i];
+    rtHashInsert(idx);
     g_rt[idx].data     = null;
     g_rt[idx].dataPhys = 0;
     g_rt[idx].size     = 0;
@@ -6442,7 +6606,7 @@ private int rtCreate(int parent, const(char)* name, size_t len, ubyte kind,
 __gshared int g_rtLinkDepth = 0;
 private int rtLinkTargetDir(int linkIdx) {
     int result = -1;
-    if (g_rtLinkDepth <= 16 && linkIdx >= 0 && linkIdx < RT_MAX_NODES
+    if (g_rtLinkDepth <= 16 && linkIdx >= 0 && linkIdx < g_rtNodes
         && g_rt[linkIdx].kind == RT_LNK && g_rt[linkIdx].size > 0) {
         ++g_rtLinkDepth;
         char[512] tb = void;
@@ -6474,6 +6638,7 @@ private int rtResolve(const(char)* path, out int outParent,
     leaf = null;
     leafLen = 0;
     if (path is null || path[0] != '/') return -1;
+    if (g_rtNodes == 0) return -1;   // before rtInit: there is no tree yet
 
     int cur = 0;                 // overlay root
     const(char)* p = path + 1;   // skip leading '/'
@@ -6568,9 +6733,8 @@ private bool rtEnsureCap(ref RtNode n, uint need) {
 // unlink of the disk-backed file itself wipes the PVD — rtUnlinkSyscall does that first.
 private void rtFreeData(ref RtNode n) {
     {
-        RtNode* base = &g_rt[0];
-        if (&n >= base && &n < base + RT_MAX_NODES)
-            diskFileUnregister(cast(int)(&n - base));
+        const int idx = rtIndexOf(n);
+        if (idx >= 0) diskFileUnregister(idx);
     }
     if (n.dataPhys != 0 && n.cap != 0) {
         free_phys_pages(n.dataPhys, n.cap / 4096);
@@ -6869,7 +7033,7 @@ private bool fspPut(ubyte* buf, ref uint off, const(void)* src, uint n) {
 
 // Walk the subtree rooted at `node`, appending a record per regular file.
 private bool fspWalk(int node, char* path, uint pathLen, ubyte* buf, ref uint off) {
-    for (int i = 1; i < RT_MAX_NODES; ++i) {
+    for (int i = 1; i < g_rtNodes; ++i) {
         if (g_rt[i].kind == RT_FREE || g_rt[i].parent != node) continue;
         const uint nl = g_rt[i].nameLen;
         if (pathLen + 1 + nl >= 480) continue;              // path too deep; skip rather than truncate
@@ -7044,6 +7208,9 @@ private void rtSeedBinSymlinks() {
 // roots).  Safe to call repeatedly; only the first call has effect.
 private void rtInit() {
     if (g_rtInitialized) return;
+    while (g_rtNodes < RT_INITIAL_NODES)
+        if (!rtGrow()) { klog("[rtfs] FATAL: no memory for the node table\n"); return; }
+    rtHashRebuild();
     g_rtInitialized = true;
 
     g_rt[0].kind   = RT_DIR;
@@ -7582,7 +7749,7 @@ private void rtfsSelfTest() {
     const int binIdx = rtResolve("/bin\0".ptr, bp, bl, bll);
     chk(binIdx > 0 && g_rt[binIdx].kind == RT_DIR);
     int appletCount = 0;
-    for (int i = 1; i < RT_MAX_NODES; ++i)
+    for (int i = 1; i < g_rtNodes; ++i)
         if (g_rt[i].kind == RT_LNK && g_rt[i].parent == binIdx) ++appletCount;
     chk(appletCount >= 300);
 
@@ -7707,6 +7874,132 @@ public bool softwareCatalogPin(const(char)* name, const(char)* wantBase,
     cpy(sumOut, sumCap, str(rd32(sums + 4UL * cast(uint)best)));
     cpy(baseOut, baseCap, str(rd32(rr + 12)));
     return verOut[0] != 0 && sumOut[0] != 0 && baseOut[0] != 0;
+}
+
+// ── the catalog by record (the install planner, core/software.d) ─────────────────────────────
+// The planner walks whole dependency closures, so it works on record indices: each installable
+// apk record (apk repository, installable, with a checksum -- what softwareCatalogPin accepts) is
+// found by name through a hash built once, and its dependency list is read in place from the
+// catalog's string pool.  Nothing here has a size limit beyond the catalog itself.
+private struct CatView {
+    const(ubyte)* b; ulong size;
+    uint repoCount, pkgCount, repoOff, pkgOff, strOff, strLen;
+    const(ubyte)* sums, deps;          // HOSSUM1 / HOSDEP1 offset arrays (deps null if absent)
+}
+private __gshared CatView g_cat;
+private __gshared bool    g_catOk, g_catTried;
+private __gshared int*    g_catHead;   // name hash -> first record (-1), then g_catNext chains
+private __gshared int*    g_catNext;
+private __gshared uint    g_catBuckets;
+
+private uint catRd32(const(ubyte)* p) @nogc nothrow { return p[0] | (p[1] << 8) | (p[2] << 16) | (cast(uint)p[3] << 24); }
+private const(char)* catStr(uint off) @nogc nothrow {
+    return (off < g_cat.strLen) ? cast(const(char)*)(g_cat.b + g_cat.strOff + off) : "".ptr;
+}
+private uint catHash(const(char)* s, size_t len) @nogc nothrow {
+    uint h = 2166136261u;
+    foreach (i; 0 .. len) { h ^= cast(ubyte)s[i]; h *= 16777619u; }
+    return (h ^ (h >> 15)) & (g_catBuckets - 1);
+}
+// An installable, verifiable apk record (the same test softwareCatalogPin applies).
+private bool catInstallable(uint i) @nogc nothrow {
+    const(ubyte)* rec = g_cat.b + g_cat.pkgOff + 28UL * i;
+    const uint ri = rec[24] | (rec[25] << 8);
+    if (ri >= g_cat.repoCount) return false;
+    const(ubyte)* rr = g_cat.b + g_cat.repoOff + 40UL * ri;
+    const(char)* mgr = catStr(catRd32(rr + 8));
+    if (!(mgr[0] == 'a' && mgr[1] == 'p' && mgr[2] == 'k' && mgr[3] == 0) || rr[28] == 0) return false;
+    return catRd32(g_cat.sums + 4UL * i) != 0;
+}
+private bool catOpen() @nogc nothrow {
+    if (g_catTried) return g_catOk;
+    g_catTried = true;
+    import memory.mm : alloc_phys_pages;
+    ulong phys, size;
+    if (!findBootModule("/software-catalog.bin\0".ptr, phys, size) || phys == 0 || size < 52) return false;
+    auto b = cast(const(ubyte)*)phys_to_virt(phys);
+    immutable string magic = "HOSSOFT1";
+    foreach (i; 0 .. 8) if (b[i] != magic[i]) return false;
+    CatView v;
+    v.b = b; v.size = size;
+    v.repoCount = catRd32(b + 12); v.pkgCount = catRd32(b + 16);
+    v.repoOff = catRd32(b + 20); v.pkgOff = catRd32(b + 24); v.strOff = catRd32(b + 28); v.strLen = catRd32(b + 32);
+    if (cast(ulong)v.repoOff + 40UL * v.repoCount > size || cast(ulong)v.pkgOff + 28UL * v.pkgCount > size
+        || cast(ulong)v.strOff + v.strLen > size) return false;
+    const ulong t1 = cast(ulong)v.strOff + v.strLen;
+    immutable string m1 = "HOSSUM1\0", m2 = "HOSDEP1\0";
+    if (t1 + 12 + 4UL * v.pkgCount > size) return false;
+    foreach (i; 0 .. 8) if (b[t1 + i] != cast(ubyte)m1[i]) return false;
+    v.sums = b + t1 + 12;
+    const ulong t2 = t1 + 12 + 4UL * v.pkgCount;
+    if (t2 + 12 + 4UL * v.pkgCount <= size) {
+        bool m = true;
+        foreach (i; 0 .. 8) if (b[t2 + i] != cast(ubyte)m2[i]) m = false;
+        if (m && catRd32(b + t2 + 8) == v.pkgCount) v.deps = b + t2 + 12;
+    }
+    g_cat = v;
+    uint nb = 1024;
+    while (nb < 2 * v.pkgCount) nb <<= 1;
+    const ulong hp = alloc_phys_pages((nb * int.sizeof + 4095) / 4096);
+    const ulong np = alloc_phys_pages((v.pkgCount * int.sizeof + 4095) / 4096 + 1);
+    if (hp == 0 || np == 0) return false;
+    g_catHead = cast(int*)phys_to_virt(hp);
+    g_catNext = cast(int*)phys_to_virt(np);
+    g_catBuckets = nb;
+    foreach (i; 0 .. nb) g_catHead[i] = -1;
+    // Inserted in reverse so each chain lists records in catalog order: the first installable
+    // match is the one softwareCatalogPin picks.
+    foreach_reverse (i; 0 .. v.pkgCount) {
+        g_catNext[i] = -1;
+        if (!catInstallable(i)) continue;
+        const(char)* nm = catStr(catRd32(v.b + v.pkgOff + 28UL * i));
+        size_t l = 0; while (nm[l] != 0) ++l;
+        const uint h = catHash(nm, l);
+        g_catNext[i] = g_catHead[h];
+        g_catHead[h] = cast(int)i;
+    }
+    g_catOk = true;
+    return true;
+}
+
+/// TEST IMAGES ONLY (AUTOPKG=<name> make iso stages /autopkg): the package a headless test asks the
+/// Software Center to install once the network is up.  Copies its name into `out`; false when the
+/// image has no such module (every shipped image).
+public bool softwareAutoPkg(char* out_, size_t cap) @nogc nothrow {
+    ulong phys, size;
+    if (cap == 0 || !findBootModule("/autopkg\0".ptr, phys, size) || phys == 0 || size == 0) return false;
+    auto t = cast(const(char)*)phys_to_virt(phys);
+    size_t n = 0;
+    while (n < size && n + 1 < cap && t[n] != '\n' && t[n] != 0) { out_[n] = t[n]; ++n; }
+    out_[n] = 0;
+    return n > 0;
+}
+
+/// Number of records in the catalog (0 without one): the planner sizes its work from this.
+public uint softwareCatalogCount() @nogc nothrow { return catOpen() ? g_cat.pkgCount : 0; }
+
+/// The installable apk record called `name` (len bytes), or -1.
+public int softwareCatalogFind(const(char)* name, size_t len) @nogc nothrow {
+    if (!catOpen() || len == 0) return -1;
+    for (int i = g_catHead[catHash(name, len)]; i >= 0; i = g_catNext[i]) {
+        const(char)* nm = catStr(catRd32(g_cat.b + g_cat.pkgOff + 28UL * cast(uint)i));
+        size_t k = 0;
+        while (k < len && nm[k] == name[k]) ++k;
+        if (k == len && nm[k] == 0) return i;
+    }
+    return -1;
+}
+
+/// Record `rec`'s package name (NUL-terminated, in the catalog).
+public const(char)* softwareCatalogName(int rec) @nogc nothrow {
+    if (!catOpen() || rec < 0 || cast(uint)rec >= g_cat.pkgCount) return "".ptr;
+    return catStr(catRd32(g_cat.b + g_cat.pkgOff + 28UL * cast(uint)rec));
+}
+
+/// Record `rec`'s dependencies: space-separated package names, in place (never null).
+public const(char)* softwareCatalogDepsOf(int rec) @nogc nothrow {
+    if (!catOpen() || g_cat.deps is null || rec < 0 || cast(uint)rec >= g_cat.pkgCount) return "".ptr;
+    return catStr(catRd32(g_cat.deps + 4UL * cast(uint)rec));
 }
 
 /// A package's runtime dependencies from the image catalog's HOSDEP1 trailer: space-separated
@@ -7845,7 +8138,13 @@ public int softwareApkTryComplete(const(char)* name, uint dom) @nogc nothrow {
 
     int par; const(char)* lf; size_t ll;
     int rc;
-    if (rtResolve(dp.ptr, par, lf, ll) >= 0) {
+    const int mi = rtResolve(dp.ptr, par, lf, ll);
+    bool complete = false;                         // a marker is complete once its line is
+    if (mi >= 0 && g_rt[mi].kind == RT_REG && g_rt[mi].data !is null)
+        foreach (k; 0 .. g_rt[mi].size) if (g_rt[mi].data[k] == '\n') { complete = true; break; }
+    if (mi >= 0 && !complete) {
+        rc = -1;                                   // still being written: poll again
+    } else if (mi >= 0) {
         rc = softwareApkInstallDoneInner(name);   // already impersonating dom
         if (rc < 0) rc = -2;                       // marker present but placement failed
     } else {
@@ -7876,15 +8175,32 @@ public int softwareApkTryComplete(const(char)* name, uint dom) @nogc nothrow {
 // One record per package a verified install placed; rtfs nodes point back at it (RtNode.pkgIdx).
 // The appgate key of every program in the package is "pkg:<name>", so the Domain Manager
 // delegates a PACKAGE (all of its commands) to a domain -- the unit a user installs.
-enum int PKG_REC_MAX = 128;
+// The table doubles when full (records are addressed by index, never by a kept pointer, so moving
+// them is safe): there is no limit on how many packages can be installed.
 private struct PkgRec { bool used; ubyte nameLen; char[48] name; char[40] ver; uint files; uint cmds; uint dom; }
-private __gshared PkgRec[PKG_REC_MAX] g_pkgRecs;
+private __gshared PkgRec* g_pkgRecs;
+private __gshared uint    g_pkgRecCap = 0;
+private __gshared ulong   g_pkgRecPhys = 0;
 
-// Find or create a package's record; 1-based index, 0 when the table is full.
+private bool pkgRecGrow() @nogc nothrow {
+    import memory.mm : alloc_phys_pages, free_phys_pages;
+    const uint ncap = g_pkgRecCap ? g_pkgRecCap * 2 : 64;
+    const size_t pages = (ncap * PkgRec.sizeof + 4095) / 4096;
+    const ulong phys = alloc_phys_pages(pages);
+    if (phys == 0) return false;
+    auto recs = cast(PkgRec*)phys_to_virt(phys);
+    foreach (i; 0 .. ncap) recs[i] = (i < g_pkgRecCap) ? g_pkgRecs[i] : PkgRec.init;
+    if (g_pkgRecs !is null) free_phys_pages(g_pkgRecPhys, (g_pkgRecCap * PkgRec.sizeof + 4095) / 4096);
+    g_pkgRecs = recs; g_pkgRecPhys = phys; g_pkgRecCap = ncap;
+    return true;
+}
+
+// Find or create a package's record; 1-based index, 0 only when memory is exhausted.
 private int pkgRecFor(const(char)* name, const(char)* ver) @nogc nothrow {
     size_t n = 0; while (name[n] != 0 && n < 47) ++n;
     int free_ = -1;
-    foreach (i, ref r; g_pkgRecs) {
+    foreach (i; 0 .. g_pkgRecCap) {
+        auto r = &g_pkgRecs[i];
         if (!r.used) { if (free_ < 0) free_ = cast(int)i; continue; }
         if (r.nameLen == n) {
             bool eq = true;
@@ -7892,7 +8208,10 @@ private int pkgRecFor(const(char)* name, const(char)* ver) @nogc nothrow {
             if (eq) return cast(int)i + 1;
         }
     }
-    if (free_ < 0) return 0;
+    if (free_ < 0) {
+        free_ = cast(int)g_pkgRecCap;
+        if (!pkgRecGrow()) return 0;
+    }
     auto r = &g_pkgRecs[free_];
     r.used = true; r.nameLen = cast(ubyte)n; r.files = 0; r.cmds = 0; r.dom = 0;
     foreach (k; 0 .. n) r.name[k] = name[k];
@@ -7908,7 +8227,8 @@ private int pkgRecFor(const(char)* name, const(char)* ver) @nogc nothrow {
 /// exec'd, so there is nothing to delegate -- it is not listed.
 public const(char)* pkgInstalledAt(uint i) @nogc nothrow {
     uint k = 0;
-    foreach (ref r; g_pkgRecs) {
+    foreach (ri_; 0 .. g_pkgRecCap) {
+        auto r = &g_pkgRecs[ri_];
         if (!r.used || r.cmds == 0) continue;
         if (k == i) return r.name.ptr;
         ++k;
@@ -7919,7 +8239,8 @@ public const(char)* pkgInstalledAt(uint i) @nogc nothrow {
 /// Is `name` an installed package?  (appgate: only an installed package's key can be delegated.)
 public bool softwarePkgInstalled(const(char)* name) @nogc nothrow {
     if (name is null) return false;
-    foreach (ref r; g_pkgRecs) {
+    foreach (ri_; 0 .. g_pkgRecCap) {
+        auto r = &g_pkgRecs[ri_];
         if (!r.used) continue;
         size_t k = 0;
         while (k < r.nameLen && name[k] == r.name[k]) ++k;
@@ -7956,7 +8277,7 @@ public bool rtExecImage(const(char)* path, int tid, ulong* phys, ulong* size, co
     // the caller must be allowed to READ it (a confined domain sees only what its namespace binds)
     if (nsPathVerdict(path, openRightsForFlags(0)) != 0) return false;
     const int pk = g_rt[idx].pkgIdx - 1;
-    if (pk < 0 || pk >= PKG_REC_MAX || !g_pkgRecs[pk].used) return false;
+    if (pk < 0 || pk >= g_pkgRecCap || !g_pkgRecs[pk].used) return false;
     *phys = g_rt[idx].dataPhys;
     *size = g_rt[idx].size;
     size_t n = g_rt[idx].nameLen < 47 ? g_rt[idx].nameLen : 47;
@@ -7970,7 +8291,7 @@ public bool rtExecImage(const(char)* path, int tid, ulong* phys, ulong* size, co
 /// The appgate key of installed package `pkg1` (1-based record): "pkg:<name>" into buf; null if none.
 public const(char)* pkgKeyFor(int pkg1, char* buf, size_t cap) @nogc nothrow {
     const int pk = pkg1 - 1;
-    if (pk < 0 || pk >= PKG_REC_MAX || !g_pkgRecs[pk].used || cap < 8) return null;
+    if (pk < 0 || pk >= g_pkgRecCap || !g_pkgRecs[pk].used || cap < 8) return null;
     size_t o = 0;
     foreach (ch; "pkg:") buf[o++] = ch;
     foreach (k; 0 .. g_pkgRecs[pk].nameLen) if (o + 1 < cap) buf[o++] = g_pkgRecs[pk].name[k];
@@ -7980,7 +8301,8 @@ public const(char)* pkgKeyFor(int pkg1, char* buf, size_t cap) @nogc nothrow {
 
 /// Forget a package record (the boot self-test's synthetic package must not look installed).
 private void pkgRecDrop(const(char)* name) @nogc nothrow {
-    foreach (ref r; g_pkgRecs) {
+    foreach (ri_; 0 .. g_pkgRecCap) {
+        auto r = &g_pkgRecs[ri_];
         if (!r.used) continue;
         size_t k = 0;
         while (k < r.nameLen && name[k] == r.name[k]) ++k;
@@ -8059,8 +8381,8 @@ private int softwareApkInstallDoneInner(const(char)* name) @nogc nothrow {
     if (di < 0 || g_rt[di].kind != RT_REG || g_rt[di].data is null) return -1;
 
     // Parse the marker's first line; we need token 3 (stagedir) and token 4 (manifestpath).
-    char[256] stageDir = void; size_t sdl = 0;
-    char[256] manPath  = void; size_t mnl = 0;
+    char[512] stageDir = void; size_t sdl = 0;
+    char[512] manPath  = void; size_t mnl = 0;
     {
         const(ubyte)* d = g_rt[di].data;
         uint sz = g_rt[di].size;
@@ -8119,11 +8441,12 @@ private int softwareApkInstallDoneInner(const(char)* name) @nogc nothrow {
                 if (why !is null) { ++refused; continue; } }
             const int li = rtAddSymlink(cast(const(char)*)lp, plen,
                                         cast(const(char)*)(md + tab + 1), start + rlen - (tab + 1));
-            if (li > 0) { g_rt[li].pkgIdx = cast(ushort)pkgRec; ++placed; }
+            if (li > 0) { g_rt[li].pkgIdx = cast(uint)pkgRec; ++placed; }
             continue;
         }
         // src = "<stageDir>/<rel>" (absolute), resolve it, then place at the relative <rel>.
-        char[600] src = void; size_t sl = 0;
+        // (Static: a path may be as long as the fs allows, and placement runs one at a time.)
+        static __gshared char[8192] src; size_t sl = 0;
         for (uint k = 0; k < sdl && sl + 1 < src.length; ++k) src[sl++] = stageDir[k];
         if (sl + 1 < src.length) src[sl++] = '/';
         for (uint k = 0; k < rlen && sl + 1 < src.length; ++k) src[sl++] = cast(char)md[start + k];
@@ -8150,14 +8473,14 @@ private int softwareApkInstallDoneInner(const(char)* name) @nogc nothrow {
         // Tag the placed node with its package, make commands executable, and drop the staged
         // copy (it doubled every package against the 64 MiB rtfs cap).
         {
-            char[600] dst = void; size_t dstLen = 0;
+            static __gshared char[8192] dst; size_t dstLen = 0;
             dst[dstLen++] = '/';
             for (uint k = 0; k < rlen && dstLen + 1 < dst.length; ++k) dst[dstLen++] = cast(char)md[start + k];
             dst[dstLen] = 0;
             int dpar; const(char)* dlf; size_t dll;
             const int ni = rtResolve(dst.ptr, dpar, dlf, dll);
             if (ni > 0 && g_rt[ni].kind == RT_REG) {
-                g_rt[ni].pkgIdx = cast(ushort)pkgRec;
+                g_rt[ni].pkgIdx = cast(uint)pkgRec;
                 bool cmd = false;
                 for (uint k = 0; k + 4 <= rlen; ++k)
                     if ((md[start + k] == 'b' && md[start + k + 1] == 'i' && md[start + k + 2] == 'n' && md[start + k + 3] == '/')
@@ -8291,7 +8614,7 @@ public void rtDomainIsolationProof() @nogc nothrow {
         // readdir visibility (the getdents64 filter rule: show own==dom or shared): each domain
         // LISTS only its own "f"; a non-domain caller lists neither (both are private).
         int visA = 0, visB = 0, vis0 = 0;
-        for (int i = 1; i < RT_MAX_NODES; ++i) {
+        for (int i = 1; i < g_rtNodes; ++i) {
             if (g_rt[i].kind == RT_FREE || g_rt[i].parent != dir) continue;
             const uint own = g_rt[i].ownerDom;
             if (own == DOM_A || own == 0) ++visA;
@@ -8340,7 +8663,7 @@ private void rtAddFile(const(char)* rel, size_t relLen, const(ubyte)* data, uint
             if (fidx < 0) fidx = rtCreate(cur, rel + cstart, clen, RT_REG,
                                           cast(ushort)0x1A4 /*0644*/, 0, 0);
             if (fidx < 0 || g_rt[fidx].kind != RT_REG) {
-                rtAddFileFail(rel, relLen, "no free overlay node (RT_MAX_NODES)\0".ptr);
+                rtAddFileFail(rel, relLen, "no free overlay node (out of memory)\0".ptr);
                 return;
             }
             { ulong _dbLen; if (diskFileLbaForNode(fidx, _dbLen) != 0) {
@@ -8371,7 +8694,7 @@ private void rtAddFile(const(char)* rel, size_t relLen, const(ubyte)* data, uint
 // A package's symlink (rel is RELATIVE, like rtAddFile's): creates parent directories, never
 // replaces an existing node.  Returns the node index, or -1.
 private int rtAddSymlink(const(char)* rel, size_t relLen, const(char)* target, size_t tlen) {
-    if (tlen == 0 || tlen > 255) return -1;
+    if (tlen == 0 || tlen > 4095) return -1;       // Linux's PATH_MAX - 1
     int cur = 0;
     size_t i = 0;
     while (i < relLen) {
@@ -8486,7 +8809,7 @@ private void wifiCom2TxStr(const(char)* s) @nogc nothrow { while (*s) wifiCom2Tx
 private void wifiRtDelete(const(char)* absPath) @nogc nothrow {
     int par; const(char)* lf; size_t lfl;
     const int idx = rtResolve(absPath, par, lf, lfl);
-    if (idx > 0 && idx < RT_MAX_NODES && g_rt[idx].kind == RT_REG) {
+    if (idx > 0 && idx < g_rtNodes && g_rt[idx].kind == RT_REG) {
         rtFreeData(g_rt[idx]);
         g_rt[idx].kind = RT_FREE;
         g_rt[idx].parent = -1;
@@ -8524,7 +8847,7 @@ public void wifiBridgePoll() @nogc nothrow {
     // 2) forward a pending connect request, then delete it.
     int cpar; const(char)* clf; size_t clfl;
     const int ci = rtResolve("/run/wifi/connect\0".ptr, cpar, clf, clfl);
-    if (ci > 0 && ci < RT_MAX_NODES && g_rt[ci].kind == RT_REG && g_rt[ci].size > 0) {
+    if (ci > 0 && ci < g_rtNodes && g_rt[ci].kind == RT_REG && g_rt[ci].size > 0) {
         wifiCom2TxStr("CONNECT\t".ptr);
         foreach (k; 0 .. g_rt[ci].size) {
             const ubyte c = g_rt[ci].data[k];
@@ -13496,7 +13819,7 @@ public long linux_sys_chdir(ulong path) {
         // resolved files under it.  Resolve the path; if it lands on a directory node, allow it.
         int rparent; const(char)* rleaf; size_t rleafLen;
         const int ri = rtResolve(p, rparent, rleaf, rleafLen);
-        if (ri >= 0 && ri < RT_MAX_NODES && g_rt[ri].kind == RT_DIR) ok = true;
+        if (ri >= 0 && ri < g_rtNodes && g_rt[ri].kind == RT_DIR) ok = true;
     }
     if (!ok) return negErrno(ENOENT);
     size_t len = 0;
@@ -13904,10 +14227,10 @@ public long linux_sys_getdents64(ulong fd, ulong dirp, ulong count) {
         const uint listSys = (listDom == 0) ? rtSystemDom() : 0;
         bool domHasPrivateHere = false;
         if (listDom != 0)
-            for (int i = 1; i < RT_MAX_NODES; ++i)
+            for (int i = 1; i < g_rtNodes; ++i)
                 if (g_rt[i].kind != RT_FREE && g_rt[i].parent == dirIdx && g_rt[i].ownerDom == listDom) { domHasPrivateHere = true; break; }
         ulong logical = 2;
-        for (int i = 1; i < RT_MAX_NODES; ++i) {
+        for (int i = 1; i < g_rtNodes; ++i) {
             if (g_rt[i].kind == RT_FREE || g_rt[i].parent != dirIdx) continue;
             const uint own = g_rt[i].ownerDom;
             if (listSys != 0 && own == listSys) {
@@ -14814,7 +15137,7 @@ private long rtUnlinkSyscall(const(char)* path, bool dirOnly) {
     if (idx == 0) return negErrno(EBUSY);           // never remove the overlay root
     if (dirOnly) {
         if (g_rt[idx].kind != RT_DIR) return negErrno(ENOTDIR);
-        for (int i = 1; i < RT_MAX_NODES; ++i)
+        for (int i = 1; i < g_rtNodes; ++i)
             if (g_rt[i].kind != RT_FREE && g_rt[i].parent == idx)
                 return negErrno(ENOTEMPTY);
     } else if (g_rt[idx].kind == RT_DIR) {
@@ -14889,9 +15212,11 @@ private long rtRenameSyscall(const(char)* oldp, const(char)* newp) {
         g_rt[nidx].kind   = RT_FREE;
         g_rt[nidx].parent = -1;
     }
+    rtHashRemove(oidx);
     g_rt[oidx].parent  = np;
     g_rt[oidx].nameLen = cast(ubyte)nll;
     foreach (i; 0 .. nll) g_rt[oidx].name[i] = nl[i];
+    rtHashInsert(oidx);
     return 0;
 }
 
@@ -15163,7 +15488,7 @@ private long fileObjMmap(ObjHeader* oh, ulong offset, ulong* physOut,
         // any result <= 0 alike and falls back to mmapCopyFileRange, which fills from disk.
         const int ridx = cast(int)cast(size_t)f.backend;
         ulong dbLen;
-        if (ridx >= 0 && ridx < RT_MAX_NODES && diskFileLbaForNode(ridx, dbLen) != 0)
+        if (ridx >= 0 && ridx < g_rtNodes && diskFileLbaForNode(ridx, dbLen) != 0)
             return negErrno(ENODEV);
         return 0;
     }
@@ -15213,7 +15538,7 @@ public long linux_sys_fchmod(ulong fd, ulong m) {
         File* f = &g_fdTable[ifd];
         if (f.type == FileType.FD_RTFILE || f.type == FileType.FD_RTDIR) {
             const int idx = cast(int)cast(size_t)f.backend;
-            if (idx >= 0 && idx < RT_MAX_NODES) g_rt[idx].mode = cast(ushort)(m & 0xFFF);
+            if (idx >= 0 && idx < g_rtNodes) g_rt[idx].mode = cast(ushort)(m & 0xFFF);
         }
     }
     return 0;
@@ -15252,7 +15577,7 @@ public long linux_sys_fchown(ulong fd, ulong u, ulong g){
         File* f = &g_fdTable[ifd];
         if (f.type == FileType.FD_RTFILE || f.type == FileType.FD_RTDIR) {
             const int idx = cast(int)cast(size_t)f.backend;
-            if (idx >= 0 && idx < RT_MAX_NODES) {
+            if (idx >= 0 && idx < g_rtNodes) {
                 if (u != ulong.max) g_rt[idx].uid = cast(uint)u;
                 if (g != ulong.max) g_rt[idx].gid = cast(uint)g;
             }

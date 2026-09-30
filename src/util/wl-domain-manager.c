@@ -208,7 +208,6 @@ struct gstartup { char cmd[96]; int live; };   // live = an `autostart-live` (in
 // The domains it may run in are kept by NAME, never by list index -- creating or deleting a domain
 // shifts every index after it, and a mask over indices then showed one domain's grants under
 // another domain's name.
-#define MAX_GRANTS 48
 struct gappgrant {
     char id[72];               // registry appId ("wl-files", "hos-wifiterm", "store:<name>")
     int  delegable;            // "delegable" (absent -> 1): may it be delegated out of System at all
@@ -270,13 +269,13 @@ struct app {
     int  n_startup;
     // Applications tab: indices into DMAPPS whose binary actually exists, so the list never
     // offers a launch that can only fail with "[exec] not found".
-    int  avail[24];
-    int  n_avail;
+    int *avail;                /* Applications rows (DMAPPS index, or N_DMAPP + installed package) */
+    int  n_avail, cap_avail;
     // appgate delegation: the /config/apps.json records (grants keyed by domain name), and which
     // app's domain checklist is currently open in the System Applications tab (-1 = none).
-    struct gappgrant grants[MAX_GRANTS];
-    int  n_grants;
-    unsigned app_overlay_mask[24];/* per-avail-index bitmask over domain indices: overlay-mode on for (app,domain) */
+    struct gappgrant *grants;  /* every application record in /config/apps.json */
+    int  n_grants, cap_grants;
+    unsigned *app_overlay_mask; /* parallel to avail[] *//* per-avail-index bitmask over domain indices: overlay-mode on for (app,domain) */
     int  port_panel;
     // appgate (/config/appgate.json): the System domain's name and the desktop session domain's --
     // the one every launch from the shared desktop (app grid, keybinds, top bar) lands in.
@@ -584,15 +583,32 @@ static const char *dmapp_id(const struct dmapp *a) { return a->exec + 1; }   // 
 /* Installed packages (Software Center) as Applications rows: one per "pkg:<name>" record the kernel
  * lists in /config/apps.json.  exec is "/pkg:<name>" so dmapp_id() yields the grant key the port
  * verbs take; a package is delegated as a unit -- every command it installed. */
-enum { N_DYNAPP_MAX = 10 };
-static struct dmapp g_dynapps[N_DYNAPP_MAX];
-static char g_dyn_label[N_DYNAPP_MAX][64], g_dyn_exec[N_DYNAPP_MAX][72];
-static int  g_n_dynapps;
+struct dynapp { struct dmapp a; char label[64]; char exec[72]; };
+static struct dynapp *g_dyn;          /* grows with the installed packages: no cap */
+static int  g_n_dynapps, g_cap_dynapps;
 static const struct dmapp *dm_app(int idx)
 {
     if (idx < N_DMAPP) return &DMAPPS[idx];
     idx -= N_DMAPP;
-    return (idx >= 0 && idx < g_n_dynapps) ? &g_dynapps[idx] : &DMAPPS[0];
+    return (idx >= 0 && idx < g_n_dynapps) ? &g_dyn[idx].a : &DMAPPS[0];
+}
+
+/* Append an Applications row (and its overlay mask).  0 on success, -1 when out of memory. */
+static int avail_push(struct app *app, int v)
+{
+    if (app->n_avail == app->cap_avail) {
+        int nc = app->cap_avail ? app->cap_avail * 2 : 32;
+        int *na = realloc(app->avail, (size_t)nc * sizeof *na);
+        if (!na) return -1;
+        app->avail = na;
+        unsigned *nm = realloc(app->app_overlay_mask, (size_t)nc * sizeof *nm);
+        if (!nm) return -1;
+        app->app_overlay_mask = nm;
+        app->cap_avail = nc;
+    }
+    app->app_overlay_mask[app->n_avail] = 0;
+    app->avail[app->n_avail++] = v;
+    return 0;
 }
 
 static void appl_row_rect(int idx, int *x, int *y, int *w, int *h) {   // Applications Launch pills
@@ -605,9 +621,9 @@ static void appl_row_rect(int idx, int *x, int *y, int *w, int *h) {   // Applic
 static void load_apps(struct app *app)
 {
     app->n_avail = 0;
-    for (int i = 0; i < N_DMAPP && app->n_avail < (int)(sizeof(app->avail)/sizeof(app->avail[0])); i++)
+    for (int i = 0; i < N_DMAPP; i++)
         if (access(DMAPPS[i].exec, X_OK) == 0)
-            app->avail[app->n_avail++] = i;
+            avail_push(app, i);
     printf("DOMAINMGR: %d of %d applications present\n", app->n_avail, N_DMAPP);
     fflush(stdout);
 }
@@ -641,11 +657,17 @@ static void load_apps_ports(struct app *app)
     char *json = malloc(sz + 1);
     if (!json) { free(buf); return; }
     memcpy(json, buf, sz); json[sz] = 0; free(buf);
-    for (const char *q = json; app->n_grants < MAX_GRANTS; ) {
+    for (const char *q = json; ; ) {
         const char *idk = json_key(q, "id");
         if (!idk) break;
         const char *idEnd = json_key(idk + 4, "id");          // next record
         if (!idEnd) idEnd = json + sz;
+        if (app->n_grants == app->cap_grants) {               // no cap: grow with the records
+            int nc = app->cap_grants ? app->cap_grants * 2 : 64;
+            struct gappgrant *ng = realloc(app->grants, (size_t)nc * sizeof *ng);
+            if (!ng) break;
+            app->grants = ng; app->cap_grants = nc;
+        }
         struct gappgrant *g = &app->grants[app->n_grants];
         memset(g, 0, sizeof(*g));
         j_field(idk, idEnd, "id", g->id, sizeof(g->id));
@@ -673,18 +695,25 @@ static void load_apps_ports(struct app *app)
         for (int i = 0; i < app->n_avail; i++) if (app->avail[i] < N_DMAPP) app->avail[keep++] = app->avail[i];
         app->n_avail = keep;
         g_n_dynapps = 0;
-        for (int i = 0; i < app->n_grants && g_n_dynapps < N_DYNAPP_MAX; i++) {
+        for (int i = 0; i < app->n_grants; i++) {
             const char *id = app->grants[i].id;
             if (strncmp(id, "pkg:", 4) != 0) continue;
-            if (app->n_avail >= (int)(sizeof(app->avail)/sizeof(app->avail[0]))) break;
+            if (g_n_dynapps == g_cap_dynapps) {
+                int nc = g_cap_dynapps ? g_cap_dynapps * 2 : 16;
+                struct dynapp *nd = realloc(g_dyn, (size_t)nc * sizeof *nd);
+                if (!nd) break;
+                g_dyn = nd; g_cap_dynapps = nc;
+            }
             int k = g_n_dynapps++;
-            snprintf(g_dyn_label[k], sizeof g_dyn_label[k], "%s (package)", id + 4);
-            snprintf(g_dyn_exec[k], sizeof g_dyn_exec[k], "/%s", id);
-            g_dynapps[k].label = g_dyn_label[k];
-            g_dynapps[k].exec  = g_dyn_exec[k];
-            g_dynapps[k].cls   = "";
-            g_dynapps[k].flags = DMF_CLI | DMF_PKG;
-            app->avail[app->n_avail++] = N_DMAPP + k;
+            snprintf(g_dyn[k].label, sizeof g_dyn[k].label, "%s (package)", id + 4);
+            snprintf(g_dyn[k].exec, sizeof g_dyn[k].exec, "/%s", id);
+            g_dyn[k].a.cls   = "";
+            g_dyn[k].a.flags = DMF_CLI | DMF_PKG;
+            if (avail_push(app, N_DMAPP + k) != 0) { --g_n_dynapps; break; }
+        }
+        for (int k = 0; k < g_n_dynapps; k++) {        /* (re)point: realloc may have moved them */
+            g_dyn[k].a.label = g_dyn[k].label;
+            g_dyn[k].a.exec  = g_dyn[k].exec;
         }
     }
     int ndeleg = 0;
@@ -926,13 +955,29 @@ static int appl_listed(const struct app *app, int ai)
 // The rows the Applications tab shows, in screen order (rows[r] = avail index).  The draw pass and
 // the click pass both walk THIS list, so screen row r is the same application in both, and a
 // domain's tab has no blank rows where the apps it was not delegated used to be skipped.
-/* row pitch (px): shrinks when installed packages lengthen the list (set by appl_rows) */
-static int appl_rows(const struct app *app, int rows[24])
+/* row pitch (px): shrinks when installed packages lengthen the list (set by appl_rows).  Past what
+ * fits, the list scrolls (mouse wheel, g_appl_scroll = first row shown); *rows points at the first
+ * VISIBLE row and the count returned is what is on screen, so the draw and click passes need not
+ * know about scrolling. */
+static int g_appl_scroll = 0, g_appl_total = 0, g_appl_fit = 0;
+static int appl_rows(const struct app *app, int **rows)
 {
+    static int *buf; static int cap;
+    if (cap < app->n_avail) {
+        int *nb = realloc(buf, (size_t)(app->n_avail + 16) * sizeof *nb);
+        if (!nb) { *rows = buf; return 0; }
+        buf = nb; cap = app->n_avail + 16;
+    }
     int n = 0;
-    for (int i = 0; i < app->n_avail && n < 24; i++) if (appl_listed(app, i)) rows[n++] = i;
+    for (int i = 0; i < app->n_avail; i++) if (appl_listed(app, i)) buf[n++] = i;
     g_appl_pitch = n <= 14 ? 30 : (n <= 17 ? 26 : 22);
-    return n;
+    int fit = (app->height - (TAB_Y + 40) - 40) / g_appl_pitch;
+    if (fit < 1) fit = 1;
+    if (g_appl_scroll > n - fit) g_appl_scroll = n - fit;
+    if (g_appl_scroll < 0) g_appl_scroll = 0;
+    g_appl_total = n; g_appl_fit = fit;
+    *rows = buf + g_appl_scroll;
+    return n - g_appl_scroll < fit ? n - g_appl_scroll : fit;
 }
 
 static void export_btn_rect(int *x, int *y, int *w, int *h) {   // DM12 Appearance-tab Export button
@@ -1791,8 +1836,8 @@ static void tab_applications(struct app *app, cairo_t *cr) {
         return;
     }
 
-    int rows[24];
-    const int nrows = appl_rows(app, rows);
+    int *rows;
+    const int nrows = appl_rows(app, &rows);
     if (cr) {
         for (int r = 0; r < nrows; r++) {
             const int i = rows[r];
@@ -1842,6 +1887,12 @@ static void tab_applications(struct app *app, cairo_t *cr) {
                     draw_text(app, "System only", x+8, y+5, w-10, 12, 0xff8d97a6u);
                 }
             }
+        }
+        if (g_appl_total > g_appl_fit) {               /* the list scrolls: say where we are */
+            char sc[64];
+            snprintf(sc, sizeof sc, "rows %d-%d of %d  (scroll for more)", g_appl_scroll + 1,
+                     g_appl_scroll + nrows, g_appl_total);
+            draw_text(app, sc, LABEL_X, TAB_Y + 40 + nrows * g_appl_pitch + 4, 300, 12, 0xff8d97a6u);
         }
         if (nrows == 0 && !is_template_dom(app, app->sel))
             draw_text(app, isSystem ? "(no application binaries found on this system)"
@@ -2408,8 +2459,8 @@ static void handle_click(struct app *app)
                     redraw_commit(app, "port toggle"); return; } }
             return;
         }
-        int rows[24];
-        const int nrows = appl_rows(app, rows);
+        int *rows;
+        const int nrows = appl_rows(app, &rows);
         for (int r = 0; r < nrows; r++) {
             const int i = rows[r];
             const struct dmapp *a = dm_app(app->avail[i]);
@@ -2453,7 +2504,16 @@ static void pointer_button(void *data, struct wl_pointer *p, uint32_t serial, ui
     if (app->pointer_y < HEADER_H) { xdg_toplevel_move(app->toplevel, app->seat, serial); return; }
     handle_click(app);
 }
-static void pointer_axis(void *data, struct wl_pointer *p, uint32_t time, uint32_t axis, wl_fixed_t value) { (void)data; (void)p; (void)time; (void)axis; (void)value; }
+static void pointer_axis(void *data, struct wl_pointer *p, uint32_t time, uint32_t axis, wl_fixed_t value)
+{
+    struct app *app = data; (void)p; (void)time;
+    if (axis != WL_POINTER_AXIS_VERTICAL_SCROLL || app->tab != 5 || app->port_panel >= 0) return;
+    const double v = wl_fixed_to_double(value);
+    const int before = g_appl_scroll;
+    g_appl_scroll += v > 0 ? 3 : (v < 0 ? -3 : 0);      /* appl_rows clamps it */
+    if (g_appl_scroll < 0) g_appl_scroll = 0;
+    if (g_appl_scroll != before) redraw_commit(app, "applications scroll");
+}
 static void pointer_frame(void *data, struct wl_pointer *p) { (void)data; (void)p; }
 static void pointer_axis_source(void *data, struct wl_pointer *p, uint32_t s) { (void)data; (void)p; (void)s; }
 static void pointer_axis_stop(void *data, struct wl_pointer *p, uint32_t t, uint32_t a) { (void)data; (void)p; (void)t; (void)a; }

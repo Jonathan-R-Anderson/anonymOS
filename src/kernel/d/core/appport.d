@@ -28,7 +28,9 @@ import core.io     : klog, klog_dec;
 
 extern (C) @nogc nothrow:
 
-enum int APPPORT_APPS_MAX = 48;    // distinct apps tracked (registry apps + objstore store:<n> apps)
+// Apps tracked (registry apps, objstore store:<n> apps, installed pkg:<n> packages): the table grows in
+// chunks as apps are delegated -- no cap.  Records never move, so a record pointer stays valid.
+enum int APPPORT_CHUNK = 64;
 enum int APPPORT_DOMS_MAX = 32;    // == DOM_MAX: an app can be delegated to every domain
 enum int APPPORT_NAME_MAX = 72;    // >= "store:" + the objstore's 64-byte app names
 
@@ -43,7 +45,22 @@ struct AppPortRec {
     uint nDoms;
     uint[APPPORT_DOMS_MAX] doms;            // allowed domain objIds
 }
-__gshared AppPortRec[APPPORT_APPS_MAX] g_appPort;
+private __gshared AppPortRec*[4096] g_appPortChunk;
+private __gshared uint g_appPortCap = 0;      // records allocated (a multiple of APPPORT_CHUNK)
+private AppPortRec* apRec(uint i) { return &g_appPortChunk[i / APPPORT_CHUNK][i % APPPORT_CHUNK]; }
+private bool apGrow() {
+    import memory.mm : alloc_phys_pages;
+    import core.exports : phys_to_virt;
+    const uint c = g_appPortCap / APPPORT_CHUNK;
+    if (c >= g_appPortChunk.length) return false;
+    const ulong phys = alloc_phys_pages((APPPORT_CHUNK * AppPortRec.sizeof + 4095) / 4096);
+    if (phys == 0) return false;
+    auto recs = cast(AppPortRec*)phys_to_virt(phys);
+    foreach (i; 0 .. APPPORT_CHUNK) recs[i] = AppPortRec.init;
+    g_appPortChunk[c] = recs;
+    g_appPortCap += APPPORT_CHUNK;
+    return true;
+}
 
 // True once the boot-time load/seed has run; before that the lifecycle hooks do not touch the store.
 __gshared bool g_appGrantsReady = false;
@@ -60,10 +77,14 @@ private void aSetName(ref AppPortRec e, const(char)* s) {
 // Find (or optionally create) the record for appid.
 private AppPortRec* appRecFor(const(char)* appid, bool create) {
     if (appid is null || appid[0] == 0) return null;
-    foreach (ref e; g_appPort) if (e.inUse && aStrEq(e.app.ptr, appid)) return &e;
+    foreach (i; 0 .. g_appPortCap) { auto e = apRec(i); if (e.inUse && aStrEq(e.app.ptr, appid)) return e; }
     if (!create) return null;
-    foreach (ref e; g_appPort) if (!e.inUse) { e.inUse = true; aSetName(e, appid); e.nDoms = 0; return &e; }
-    return null;
+    foreach (i; 0 .. g_appPortCap) { auto e = apRec(i); if (!e.inUse) { e.inUse = true; aSetName(*e, appid); e.nDoms = 0; return e; } }
+    const uint first = g_appPortCap;                 // every record is in use: add a chunk
+    if (!apGrow()) return null;
+    auto e = apRec(first);
+    e.inUse = true; aSetName(*e, appid); e.nDoms = 0;
+    return e;
 }
 
 // Grant/revoke by objId (the name-keyed verbs below and the lifecycle hooks share these).
@@ -115,10 +136,10 @@ public bool appPortAllowed(uint domObjId, const(char)* appid) {
 }
 
 // GUI enumeration (rendered into /config/apps.json by hoscall.d).
-public uint appPortCount() { uint n = 0; foreach (ref e; g_appPort) if (e.inUse) ++n; return n; }
+public uint appPortCount() { uint n = 0; foreach (i; 0 .. g_appPortCap) if (apRec(i).inUse) ++n; return n; }
 public AppPortRec* appPortAt(uint idx) {
     uint n = 0;
-    foreach (ref e; g_appPort) if (e.inUse) { if (n == idx) return &e; ++n; }
+    foreach (i; 0 .. g_appPortCap) { auto e = apRec(i); if (e.inUse) { if (n == idx) return e; ++n; } }
     return null;
 }
 // Is `appid` granted to domain objId `dom` (no System shortcut -- for rendering)?
@@ -161,7 +182,8 @@ public void appGrantsSeedDomain(uint dom) {
 // A domain was cloned: the clone may run exactly what its source could.
 public void appGrantsCloneDomain(uint srcDom, uint dstDom) {
     if (!g_appGrantsReady || !isGrantTarget(dstDom)) return;
-    foreach (ref e; g_appPort) {
+    foreach (api_; 0 .. g_appPortCap) {
+        auto e = apRec(api_);
         if (!e.inUse) continue;
         foreach (i; 0 .. e.nDoms) if (e.doms[i] == srcDom) { grantById(e.app.ptr, dstDom); break; }
     }
@@ -172,7 +194,8 @@ public void appGrantsCloneDomain(uint srcDom, uint dstDom) {
 // reused); the store only once the table is live.
 public void appGrantsScrubDomain(uint dom) {
     if (dom == 0) return;
-    foreach (ref e; g_appPort) {
+    foreach (api_; 0 .. g_appPortCap) {
+        auto e = apRec(api_);
         if (!e.inUse) continue;
         foreach (i; 0 .. e.nDoms) if (e.doms[i] == dom) {
             e.doms[i] = e.doms[e.nDoms - 1]; --e.nDoms;
@@ -207,7 +230,8 @@ public void appGrantsPersist() {
         bput(p, d.name.ptr, nl);
         bput(p, "\t".ptr, 1);
         uint k = 0;
-        foreach (ref e; g_appPort) {
+        foreach (api_; 0 .. g_appPortCap) {
+            auto e = apRec(api_);
             if (!e.inUse) continue;
             bool has = false;
             foreach (i; 0 .. e.nDoms) if (e.doms[i] == d.objId) { has = true; break; }
@@ -267,7 +291,7 @@ private uint loadGrants(uint len, ref bool[DOM_MAX] seen) {
 public void appGrantsInit() {
     if (g_appGrantsReady) return;
     // Anything the boot proofs left in the table is stale: start clean.
-    foreach (ref e; g_appPort) e = AppPortRec.init;
+    foreach (i; 0 .. g_appPortCap) *apRec(i) = AppPortRec.init;
     bool[DOM_MAX] seen = false;
     uint loaded = 0;
     bool corrupt = false;

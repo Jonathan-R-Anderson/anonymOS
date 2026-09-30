@@ -2595,9 +2595,19 @@ private long fileObjWrite(ObjHeader* oh, const(void)* buf, ulong count) {
         const int idx = cast(int)cast(size_t)f.backend;
         if (idx < 0 || idx >= RT_MAX_NODES || g_rt[idx].kind != RT_REG)
             return cast(ssize_t)negErrno(EBADF);
-        // Disk-backed (an imported ISO) is read-only: data is null and size is ~1 GiB, so
-        // rtEnsureCap would otherwise copy from a null pointer.  Covers write/writev/pwrite.
-        { ulong _dbLen; if (diskFileLbaForNode(idx, _dbLen) != 0) return cast(ssize_t)negErrno(EROFS); }
+        // Disk-backed: data is null and the size is gigabytes, so rtEnsureCap would copy from a
+        // null pointer.  An imported ISO is read-only; the VM store writes through to its partition
+        // for its writers only.  Covers write/writev/pwrite.
+        if (auto db = diskFileFor(idx)) {
+            if (!db.writable || !vmStoreWriterAllowed()) return cast(ssize_t)negErrno(EROFS);
+            if (f.flags & O_APPEND) f.offset = db.byteLen;
+            const long w = diskRegionWrite(db.lbaBase, db.cap, f.offset, buf, count);
+            if (w <= 0) return cast(ssize_t)w;
+            f.offset += cast(ulong)w;
+            if (f.offset > db.byteLen) { db.byteLen = f.offset; g_rt[idx].size = cast(uint)f.offset; }
+            f.fileSize = g_rt[idx].size;
+            return cast(ssize_t)w;
+        }
         if (f.flags & O_APPEND) f.offset = g_rt[idx].size;
         const ulong end = f.offset + count;
         if (end > uint.max) return cast(ssize_t)negErrno(ENOSPC);
@@ -4192,10 +4202,12 @@ public int sys_open(const(char)* path, int flags) {
         const int ri = rtResolve(path, rp, rl, rll);
         if (ri >= 0 && g_rt[ri].kind == RT_REG) {
             if ((flags & O_CREAT) && (flags & O_EXCL)) return negErrno(EEXIST);
-            // Disk-backed (an imported ISO) is read-only: refuse write access and O_TRUNC
-            // BEFORE the truncation below (delete it to reclaim the space instead).
+            // Disk-backed: never O_TRUNC (it would drop the size of a disk region), and write
+            // access only to the VM store, by its writers (an imported ISO is read-only; delete it
+            // to reclaim the space instead).  Checked BEFORE the truncation below.
             { ulong _dbLen;
-              if (diskFileLbaForNode(ri, _dbLen) != 0 && ((flags & 3) != O_RDONLY || (flags & O_TRUNC)))
+              if (diskFileLbaForNode(ri, _dbLen) != 0 &&
+                  ((flags & O_TRUNC) || ((flags & 3) != O_RDONLY && !diskFileWriteOk(ri))))
                   return negErrno(EROFS); }
             if (flags & O_TRUNC) g_rt[ri].size = 0;
             g_fdTable[fd].type     = FileType.FD_RTFILE;
@@ -4705,9 +4717,10 @@ public int sys_open(const(char)* path, int flags) {
             }
             // existing regular overlay file
             if ((flags & O_CREAT) && (flags & O_EXCL)) return negErrno(EEXIST);
-            // Disk-backed (an imported ISO) is read-only — same guard as the rtfs-assets branch.
+            // Disk-backed — same guard as the rtfs-assets branch.
             { ulong _dbLen;
-              if (diskFileLbaForNode(ridx, _dbLen) != 0 && ((flags & 3) != O_RDONLY || (flags & O_TRUNC)))
+              if (diskFileLbaForNode(ridx, _dbLen) != 0 &&
+                  ((flags & O_TRUNC) || ((flags & 3) != O_RDONLY && !diskFileWriteOk(ridx))))
                   return negErrno(EROFS); }
             if (flags & O_TRUNC) { g_rt[ridx].size = 0; }
             g_fdTable[fd].type     = FileType.FD_RTFILE;
@@ -4858,8 +4871,24 @@ public int sys_close(int fd) {
     auto cop = g_objOps[oh.type].close;
     if (cop is null) return negErrno(EBADF);
     int ret = cast(int)cop(oh);
-    if (ret == 0) capClear(cast(uint)fd);
+    if (ret == 0) { capClear(cast(uint)fd); epollForgetFd(fd); }
     return ret;
+}
+
+// Linux takes a closed fd out of every epoll set that watched it.  Watches here are keyed by fd
+// NUMBER, so without this a closed fd kept its watch: Cloud Hypervisor's serial thread (which
+// never EPOLL_CTL_DELs a disconnected console client) kept waking on it, and the next file to
+// get that number could not be added (EEXIST) or inherited the stale registration.
+private void epollForgetFd(int fd) {
+    if (fd < 0 || fd >= 1024 || g_fdTable is null) return;
+    foreach (e; 0 .. 1024) {
+        if (g_fdTable[e].type != FileType.FD_EPOLL) continue;
+        const int eid = cast(int)cast(size_t)g_fdTable[e].backend;
+        if (eid < 0 || eid >= EPOLL_MAX_INSTANCES) continue;
+        auto inst = &g_epollTable[eid];
+        foreach (ref w; inst.watches)
+            if (w.active && w.watchFd == fd) w.active = false;
+    }
 }
 
 // Close EVERY fd in a task's fd table on exit (no cap check — the task is gone).
@@ -5874,7 +5903,9 @@ __gshared ulong g_rtBytes = 0;               // total bytes backing RT payloads 
 // serialized into the /home persistence snapshot.  The rtfs node is an ordinary RT_REG entry
 // with data=null and size=the byte length; reads route to the backing disk region via this
 // side table (chosen over new RtNode fields to keep the node struct — and its BSS — unchanged).
-private struct DiskBackedFile { int node = -1; ulong lbaBase; ulong byteLen; }
+// byteLen is the file's size (reads stop there); cap is the region it may grow to.  Only the VM
+// store is writable (vmStoreWriterAllowed decides who); an imported ISO is read-only.
+private struct DiskBackedFile { int node = -1; ulong lbaBase; ulong byteLen; ulong cap; bool writable; }
 private enum int RT_DISK_FILES_MAX = 4;
 private __gshared DiskBackedFile[RT_DISK_FILES_MAX] g_diskFiles;
 private __gshared int g_diskFileCount = 0;
@@ -5887,11 +5918,20 @@ private ulong diskFileLbaForNode(int node, out ulong byteLen) @nogc nothrow {
     byteLen = 0;
     return 0;
 }
-private bool diskFileRegister(int node, ulong lbaBase, ulong byteLen) @nogc nothrow {
+private bool diskFileRegister(int node, ulong lbaBase, ulong byteLen, ulong cap = 0, bool writable = false) @nogc nothrow {
     if (g_diskFileCount >= RT_DISK_FILES_MAX) return false;
-    g_diskFiles[g_diskFileCount] = DiskBackedFile(node, lbaBase, byteLen);
+    g_diskFiles[g_diskFileCount] = DiskBackedFile(node, lbaBase, byteLen, cap ? cap : byteLen, writable);
     ++g_diskFileCount;
     return true;
+}
+private DiskBackedFile* diskFileFor(int node) @nogc nothrow {
+    foreach (i; 0 .. g_diskFileCount) if (g_diskFiles[i].node == node) return &g_diskFiles[i];
+    return null;
+}
+// May this open/write reach a disk-backed node?  A writable one (the VM store) only for its writers.
+private bool diskFileWriteOk(int node) {
+    auto d = diskFileFor(node);
+    return d !is null && d.writable && vmStoreWriterAllowed();
 }
 private void diskFileUnregister(int node) @nogc nothrow {
     foreach (i; 0 .. g_diskFileCount)
@@ -5902,6 +5942,9 @@ private void diskFileUnregister(int node) @nogc nothrow {
             return;
         }
 }
+
+// One 64 KiB bounce for disk-backed file I/O (the kernel runs these under the BKL).
+private __gshared ubyte[65536] g_diskBounce;
 
 // Read up to `count` bytes at byte `offset` from the disk region [lbaBase, lbaBase+byteLen).
 // Sector-granular with head/tail handling — the ~0-RAM read path for a disk-backed file
@@ -5919,6 +5962,18 @@ private long diskRegionRead(ulong lbaBase, ulong byteLen, ulong offset, void* bu
         const ulong pos    = offset + done;
         const ulong lba    = lbaBase + (pos / 512);
         const uint  within = cast(uint)(pos % 512);
+        // Whole sectors in runs of up to 128 through the shared bounce buffer: a VMM booting a
+        // guest from a disk-backed image reads megabytes at a time.
+        if (within == 0 && count - done >= 512) {
+            ulong secs = (count - done) / 512;
+            if (secs > g_diskBounce.length / 512) secs = g_diskBounce.length / 512;
+            if (!diskReadSectors(lba, cast(uint)secs, g_diskBounce.ptr))
+                return done > 0 ? cast(long)done : negErrno(EIO);
+            const size_t n = cast(size_t)(secs * 512);
+            foreach (k; 0 .. n) dst[done + k] = g_diskBounce[k];
+            done += n;
+            continue;
+        }
         // A media/driver error must not look like EOF: -EIO if nothing was read yet, else a
         // short count (POSIX short read; the next read at the new offset then gets -EIO).
         if (!diskReadSectors(lba, 1, sec.ptr))
@@ -5927,6 +5982,43 @@ private long diskRegionRead(ulong lbaBase, ulong byteLen, ulong offset, void* bu
         if (chunk > count - done) chunk = cast(uint)(count - done);
         foreach (k; 0 .. chunk) dst[done + k] = sec[within + k];
         done += chunk;
+    }
+    return cast(long)done;
+}
+
+// Write `count` bytes at byte `offset` into the disk region [lbaBase, lbaBase+cap).  Whole sectors
+// go out in runs of up to 128 (64 KiB) through one bounce buffer; a partial head/tail sector is
+// read, patched and written back.  Returns bytes written, or -EIO/-ENOSPC when nothing was.
+private long diskRegionWrite(ulong lbaBase, ulong cap, ulong offset, const(void)* buf, ulong count) {
+    import drivers.block.disk : diskReadSectors, diskWriteSectors;
+    if (count == 0) return 0;
+    if (offset >= cap) return negErrno(ENOSPC);
+    if (count > cap - offset) count = cap - offset;
+    auto src = cast(const(ubyte)*)buf;
+    ulong done = 0;
+    while (done < count) {
+        const ulong pos    = offset + done;
+        const ulong lba    = lbaBase + pos / 512;
+        const uint  within = cast(uint)(pos % 512);
+        const ulong left   = count - done;
+        if (within == 0 && left >= 512) {
+            ulong secs = left / 512;
+            if (secs > g_diskBounce.length / 512) secs = g_diskBounce.length / 512;
+            const size_t n = cast(size_t)(secs * 512);
+            foreach (k; 0 .. n) g_diskBounce[k] = src[done + k];
+            if (!diskWriteSectors(lba, cast(uint)secs, g_diskBounce.ptr))
+                return done > 0 ? cast(long)done : negErrno(EIO);
+            done += n;
+        } else {
+            if (!diskReadSectors(lba, 1, g_diskBounce.ptr))
+                return done > 0 ? cast(long)done : negErrno(EIO);
+            uint chunk = 512 - within;
+            if (chunk > left) chunk = cast(uint)left;
+            foreach (k; 0 .. chunk) g_diskBounce[within + k] = src[done + k];
+            if (!diskWriteSectors(lba, 1, g_diskBounce.ptr))
+                return done > 0 ? cast(long)done : negErrno(EIO);
+            done += chunk;
+        }
     }
     return cast(long)done;
 }
@@ -5977,6 +6069,7 @@ public void isoStoreForgetAll() {
     foreach (i; 0 .. n) { nodes[i] = g_diskFiles[i].node; g_diskFiles[i] = DiskBackedFile.init; }
     g_diskFileCount = 0;                               // cleared first: rtFreeData's hook is a no-op
     g_isoStoreMaterialized = true;
+    g_vmStoreState = VMSTORE_NONE; g_vmStoreNode = -1;  // the VM store node goes with them
     foreach (i; 0 .. n) {
         const int node = nodes[i];
         if (node <= 0 || node >= RT_MAX_NODES || g_rt[node].kind != RT_REG) continue;
@@ -6078,6 +6171,149 @@ private void isoStoreSelfTest() {
         klog(" ro="); klog_hex(cast(ulong)cast(long)ro); klog(" pread="); klog_hex(cast(ulong)n);
         klog(" write="); klog_hex(cast(ulong)w); klog(cd ? " cd001=Y\n" : " cd001=N\n");
     }
+}
+
+// ── The firewall VM store ────────────────────────────────────────────────────────────────────
+// When the user picks the OPNsense firewall in the installer, the installer adds a 3 GiB partition
+// (core.diskpart VM_STORE_SECTORS) after slot-B -- and after an ISO store, if there is one -- and
+// zeroes its sector 1.  Nothing is downloaded at install time.  On the installed system:
+//   * empty store (sector 1 is not a GPT header): /vmstore/opnsense.img.part, the whole partition,
+//     disk-backed and writable by its writers only.  kernel_main starts hos-vm-fetch once the
+//     network is up; it streams the verified image in and writes sector 1 (the image's GPT header)
+//     LAST, then fsyncs.
+//   * the fsync publishes it (vmStorePublish): sector 1 now holds a GPT header whose backup LBA
+//     gives the image's size, so the node becomes /vmstore/opnsense.img at exactly that size.
+//   * later boots see the header and expose /vmstore/opnsense.img directly.
+// Writers: the System domain (the Virtual Machines app and its VMM) and the fetcher (a kernel-
+// started infrastructure program, domain 0).  Every other domain has no /vmstore binding at all.
+enum int VMSTORE_NONE = 0, VMSTORE_EMPTY = 1, VMSTORE_IMAGE = 2;
+private __gshared int   g_vmStoreState = VMSTORE_NONE;
+private __gshared int   g_vmStoreNode  = -1;
+private __gshared ulong g_vmStoreFirst, g_vmStoreLast;
+
+/// What the store holds now: VMSTORE_NONE (no store / live media), _EMPTY (waiting for the
+/// download) or _IMAGE (the firewall image is published at /vmstore/opnsense.img).
+public int vmStoreState() { return g_vmStoreState; }
+
+private bool vmStoreWriterAllowed() {
+    import core.domain : domainSystemId;
+    const int t = cast(int)g_current_task_id;
+    if (t < 0 || t >= MAX_TASKS) return false;
+    const uint dom = g_tasks[t].domainObjId;
+    if (dom != 0) return dom == domainSystemId();
+    const(char)* nm = g_taskExecName[t];
+    if (nm is null) return false;
+    immutable string want = "hos-vm-fetch";
+    foreach (i, c; want) if (nm[i] != c) return false;
+    return nm[want.length] == 0;
+}
+
+// The A/B layout (as isoStoreFindAB), then the store: entry 3, or entry 4 behind an ISO store,
+// 2048-aligned right after the previous partition and exactly VM_STORE_SECTORS long.
+private bool vmStoreFindAB(out ulong first, out ulong last) {
+    import core.diskpart : gptReadPartition, GUID_ESP, GUID_MS_BASIC_DATA, VM_STORE_SECTORS;
+    first = 0; last = 0;
+    auto e0 = gptReadPartition(0);
+    auto e1 = gptReadPartition(1);
+    auto e2 = gptReadPartition(2);
+    if (!e0.valid || !e1.valid || !e2.valid) return false;
+    if (!isoGuidEq(e0.typeGuid.ptr, GUID_ESP.ptr) || e0.first != 2048) return false;
+    if (!isoGuidEq(e1.typeGuid.ptr, GUID_MS_BASIC_DATA.ptr) || e1.first != isoAlign2048(e0.last + 1)) return false;
+    if (!isoGuidEq(e2.typeGuid.ptr, GUID_MS_BASIC_DATA.ptr) || e2.first != isoAlign2048(e1.last + 1)) return false;
+    if ((e2.last - e2.first) != (e1.last - e1.first)) return false;
+    ulong prevLast = e2.last;
+    foreach (k; 3 .. 5) {
+        auto e = gptReadPartition(k);
+        if (!e.valid || !isoGuidEq(e.typeGuid.ptr, GUID_MS_BASIC_DATA.ptr) || e.first != isoAlign2048(prevLast + 1))
+            return false;
+        if (e.last - e.first + 1 == VM_STORE_SECTORS) { first = e.first; last = e.last; return true; }
+        prevLast = e.last;
+    }
+    return false;
+}
+
+// The image's byte size when the store's sector 1 holds a committed GPT header (the image is a
+// whole disk: its backup header sits in its last sector), else 0.
+private ulong vmStoreImageBytes(ulong first, ulong last) {
+    import drivers.block.disk : diskReadSectors;
+    ubyte[512] h = void;
+    if (!diskReadSectors(first + 1, 1, h.ptr)) return 0;
+    immutable string sig = "EFI PART";
+    foreach (i, c; sig) if (h[i] != cast(ubyte)c) return 0;
+    ulong cur = 0, alt = 0;
+    foreach_reverse (i; 0 .. 8) { cur = (cur << 8) | h[24 + i]; alt = (alt << 8) | h[32 + i]; }
+    if (cur != 1 || alt < 33 || alt > last - first) return 0;
+    return (alt + 1) * 512;
+}
+
+private void vmStoreName(int node, const(char)* nm, size_t len) {
+    g_rt[node].nameLen = cast(ubyte)len;
+    foreach (i; 0 .. len) g_rt[node].name[i] = nm[i];
+}
+
+/// Boot: expose the store (installed systems only, after /home is restored -- /vmstore is never
+/// part of the snapshot).  A no-op without a store partition.
+public void materializeVmStore() {
+    import drivers.block.disk : diskReady;
+    import drivers.veracrypt_impl : bootHasInstallPayload;
+    if (g_vmStoreState != VMSTORE_NONE || !diskReady() || bootHasInstallPayload()) return;
+    ulong first, last;
+    if (!vmStoreFindAB(first, last)) return;
+    const ulong cap = (last - first + 1) * 512;
+    if (cap > uint.max) return;                          // rtfs sizes are 32-bit
+    rtMkdirPath("/vmstore\0".ptr, 0x1ED, 0, 0);
+    int dp; const(char)* dl; size_t dll;
+    const int dir = rtResolve("/vmstore\0".ptr, dp, dl, dll);
+    if (dir < 0 || g_rt[dir].kind != RT_DIR) { klog("[vmstore] /vmstore missing -- store not exposed\n"); return; }
+    const ulong img = vmStoreImageBytes(first, last);
+    const int node = img ? rtCreate(dir, "opnsense.img".ptr, 12, RT_REG, 0x1A4, 0, 0)
+                         : rtCreate(dir, "opnsense.img.part".ptr, 17, RT_REG, 0x180, 0, 0);
+    if (node < 0) { klog("[vmstore] rtCreate failed -- store not exposed\n"); return; }
+    g_rt[node].size     = cast(uint)(img ? img : cap);
+    g_rt[node].ownerDom = 0;
+    if (!diskFileRegister(node, first, img ? img : cap, cap, true)) {
+        g_rt[node].size = 0; g_rt[node].kind = RT_FREE; g_rt[node].parent = -1;
+        klog("[vmstore] disk-file table full -- store not exposed\n");
+        return;
+    }
+    g_vmStoreFirst = first; g_vmStoreLast = last; g_vmStoreNode = node;
+    g_vmStoreState = img ? VMSTORE_IMAGE : VMSTORE_EMPTY;
+    klog(img ? "[vmstore] firewall image present: /vmstore/opnsense.img (" : "[vmstore] store empty (");
+    klog_dec(cast(uint)((img ? img : cap) >> 20));
+    klog(img ? " MiB) @lba=0x" : " MiB free, waiting for the download) @lba=0x"); klog_hex(first); klog("\n");
+}
+
+/// The fetcher's fsync: if the image's header is now on disk, publish /vmstore/opnsense.img.
+public void vmStorePublish() {
+    if (g_vmStoreState != VMSTORE_EMPTY || g_vmStoreNode < 0) return;
+    const ulong img = vmStoreImageBytes(g_vmStoreFirst, g_vmStoreLast);
+    if (img == 0) return;
+    auto db = diskFileFor(g_vmStoreNode);
+    if (db is null) return;
+    const int node = g_vmStoreNode;
+    db.byteLen = img;
+    g_rt[node].size = cast(uint)img;
+    g_rt[node].mode = 0x1A4;
+    inotifyNotify(g_rt[node].parent, IN_DELETE_F, g_rt[node].name.ptr, g_rt[node].nameLen);
+    vmStoreName(node, "opnsense.img".ptr, 12);
+    inotifyNotify(g_rt[node].parent, IN_CREATE_F, g_rt[node].name.ptr, g_rt[node].nameLen);
+    g_vmStoreState = VMSTORE_IMAGE;
+    klog("[vmstore] firewall image committed: /vmstore/opnsense.img ("); klog_dec(cast(uint)(img >> 20));
+    klog(" MiB)\n");
+}
+
+// unlink of a store node: blank the header so the next boot sees an empty store (and fetches
+// again), after re-checking that the partition is still where the node says.
+private void vmStoreForget(ulong dbLba) {
+    import drivers.block.disk : diskWriteSectors;
+    ulong first, last;
+    if (vmStoreFindAB(first, last) && first == dbLba) {
+        ubyte[512] z = 0;
+        diskWriteSectors(first + 1, 1, z.ptr);
+        klog("[vmstore] firewall image deleted -- header blanked, fetched again at the next boot\n");
+    }
+    g_vmStoreState = VMSTORE_NONE;
+    g_vmStoreNode  = -1;
 }
 
 // Z8: a rolling free-slot hint turns the boot-time bulk creates (busybox, xkb, the
@@ -14595,7 +14831,11 @@ private long rtUnlinkSyscall(const(char)* path, bool dirOnly) {
     {
         ulong dbLen;
         const ulong dbLba = diskFileLbaForNode(idx, dbLen);
-        if (dbLba != 0) {
+        auto dbw = diskFileFor(idx);
+        if (dbLba != 0 && dbw !is null && dbw.writable) {
+            vmStoreForget(dbLba);
+            diskFileUnregister(idx);
+        } else if (dbLba != 0) {
             import drivers.block.disk : diskWriteSectors;
             // Re-validate against the CURRENT disk before writing: only wipe when our A/B ISO
             // partition still starts at dbLba and still carries CD001 (never a stale LBA).
@@ -14644,6 +14884,7 @@ private long rtRenameSyscall(const(char)* oldp, const(char)* newp) {
     if (nidx >= 0) {                                 // replace existing target
         if (g_rt[nidx].kind == RT_DIR && g_rt[oidx].kind != RT_DIR)
             return negErrno(EISDIR);
+        diskFileUnregister(nidx);                     // a disk-backed target: forget its region
         rtFreeData(g_rt[nidx]);                       // release the overwritten node's pages
         g_rt[nidx].kind   = RT_FREE;
         g_rt[nidx].parent = -1;
@@ -15038,7 +15279,10 @@ public long linux_sys_pread64(ulong fd, ulong buf, ulong count, ulong offset) {
     g_fdTable[ifd].offset = saved;
     return ret;
 }
-public long linux_sys_pwrite64(ulong fd, ulong buf, ulong count, ulong offset) { return negErrno(EROFS); }
+public long linux_sys_pwrite64(ulong fd, ulong buf, ulong count, ulong offset) {
+    if (cast(long)offset < 0) return negErrno(EINVAL);
+    return rtPwriteAt(fd, buf, count, offset);
+}
 public long linux_sys_sendfile(ulong out_, ulong in_, ulong off, ulong cnt) { return negErrno(ENOSYS); }
 
 // --- readv ---
@@ -15081,8 +15325,8 @@ public long linux_sys_readv(ulong fd, ulong iov_ptr, ulong iovcnt) {
 private enum ulong PV_IOV_MAX = 1024;
 
 // Positioned write: the write-side twin of linux_sys_pread64 (the fd offset is saved, moved
-// and restored).  fileObjWrite refuses disk-backed nodes with EROFS.  NOTE: linux_sys_pwrite64
-// itself still returns EROFS unconditionally (pre-existing); only pwritev/pwritev2 use this.
+// and restored).  fileObjWrite decides what a disk-backed node accepts.  pwrite64, pwritev and
+// pwritev2 all come through here.
 private long rtPwriteAt(ulong fd, ulong buf, ulong count, ulong offset) {
     initFdTable();
     int ifd = cast(int)fd;
@@ -15970,8 +16214,20 @@ public long linux_sys_mincore(ulong a, ulong l, ulong v)   { return negErrno(ENO
 
 // --- Misc stubs ---
 public long linux_sys_sync()               { return 0; }
-public long linux_sys_fsync(ulong fd)      { return 0; }
-public long linux_sys_fdatasync(ulong fd)  { return 0; }
+// rtfs is memory and disk-backed nodes write through, so a flush has nothing to wait for.  It is
+// the VM store's commit point, though: the fetcher fsyncs after writing the image's GPT header,
+// and the kernel publishes the image once that header is on disk (vmStorePublish).
+public long linux_sys_fsync(ulong fd) {
+    initFdTable();
+    const int ifd = cast(int)fd;
+    if (ifd < 0 || ifd >= 1024 || g_fdTable[ifd].type == FileType.FD_NONE) return negErrno(EBADF);
+    if (g_fdTable[ifd].type == FileType.FD_RTFILE) {
+        auto db = diskFileFor(cast(int)cast(size_t)g_fdTable[ifd].backend);
+        if (db !is null && db.writable) vmStorePublish();
+    }
+    return 0;
+}
+public long linux_sys_fdatasync(ulong fd)  { return linux_sys_fsync(fd); }
 public long linux_sys_fadvise64(ulong fd, ulong off, ulong len, ulong adv) { return 0; }
 public long linux_sys_getpriority(ulong w, ulong who) { return 0; }
 public long linux_sys_setpriority(ulong w, ulong who, ulong p) { return 0; }

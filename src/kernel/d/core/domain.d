@@ -392,6 +392,7 @@ public uint domainBuildNamespace(uint domObjId) {
         nsBind(ns, "/config\0".ptr,             root, RW);   // live domain/system control (domains.json, …)
         nsBind(ns, "/desktop.conf\0".ptr,       root, RW);   // desktop autostart/config
         nsBind(ns, "/display.conf\0".ptr,       root, RW);
+        nsBind(ns, "/vmstore\0".ptr,            root, RW);   // the firewall VM's disk (the kernel limits writers)
         // appgate: System now RUNS things (the Domain Manager, Software Center, VMs) rather than only
         // being browsed, so the device nodes they write must be writable here too ("/" above is RO).
         // The runtime denies above do not apply to the administration domain.

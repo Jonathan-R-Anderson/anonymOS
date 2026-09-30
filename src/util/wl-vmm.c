@@ -66,9 +66,12 @@ static const char *BUNDLED_INITRD = "/vm-alpine.initrd";
 static const char *RUN_DIR = "/tmp/vms";
 /* Firmware-booted guests: Cloud Hypervisor's UEFI (edk2 CloudHv, boot module) and the OPNsense
  * firewall's disk -- downloaded, verified and committed after install by hos-vm-fetch into the VM
- * store (exposed read-only at OPNSENSE_DISK), or a test image. */
+ * store (the kernel publishes it at OPNSENSE_DISK once its header is committed), or a test image. */
 static const char *FIRMWARE_PATH = "/vm-firmware.fd";
-static const char *OPNSENSE_DISK = "/home/user/vms/opnsense.img";
+static const char *OPNSENSE_DISK = "/vmstore/opnsense.img";
+/* While the image is still on its way: the kernel's empty store and hos-vm-fetch's progress. */
+static const char *OPNSENSE_PENDING = "/vmstore/opnsense.img.part";
+static const char *OPNSENSE_FETCH_STATUS = "/vmstore/opnsense.status";
 static const char *OPNSENSE_TEST_DISK = "/vm-opnsense.qcow2";
 
 enum { DEFAULT_WIDTH = 1120, DEFAULT_HEIGHT = 720, MIN_WIDTH = 900, MIN_HEIGHT = 600 };
@@ -244,6 +247,7 @@ struct app {
     struct dialog dlg;
     char banner[200];        /* status-bar message */
     int banner_kind;         /* 0 info, 1 ok, 2 error */
+    int fetch_pending;       /* the firewall image was still downloading at the last check */
 
     /* host virtualization probe */
     int kvm_ok, kvm_errno, kvm_api;
@@ -273,6 +277,33 @@ static const char *opnsense_disk(void)
     if (file_readable(OPNSENSE_TEST_DISK)) return OPNSENSE_TEST_DISK;
     return NULL;
 }
+/* The firewall download (hos-vm-fetch's status file): "state=... done=... total=... msg=...".
+ * Returns 1 and a one-line summary while the image is pending, 0 once it is there or never chosen. */
+static int fetch_status(char *out, size_t cap)
+{
+    if (!file_readable(OPNSENSE_PENDING) && access(OPNSENSE_PENDING, F_OK) != 0) return 0;
+    char st[32] = "", msg[200] = "";
+    unsigned long long done = 0, total = 0;
+    FILE *f = fopen(OPNSENSE_FETCH_STATUS, "r");
+    if (f) {
+        char line[256];
+        while (fgets(line, sizeof line, f)) {
+            line[strcspn(line, "\n")] = 0;
+            if (!strncmp(line, "state=", 6)) snprintf(st, sizeof st, "%s", line + 6);
+            else if (!strncmp(line, "done=", 5)) done = strtoull(line + 5, NULL, 10);
+            else if (!strncmp(line, "total=", 6)) total = strtoull(line + 6, NULL, 10);
+            else if (!strncmp(line, "msg=", 4)) snprintf(msg, sizeof msg, "%s", line + 4);
+        }
+        fclose(f);
+    }
+    if (!st[0]) snprintf(out, cap, "OPNsense firewall: waiting for the network to download the image");
+    else if (!strcmp(st, "downloading") && total)
+        snprintf(out, cap, "OPNsense firewall: downloading, %llu of %llu MB (%llu%%)", done >> 20, total >> 20,
+                 done * 100 / total);
+    else snprintf(out, cap, "OPNsense firewall: %s -- %s", st, msg);
+    return 1;
+}
+
 static const char *os_name(int os)
 {
     switch (os) {
@@ -2819,6 +2850,13 @@ int main(int argc, char **argv)
         setvbuf(stdout, NULL, _IOLBF, 0);
         probe_host(a);
         vm_reattach_all(a);
+        /* The firewall chosen at install starts with the system until the user unticks it
+         * (Settings > General): with no list yet, it is the list. */
+        if (access(AUTOSTART_LIST, F_OK) != 0 && opnsense_disk()) {
+            struct vmcfg c;
+            cfg_defaults(a, &c, OS_OPNSENSE);
+            autostart_set(c.name, 1);
+        }
         FILE *f = fopen(AUTOSTART_LIST, "r");
         int rc = 0;
         if (f) {
@@ -2898,6 +2936,25 @@ int main(int argc, char **argv)
         for (int i = 0; i < MAX_VMS; i++) vm_poll(a, &a->vms[i]);
         time_t now = time(NULL);
         if (active && now != last_sec && a->view == VIEW_MACHINE && a->tab == TAB_DETAILS) a->dirty = 1;  /* uptime */
+        if (now != last_sec) {                            /* the firewall download, while it runs */
+            char fs[sizeof a->banner];
+            if (fetch_status(fs, sizeof fs)) {
+                if (strcmp(fs, a->banner)) { set_banner(a, 0, "%s", fs); a->dirty = 1; }
+                a->fetch_pending = 1;
+            } else if (a->fetch_pending && opnsense_disk()) {
+                a->fetch_pending = 0;
+                int have = 0;
+                for (int i = 0; i < MAX_VMS; i++) if (a->vms[i].used && a->vms[i].cfg.os == OS_OPNSENSE) have = 1;
+                if (!have) {
+                    struct vmcfg c;
+                    cfg_defaults(a, &c, OS_OPNSENSE);
+                    c.autostart = autostart_listed(c.name);
+                    vm_add(a, &c);
+                }
+                set_banner(a, 0, "The OPNsense firewall image is verified and ready");
+                a->dirty = 1;
+            }
+        }
         last_sec = now;
         if (a->dirty && !a->frame_pending) render(a);
     }

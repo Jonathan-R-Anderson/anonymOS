@@ -27,6 +27,10 @@ enum uint GPT_ENTSZ     = 128;            // bytes per entry
 enum uint ENTRY_SECTORS = (GPT_ENTRIES * GPT_ENTSZ) / SECTOR;   // 32
 enum uint PRIMARY_SECTORS = 2 + ENTRY_SECTORS;                  // MBR + header + entries = 34
 enum ulong FIRST_USABLE = 2 + ENTRY_SECTORS;                    // LBA 34
+// The firewall VM store (installer option "firewall"): a 3 GiB MS-Basic-Data partition after
+// slot-B (and after an ISO store, if any).  The installed OS recognises it by position and this
+// exact size -- no private type GUID, no marker -- and hos-vm-fetch downloads the image into it.
+enum ulong VM_STORE_SECTORS = 6291456;
 
 // EFI System Partition type GUID  C12A7328-F81F-11D2-BA4B-00A0C93EC93B
 static immutable ubyte[16] GUID_ESP = [
@@ -200,6 +204,8 @@ struct GptLayout {
     // MS-Basic-Data type — NOT a private GUID — so the disk still looks ordinary (see the
     // deniability note on gptLastPartition); the installed OS finds it by its ISO9660 content.
     ulong isoFirst, isoLast;
+    // The firewall VM store (VM_STORE_SECTORS), after the ISO store if any.  Zero when absent.
+    ulong vmFirst, vmLast;
 }
 
 private ulong align2048(ulong x) { return (x + 2047) & ~cast(ulong)2047; }
@@ -211,7 +217,7 @@ private ulong align2048(ulong x) { return (x + 2047) & ~cast(ulong)2047; }
 // FIXED LBA 34 in the pre-partition gap (partitions start at 2048), matching
 // core.bootstate.BOOTSTATE_LBA and the arbiter's hardcoded read.
 bool gptWriteABToDisk(int diskIdx, ulong diskSectors, ulong bootEspSectors,
-                      ulong espSectors, ulong isoSectors, ref GptLayout L) {
+                      ulong espSectors, ulong isoSectors, ulong vmSectors, ref GptLayout L) {
     L.diskSectors = diskSectors;
     L.bootEspFirst = 2048;
     L.bootEspLast  = L.bootEspFirst + bootEspSectors - 1;
@@ -228,6 +234,11 @@ bool gptWriteABToDisk(int diskIdx, ulong diskSectors, ulong bootEspSectors,
         L.isoFirst = align2048(slotBLast + 1);
         L.isoLast  = L.isoFirst + isoSectors - 1;
         lastPartLast = L.isoLast;
+    }
+    if (vmSectors > 0) {                                  // the firewall VM store, last of all
+        L.vmFirst = align2048(lastPartLast + 1);
+        L.vmLast  = L.vmFirst + vmSectors - 1;
+        lastPartLast = L.vmLast;
     }
     const ulong lastUse = (diskSectors - 1) - 1 - ENTRY_SECTORS;
     if (lastPartLast > lastUse) return false;            // disk too small for A/B (+ISO)
@@ -247,6 +258,8 @@ bool gptWriteABToDisk(int diskIdx, ulong diskSectors, ulong bootEspSectors,
     writeEntry(2, GUID_MS_BASIC_DATA, L.slotBFirst,   slotBLast,     baseSeed + 0x200);
     if (isoSectors > 0)
         writeEntry(3, GUID_MS_BASIC_DATA, L.isoFirst, L.isoLast,     baseSeed + 0x300);
+    if (vmSectors > 0)
+        writeEntry(isoSectors > 0 ? 4 : 3, GUID_MS_BASIC_DATA, L.vmFirst, L.vmLast, baseSeed + 0x400);
     gptFinalize(pbuf.ptr, diskSectors, baseSeed);
 
     const ulong lastLba = diskSectors - 1;

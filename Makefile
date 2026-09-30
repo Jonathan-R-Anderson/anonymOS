@@ -118,6 +118,7 @@ INSTALLER_BIN := build/wl-installer
 WLFILES_BIN := build/wl-files
 WLSOFTWARE_BIN := build/wl-software
 PKGFETCH_BIN  := build/hos-pkg-fetch
+VMFETCH_BIN   := build/hos-vm-fetch
 SOFTWARE_CATALOG := build/software-catalog.bin
 WLDOMAINMGR_BIN := build/wl-domain-manager
 WLWIFIMENU_BIN := build/wl-wifi-menu
@@ -673,6 +674,14 @@ $(PKGFETCH_BIN): src/util/hos-pkg-fetch.c $(ZLIB_A)
 	@echo "==== Building hos-pkg-fetch (Software Center package fetcher) ===="
 	$(MUSL_CC) -O2 -Wall -Wextra -I$(ZLIB_INC) -o $@ src/util/hos-pkg-fetch.c $(ZLIB_A)
 
+# The firewall image fetcher (installer option "firewall"): downloads OPNsense after install,
+# verifies it against the pinned release key and streams it into the VM store.  bzip2 from the
+# same musl sysroot, linked statically.
+BZ2_A := deps/gtk-stack/sysroot/lib/libbz2.a
+$(VMFETCH_BIN): src/util/hos-vm-fetch.c $(BZ2_A)
+	@echo "==== Building hos-vm-fetch (firewall image fetcher) ===="
+	$(MUSL_CC) -O2 -Wall -Wextra -I$(ZLIB_INC) -o $@ src/util/hos-vm-fetch.c $(BZ2_A)
+
 # The aggregated catalog: the real package indexes of Alpine, Debian, Ubuntu, Fedora, Arch,
 # openSUSE and Flathub, harvested from their own mirrors and packed into one file the Software
 # Center reads directly.  Needs network at build time; a previous build is reused from
@@ -981,7 +990,7 @@ $(BSDTAR_BIN):
 $(GPGV_BIN):
 	$(MAKE) -C deps/gnupg
 
-stage-iso-tree: kernel.elf $(WLSOFTWARE_BIN) $(PKGFETCH_BIN) $(SOFTWARE_CATALOG) $(WLTRACE_BIN) $(LKL_BOOT_BIN) $(WLWIFIMENU_BIN) $(WLLAYERBAR_BIN) $(WLWALLPAPER_BIN) $(WLLOGVIEW_BIN) $(WLOVERVIEW_BIN) $(WLCALENDAR_BIN) $(WLQUICKSET_BIN) $(WLCALC_BIN) $(WLCLOCKS_BIN) $(WLVMM_BIN) $(WLIMGVIEW_BIN) $(WLCHARS_BIN) $(WLSYSMON_BIN) $(WLEDITOR_BIN) $(WLSCREENSHOT_BIN) $(BUSYBOX_BIN) $(BUSYBOX_DYN_BIN) $(MKE2FS_BIN) $(UNSQUASHFS_BIN) $(BSDTAR_BIN) $(GPGV_BIN) $(TEST_DRM_BIN) $(DRM_GPU_TEST_BIN) $(DRM_GL_TEST_BIN) $(GL_WL_TEST_BIN) $(GL_TERM_BIN) $(COMPOSITOR_BIN) $(HELLO_GUI_BIN) $(WLPROBE_BIN) $(DISPLAYINFO_BIN) $(WLSHM_DEMO_BIN) $(WLTERM_BIN) $(WLCAIRO_DEMO_BIN) $(INSTALLER_BIN) $(WLFILES_BIN) $(WLDOMAINMGR_BIN) $(IDLE_BIN) $(HOG_BIN) $(XIDTEST_BIN) $(HOS_SH_BIN) $(HOS_WIFI_BIN) $(NSHIM_SO) $(NETTEST_BIN) $(NETLAUNCH_BIN) $(DBUSLAUNCH_BIN) $(SSHDLAUNCH_BIN) $(DROPBEAR_SERVER_BIN) $(DBUSTEST_BIN) $(INOTIFYTEST_BIN) $(NMLAUNCH_BIN) $(WPALAUNCH_BIN) $(WIFIAGENT_BIN) $(WPAAGENT_BIN) $(UDHCPCSCRIPT_BIN) $(UDHCPCLAUNCH_BIN) $(SCPTEST_BIN) $(HTTPUPLOAD_BIN) $(LOGUPLOAD_BIN) $(SCP_CLIENT_STAGE_DEPS) $(THREADTEST_BIN) $(NMCLITEST_BIN) $(WIFITERM_BIN) $(STORE_APP_BIN) $(ZSH_BIN) $(DECOY_IMAGE) build-display-conf build-config-manifest build-gui-assets $(wildcard $(HYPRLAND_BIN)) $(wildcard $(GTK_HELLO_BIN))
+stage-iso-tree: kernel.elf $(WLSOFTWARE_BIN) $(PKGFETCH_BIN) $(VMFETCH_BIN) $(SOFTWARE_CATALOG) $(WLTRACE_BIN) $(LKL_BOOT_BIN) $(WLWIFIMENU_BIN) $(WLLAYERBAR_BIN) $(WLWALLPAPER_BIN) $(WLLOGVIEW_BIN) $(WLOVERVIEW_BIN) $(WLCALENDAR_BIN) $(WLQUICKSET_BIN) $(WLCALC_BIN) $(WLCLOCKS_BIN) $(WLVMM_BIN) $(WLIMGVIEW_BIN) $(WLCHARS_BIN) $(WLSYSMON_BIN) $(WLEDITOR_BIN) $(WLSCREENSHOT_BIN) $(BUSYBOX_BIN) $(BUSYBOX_DYN_BIN) $(MKE2FS_BIN) $(UNSQUASHFS_BIN) $(BSDTAR_BIN) $(GPGV_BIN) $(TEST_DRM_BIN) $(DRM_GPU_TEST_BIN) $(DRM_GL_TEST_BIN) $(GL_WL_TEST_BIN) $(GL_TERM_BIN) $(COMPOSITOR_BIN) $(HELLO_GUI_BIN) $(WLPROBE_BIN) $(DISPLAYINFO_BIN) $(WLSHM_DEMO_BIN) $(WLTERM_BIN) $(WLCAIRO_DEMO_BIN) $(INSTALLER_BIN) $(WLFILES_BIN) $(WLDOMAINMGR_BIN) $(IDLE_BIN) $(HOG_BIN) $(XIDTEST_BIN) $(HOS_SH_BIN) $(HOS_WIFI_BIN) $(NSHIM_SO) $(NETTEST_BIN) $(NETLAUNCH_BIN) $(DBUSLAUNCH_BIN) $(SSHDLAUNCH_BIN) $(DROPBEAR_SERVER_BIN) $(DBUSTEST_BIN) $(INOTIFYTEST_BIN) $(NMLAUNCH_BIN) $(WPALAUNCH_BIN) $(WIFIAGENT_BIN) $(WPAAGENT_BIN) $(UDHCPCSCRIPT_BIN) $(UDHCPCLAUNCH_BIN) $(SCPTEST_BIN) $(HTTPUPLOAD_BIN) $(LOGUPLOAD_BIN) $(SCP_CLIENT_STAGE_DEPS) $(THREADTEST_BIN) $(NMCLITEST_BIN) $(WIFITERM_BIN) $(STORE_APP_BIN) $(ZSH_BIN) $(DECOY_IMAGE) build-display-conf build-config-manifest build-gui-assets $(wildcard $(HYPRLAND_BIN)) $(wildcard $(GTK_HELLO_BIN))
 	@echo "==== Staging installer ISO boot tree ===="
 
 	rm -rf cd
@@ -1417,6 +1426,9 @@ stage-iso-tree: kernel.elf $(WLSOFTWARE_BIN) $(PKGFETCH_BIN) $(SOFTWARE_CATALOG)
 	cp $(PKGFETCH_BIN) cd/hos-pkg-fetch
 	printf '\n    module_path: boot():/hos-pkg-fetch\n' >> cd/boot/limine/limine.conf
 	@echo "Included hos-pkg-fetch (Software Center package fetcher)"
+	cp $(VMFETCH_BIN) cd/hos-vm-fetch
+	printf '\n    module_path: boot():/hos-vm-fetch\n' >> cd/boot/limine/limine.conf
+	@echo "Included hos-vm-fetch (firewall image fetcher)"
 
 	@# The catalog is a BOOT MODULE, not an asset blob: the kernel serves it at
 	@# /config/software.catalog (posix.d), so a namespace-confined app can read it and the
@@ -1783,7 +1795,7 @@ stage-iso-tree: kernel.elf $(WLSOFTWARE_BIN) $(PKGFETCH_BIN) $(SOFTWARE_CATALOG)
 	# ROADMAP 4.8: the headless-install trigger.  Staged ONLY under AUTOINSTALL=1, so a shipped
 	# ISO cannot carry it -- the trigger is absent from the image, not disabled inside it.
 	@if [ "$(AUTOINSTALL)" = "1" ]; then \
-		printf 'autoinstall' > cd/autoinstall; \
+		printf 'autoinstall%s' "$$( [ "$(AUTOINSTALL_FIREWALL)" = "1" ] && echo ' firewall')" > cd/autoinstall; \
 		printf '\n    module_path: boot():/autoinstall\n' >> cd/boot/limine/limine.conf; \
 		echo "Included autoinstall trigger (TEST IMAGE -- will install to disk unattended)"; \
 	fi

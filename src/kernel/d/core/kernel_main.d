@@ -1763,7 +1763,8 @@ public bool softwareSpawnFetcher(const(char)* pkgmgr, const(char)* name, const(c
     return spawnWaylandProgram("hos-pkg-fetch\0".ptr, "[pkg]\0".ptr);
 }
 
-private bool spawnWaylandProgram(const(char)* prog, const(char)* tag) {
+private __gshared int g_lastSpawnTid = -1;   // the task spawnWaylandProgram just started
+private bool spawnWaylandProgram(const(char)* prog, const(char)* tag, ulong argv = 0) {
     int t = allocTask();
     if (t <= 0) {
         klog(tag); klog(" no free task slot for "); klog(prog); klog("\n");
@@ -1872,7 +1873,7 @@ private bool spawnWaylandProgram(const(char)* prog, const(char)* tag) {
     ulong savedCr3 = x64ReadCR3();
     uint savedUntyped = physActiveUntyped();
     physSetActiveUntyped(g_tasks[t].untypedObjId);
-    long r = execveTask(t, cast(ulong)prog, 0, 0);
+    long r = execveTask(t, cast(ulong)prog, argv, 0);
     physSetActiveUntyped(savedUntyped);
     x64WriteCR3(savedCr3);
     if (r != 0) {
@@ -1883,7 +1884,60 @@ private bool spawnWaylandProgram(const(char)* prog, const(char)* tag) {
     klog(tag); klog(" "); klog(prog); klog(" launched as task ");
     klog_hex(cast(ulong)t); klog("\n");
     g_current_task_id = cast(ulong)t;
+    g_lastSpawnTid = t;
     return true;
+}
+
+// The firewall VM store (core.syscalls.posix, materializeVmStore).  An empty store means the user
+// chose the OPNsense firewall at install and the image has not arrived yet: once the network is
+// up, start hos-vm-fetch (it downloads, verifies and commits the image into the store; the fsync
+// that commits it publishes /vmstore/opnsense.img), and try again later if it exits without one.
+// Once the image is there -- at boot, or right after the download -- System gets Virtualization
+// (the firewall is System's VM) and the Virtual Machines app starts the machines on its autostart
+// list headless; the firewall is on that list until the user takes it off.
+private __gshared int   g_vmFetchTid      = -1;
+private __gshared int   g_vmFetchAttempts = 0;
+private __gshared ulong g_vmFetchNextMs   = 0;
+private __gshared bool  g_vmAutostartDone = false;
+private __gshared immutable(char)*[3] g_vmAutostartArgv = [ "/wl-vmm", "--autostart", null ];
+private enum int   VMFETCH_MAX_ATTEMPTS = 4;
+private enum ulong VMFETCH_FIRST_MS = 20_000, VMFETCH_RETRY_MS = 15 * 60_000;
+
+private bool vmFetchRunning() {
+    const int t = g_vmFetchTid;
+    if (t <= 0 || t >= MAX_TASKS || !g_tasks[t].active || g_tasks[t].exited) return false;
+    const(char)* nm = g_taskExecName[t];
+    immutable string want = "hos-vm-fetch";
+    if (nm is null) return false;
+    foreach (i, c; want) if (nm[i] != c) return false;
+    return nm[want.length] == 0;
+}
+
+private void maybeVmStoreWork() {
+    import core.syscalls.posix : vmStoreState, VMSTORE_EMPTY, VMSTORE_IMAGE;
+    const int st = vmStoreState();
+    const ulong now = pitMs();
+    if (st == VMSTORE_EMPTY) {
+        if (!g_netConfigured || vmFetchRunning() || g_vmFetchAttempts >= VMFETCH_MAX_ATTEMPTS) return;
+        if (g_vmFetchNextMs == 0) { g_vmFetchNextMs = now + VMFETCH_FIRST_MS; return; }
+        if (now < g_vmFetchNextMs) return;
+        g_vmFetchNextMs = now + VMFETCH_RETRY_MS;       // the next try, if this one ends without an image
+        ++g_vmFetchAttempts;
+        klog("[vmstore] downloading the OPNsense firewall image (attempt "); klog_dec(cast(uint)g_vmFetchAttempts);
+        klog(")\n");
+        g_vmFetchTid = spawnWaylandProgram("hos-vm-fetch\0".ptr, "[vmfetch]\0".ptr) ? g_lastSpawnTid : -1;
+        return;
+    }
+    if (st == VMSTORE_IMAGE && !g_vmAutostartDone && g_guiClientStarted && !vmFetchRunning()) {
+        g_vmAutostartDone = true;
+        import core.domain : domainSystemId, domainSetDevice;
+        import core.identity : DEVCLASS_VIRT;
+        const uint sys = domainSystemId();
+        if (sys == 0) return;
+        domainSetDevice(sys, DEVCLASS_VIRT, true);
+        klog("[vmstore] firewall image ready: System granted Virtualization; starting autostart VMs\n");
+        spawnWaylandProgram("wl-vmm\0".ptr, "[vmm]\0".ptr, cast(ulong)g_vmAutostartArgv.ptr);
+    }
 }
 
 // DOMAIN_MANAGER DM3: launch a program CONFINED TO A DOMAIN.
@@ -5236,6 +5290,7 @@ private long dispatchLinuxSyscall(ulong n, ulong a, ulong b, ulong c,
         case 74:  return linux_sys_fsync(a);
         case 75:  return linux_sys_fdatasync(a);
         case 306: return linux_sys_sync();
+        case 95:  return linux_sys_umask(a);
         case 165: return linux_sys_mount(a, b, c, d, e);
         case 186: return linux_sys_gettid();
         case 200: return linux_sys_tkill(a, b);
@@ -5724,6 +5779,7 @@ private void kernelLoop() {
         maybeSyscallAudit();   // ROADMAP 2.2: record which syscalls are missing, once
         maybeEpollDump();      // ROADMAP 2.3: is the compositor watching the new client fd?
         maybeSyncNtp();        // NTP: set the wall clock from pool.ntp.org, with retries
+        maybeVmStoreWork();    // the firewall chosen at install: download it, then start it headless
         maybeSpawnLklTest();   // L2: boot LKL on EpinAnonymOS (musl + a thread-based timer host-op)
         //maybeSpawnNetLaunch(); // H3: standalone wpa (superseded by NM, which drives wpa itself at M5)
         maybeSpawnWpa();            // M5: launch wpa_supplicant (D-Bus) just before NM
@@ -6261,6 +6317,9 @@ void d_kernel_main() {
     // /home/<user>/isos/pfsense.iso.  Runs after the restored /home is in place so the ISO node is
     // added on top of it (it is never part of the /home snapshot); no-op on live media or without an ISO.
     { import core.syscalls.posix : materializeIsoStore; materializeIsoStore(); }
+    // The firewall VM store (installer option): /vmstore/opnsense.img, or the empty store the
+    // fetcher downloads into (maybeVmStoreWork).  No-op without the partition.
+    { import core.syscalls.posix : materializeVmStore; materializeVmStore(); }
     // procSelfTest() deliberately does NOT run here: at store-mount the PIT has barely ticked and
     // the idle task does not exist yet, so /proc/stat and /proc/uptime correctly read zero and the
     // proof shows nothing.  It runs from the periodic loop once the desktop is up instead.

@@ -142,8 +142,8 @@ static int http_get(const char *host, int port, const char *urlpath, const char 
 
     char req[768];
     int rn = snprintf(req, sizeof req,
-                      "GET %s HTTP/1.1\r\nHost: %s\r\nUser-Agent: anonymos-pkg-fetch/1\r\n"
-                      "Connection: close\r\n\r\n", urlpath, host);
+                      /* byte-for-byte what apk-tools 2.14 (libfetch) sends: nothing names this system */
+                      "GET %s HTTP/1.1\r\nHost: %s\r\nUser-Agent: libfetch/2.0\r\n\r\n", urlpath, host);
     if (send_all(s, req, (size_t)rn) != 0) { plog("[pkg] send failed (errno %d)", errno); close(s); return -1; }
 
     int out = open(outpath, O_WRONLY | O_CREAT | O_TRUNC, 0644);
@@ -153,9 +153,11 @@ static int http_get(const char *host, int port, const char *urlpath, const char 
     char buf[8192];
     size_t total = 0;
     int in_body = 0, status = 0;
+    long long clen = -1;                /* the connection stays open (keep-alive): stop at this */
     char head[1024];
     size_t headlen = 0;
     for (;;) {
+        if (in_body && clen >= 0 && (long long)total >= clen) break;
         ssize_t n = recv(s, buf, sizeof buf, 0);
         if (n == 0) break;
         if (n < 0) { if (errno == EINTR) continue; plog("[pkg] recv error (errno %d)", errno); break; }
@@ -169,6 +171,10 @@ static int http_get(const char *host, int port, const char *urlpath, const char 
             char *end = strstr(head, "\r\n\r\n");
             if (!end) continue;
             if (!status) sscanf(head, "HTTP/1.%*d %d", &status);
+            {
+                char *cl = strcasestr(head, "\r\nContent-Length:");
+                if (cl && cl < end) clen = strtoll(cl + 17, NULL, 10);
+            }
             size_t hbytes = (size_t)(end - head) + 4;
             in_body = 1;
             size_t body_in_head = headlen - hbytes;

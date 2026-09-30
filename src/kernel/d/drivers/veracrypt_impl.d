@@ -645,6 +645,10 @@ __gshared const(ubyte)* g_instBootSrc;
 // layout or the phase sequence — a normal install is byte-for-byte unaffected.
 __gshared ulong  g_instIsoFirst, g_instIsoSectors;
 __gshared const(ubyte)* g_instIsoSrc;
+// install.json "firewall": "opnsense" -> a VM store partition (core.diskpart VM_STORE_SECTORS)
+// after slot-B and the ISO store.  Plain (A/B) installs only; nothing is streamed into it -- its
+// sector 1 is zeroed so the installed system sees an empty store and downloads the image.
+__gshared bool g_instFirewall;
 // ISO commit marker: the installed OS recognises the ISO store by the ISO9660 primary volume
 // descriptor (0x01 "CD001", byte 32768 = partition sector 64 — core.syscalls.posix
 // isoStoreFindAB).
@@ -944,6 +948,11 @@ private bool installBuildPersistedConfig(const(char)* raw, size_t len) {
         instCfgAppendJsonString("domains".ptr, v.ptr, vl, true);
         instGetOrDefault(raw, len, "drivers", "".ptr, v[], vl);
         instCfgAppendJsonString("drivers".ptr, v.ptr, vl, true);
+        // The firewall VM: "opnsense" adds the VM store partition (installBegin); the installed
+        // system downloads the image into it.
+        instGetOrDefault(raw, len, "firewall", "none".ptr, v[], vl);
+        instCfgAppendJsonString("firewall".ptr, v.ptr, vl, true);
+        g_instFirewall = instSliceEq(v.ptr, vl, "opnsense");
     }
 
     // Encryption mode is detected BEFORE the password fields so the scheme-password hashes can be
@@ -1986,6 +1995,12 @@ public bool installBegin(int idx, ulong dsec) {
     ulong isoPhys = 0, isoSize = 0;
     bool haveIso = abInstall && instFindModule("pfsense.iso", isoPhys, isoSize);
     ulong isoSectors = haveIso ? ((isoSize + SEC - 1) / SEC) : 0;
+    ulong vmSectors = 0;
+    {
+        import core.diskpart : VM_STORE_SECTORS;
+        if (g_instFirewall && abInstall) vmSectors = VM_STORE_SECTORS;
+        else if (g_instFirewall) klog("[install] WARN: the firewall VM needs a plain install; not adding its store\n");
+    }
     if (!enc) {
         const ulong need = abInstall ? (2048 + bootEspSectors + 2 * espSectors + 2048 + 64)
                                      : (espSectors + 2048 + 64);
@@ -1996,6 +2011,11 @@ public bool installBegin(int idx, ulong dsec) {
         if (haveIso && dsec < need + isoSectors + 131072) {
             klog("[install] WARN: target disk too small for the ISO store (+64 MiB /home tail); installing WITHOUT pfsense.iso\n");
             haveIso = false; isoSectors = 0;
+        }
+        // Same rule for the firewall's store: best-effort, and never at the cost of /home.
+        if (vmSectors && dsec < need + isoSectors + 2048 + vmSectors + 131072) {
+            klog("[install] WARN: target disk too small for the firewall VM store (3 GiB + 64 MiB /home tail); installing WITHOUT it\n");
+            vmSectors = 0;
         }
     }
     klog("[install] begin idx=0x"); klog_hex(idx); klog(" image=0x"); klog_hex(size);
@@ -2036,7 +2056,7 @@ public bool installBegin(int idx, ulong dsec) {
     if (enc)
         gptOk = gptWriteEncryptedToDisk(idx, dsec, espSectors, sysSectors, L);
     else if (abInstall)
-        gptOk = gptWriteABToDisk(idx, dsec, bootEspSectors, espSectors, isoSectors, L);
+        gptOk = gptWriteABToDisk(idx, dsec, bootEspSectors, espSectors, isoSectors, vmSectors, L);
     else
         gptOk = gptWriteBootableEsp(idx, dsec, espSectors, L);
     if (!gptOk) {
@@ -2059,6 +2079,17 @@ public bool installBegin(int idx, ulong dsec) {
         g_instFailed = true;
         return false;
     }
+    // The firewall's store starts EMPTY: zero its sector 1, where a committed image keeps its GPT
+    // header, so neither an earlier install's image nor stale disk contents can look like one.
+    if (vmSectors && !gatedDiskWrite(g_instCap, idx, L.vmFirst + 1, 1, g_instZeroSector.ptr)) {
+        klog("[install] FAIL (VM store header clear)\n");
+        revokeInstallWriteCap(g_instCap);
+        instClearTransientPasswords();
+        instClearHiddenInstallState();
+        g_instFailed = true;
+        return false;
+    }
+    if (vmSectors) { klog("[install] firewall VM store @lba=0x"); klog_hex(L.vmFirst); klog(" (3 GiB, empty: downloaded after install)\n"); }
     g_instIdx = idx; g_instSrc = cast(const(ubyte)*) phys_to_virt(phys);
     g_instEspFirst = L.espFirst; g_instEspSectors = espSectors;
     g_instHiddenMode = hidden;
@@ -2621,6 +2652,18 @@ public void installAutoIfRequested() {
 
     ulong phys, size;
     if (!instFindModule("autoinstall", phys, size)) return;   // not a test image: do nothing
+    // AUTOINSTALL_FIREWALL=1 stages "autoinstall firewall": the unattended install then takes the
+    // installer's firewall option too (the GUI path sets it from install.json "firewall").
+    {
+        import core.exports : phys_to_virt;
+        auto t = cast(const(char)*) phys_to_virt(phys);
+        immutable string fw = "firewall";
+        for (ulong i = 0; i + fw.length <= size && i < 64; ++i) {
+            bool m = true;
+            foreach (k, c; fw) if (t[i + k] != c) { m = false; break; }
+            if (m) { g_instFirewall = true; klog("[install] AUTOINSTALL: with the firewall VM store\n"); break; }
+        }
+    }
 
     import drivers.block.disk : diskStoreIndex, diskFindTarget, diskFindBootDisk;
     ulong dsec = 0;

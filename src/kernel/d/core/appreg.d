@@ -162,6 +162,7 @@ static immutable AppRegEntry[] g_appReg = [
     AppRegEntry("idle",              null, INF, SES, DNO, null, 0),
     AppRegEntry("calamares",         null, INF, SES, DNO, null, 0),   // the installer (built as wl-installer)
     AppRegEntry("hos-pkg-fetch",     null, INF, SES, DNO, null, 0),
+    AppRegEntry("hos-vm-fetch",      null, INF, SES, DNO, null, 0),   // the firewall image download
     AppRegEntry("hos-dbus-launch",   null, INF, SES, DNO, null, 0),
     AppRegEntry("hos-sshd-launch",   null, INF, SES, DNO, null, 0),
     AppRegEntry("hos-wpa-launch",    null, INF, SES, DNO, null, 0),

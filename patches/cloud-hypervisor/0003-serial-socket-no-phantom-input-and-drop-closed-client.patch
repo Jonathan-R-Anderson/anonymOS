@@ -1,0 +1,64 @@
+diff --git a/vmm/src/serial_manager.rs b/vmm/src/serial_manager.rs
+index 6d45b57..61b0ad4 100644
+--- a/vmm/src/serial_manager.rs
++++ b/vmm/src/serial_manager.rs
+@@ -369,7 +369,12 @@ pub(crate) fn start_thread(
+                                         let count = match &transport {
+                                             ConsoleTransport::Socket(_) => {
+                                                 if let Some(console) = socket_console.as_mut() {
+-                                                    match console.read(&mut input) {
++                                                    // anonymOS: a client that disconnects is dropped
++                                                    // by read(); take its fd out of the epoll set
++                                                    // first-hand instead of relying on close() to,
++                                                    // or it keeps waking this loop.
++                                                    let client = console.client_fd();
++                                                    let count = match console.read(&mut input) {
+                                                         Ok(count) => count,
+                                                         Err(e) => {
+                                                             warn!(
+@@ -377,7 +382,19 @@ pub(crate) fn start_thread(
+                                                             );
+                                                             0
+                                                         }
++                                                    };
++                                                    if let (Some(fd), None) = (client, console.client_fd()) {
++                                                        let _ = epoll::ctl(
++                                                            epoll_fd.as_raw_fd(),
++                                                            epoll::ControlOptions::EPOLL_CTL_DEL,
++                                                            fd,
++                                                            epoll::Event::new(
++                                                                epoll::Events::EPOLLIN,
++                                                                EpollDispatch::File as u64,
++                                                            ),
++                                                        );
+                                                     }
++                                                    count
+                                                 } else {
+                                                     0
+                                                 }
+@@ -394,12 +411,19 @@ pub(crate) fn start_thread(
+                                             input[0] = 0x0d;
+                                         }
+ 
+-                                        serial
+-                                            .as_ref()
+-                                            .lock()
+-                                            .unwrap()
+-                                            .queue_input_bytes(&input[..count])
+-                                            .map_err(Error::QueueInput)?;
++                                        // anonymOS: only real input.  queue_input_bytes() flags
++                                        // "data ready" even for an empty slice, and the guest then
++                                        // reads a NUL -- one per empty wakeup, i.e. a stream of
++                                        // phantom keypresses (OPNsense's boot-time "press any key"
++                                        // prompts took one and stopped the boot).
++                                        if count > 0 {
++                                            serial
++                                                .as_ref()
++                                                .lock()
++                                                .unwrap()
++                                                .queue_input_bytes(&input[..count])
++                                                .map_err(Error::QueueInput)?;
++                                        }
+                                     }
+                                     if event.events & libc::EPOLLHUP as u32 != 0 {
+                                         if let Some(pty_write_out) = &pty_write_out {

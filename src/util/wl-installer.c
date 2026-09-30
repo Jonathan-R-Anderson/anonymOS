@@ -33,7 +33,7 @@ enum {
 
 /* The Ubuntu-style page sequence (roadmap §Phase 5):
  * Welcome · Language · Keyboard · Timezone · Network · Disk · Filesystem ·
- * Encryption · (Decoy) · Boot integrity · Account · Identities · Summary · Install. */
+ * Encryption · (Decoy) · Boot integrity · Firewall · Account · Identities · Summary · Install. */
 enum {
     SCREEN_WELCOME = 0,
     SCREEN_LANGUAGE,
@@ -46,6 +46,7 @@ enum {
     SCREEN_ENCRYPTION,
     SCREEN_DECOY,
     SCREEN_BOOTINTEGRITY,
+    SCREEN_FIREWALL,
     SCREEN_ACCOUNT,
     SCREEN_IDENTITIES,
     SCREEN_REVIEW,
@@ -57,7 +58,7 @@ enum {
 static const int SCREEN_ORDER[] = {
     SCREEN_WELCOME, SCREEN_LANGUAGE, SCREEN_KEYBOARD, SCREEN_TIMEZONE,
     SCREEN_NETWORK, SCREEN_DRIVERS, SCREEN_DISK, SCREEN_FILESYSTEM, SCREEN_ENCRYPTION,
-    SCREEN_DECOY, SCREEN_BOOTINTEGRITY, SCREEN_ACCOUNT, SCREEN_IDENTITIES,
+    SCREEN_DECOY, SCREEN_BOOTINTEGRITY, SCREEN_FIREWALL, SCREEN_ACCOUNT, SCREEN_IDENTITIES,
     SCREEN_REVIEW, SCREEN_PROGRESS,
 };
 
@@ -202,6 +203,23 @@ static const char *const BOOTINTEGRITY_DETAIL[] = {
     "outside record. Safe for a machine that may ever start without a network."),
     ("Every boot hashes the boot files and checks them against your Ethereum vault over Tor; "
     "no vault, a mismatch, or no network stops the boot."),
+};
+
+/* The firewall VM.  Nothing is downloaded during installation: choosing OPNsense adds a 3 GB
+ * partition for it, and the INSTALLED system downloads the official image into it once it is
+ * online, verifies it against the pinned OPNsense release key, and runs it headless.  Plain
+ * installs only -- the partition holds a public image and is not encrypted. */
+static const struct opt FIREWALLS[] = {
+    { "No firewall VM",       "Domains use the host network directly (default)",        "none",     0 },
+    { "OPNsense firewall VM", "Downloaded after install; domains can route through it", "opnsense", 0 },
+};
+static const char *const FIREWALL_DETAIL[] = {
+    ("No firewall partition is created. Every domain reaches the network through the host, as "
+    "set on each domain's Network page."),
+    ("Adds a 3 GB partition. After installation, once the system is online, it downloads "
+    "OPNsense 26.7 from the official mirrors, checks it against the pinned OPNsense release key "
+    "and starts it headless. In the Domain Manager any domain can then be routed through it; "
+    "its web interface is https://192.168.1.1 from a routed domain."),
 };
 
 /* Toggleable identity profiles.  Ticking a profile now selects which DOMAINS the installed
@@ -482,6 +500,7 @@ struct app {
     int network_idx;
     int filesystem_idx;
     int bootintegrity_idx;
+    int firewall_idx;
 
     /* identity profile toggles */
     int identity_on[16];
@@ -747,6 +766,7 @@ static const char *screen_title(struct app *app)
     case SCREEN_ENCRYPTION: return "Encryption";
     case SCREEN_DECOY: return "Decoy operating system";
     case SCREEN_BOOTINTEGRITY: return "Boot integrity";
+    case SCREEN_FIREWALL: return "Firewall";
     case SCREEN_ACCOUNT: return "Who are you?";
     case SCREEN_IDENTITIES: return "Identity profiles";
     case SCREEN_REVIEW: return "Ready to install";
@@ -805,6 +825,7 @@ static const char *screen_subtitle(struct app *app)
     case SCREEN_ENCRYPTION: return "Plain install, full-disk encryption, or a Hidden OS with a decoy.";
     case SCREEN_DECOY: return "Details for the decoy Linux you can reveal under coercion.";
     case SCREEN_BOOTINTEGRITY: return "Optionally check the boot files against your Ethereum attestation vault at every boot.";
+    case SCREEN_FIREWALL: return "Optionally run an OPNsense firewall VM that your domains can route through.";
     case SCREEN_ACCOUNT: return "Create your account on the installed system.";
     case SCREEN_IDENTITIES: return "Separate worlds for the separate parts of your life.";
     case SCREEN_REVIEW: return "Check the summary; nothing has been written to the disk yet.";
@@ -863,6 +884,12 @@ static const char *screen_body(struct app *app)
     case SCREEN_BOOTINTEGRITY:
         return "Off does nothing. Ethereum hashes the boot files and checks them against your "
                "on-chain vault every boot; a missing vault, a mismatch or no network stops the boot.";
+    case SCREEN_FIREWALL:
+        if (app->encryption_mode != ENC_NONE)
+            return "Plain installs only: the firewall's partition holds a public image and is not "
+                   "encrypted, so an encrypted install keeps this off.";
+        return "Nothing is downloaded now. The installed system fetches the firewall image itself "
+               "the first time it is online, and verifies its signature before it is used.";
     case SCREEN_ACCOUNT:
         return "Username and computer name are applied at every boot. The password is kept as a hash "
                "only and login does not ask for it yet, so anyone at the keyboard can use the system.";
@@ -887,6 +914,7 @@ static const char *screen_short_name(int s)
     case SCREEN_ENCRYPTION: return "Encryption";
     case SCREEN_DECOY: return "Decoy OS";
     case SCREEN_BOOTINTEGRITY: return "Boot integrity";
+    case SCREEN_FIREWALL: return "Firewall";
     case SCREEN_ACCOUNT: return "Account";
     case SCREEN_IDENTITIES: return "Identities";
     case SCREEN_REVIEW: return "Summary";
@@ -895,7 +923,7 @@ static const char *screen_short_name(int s)
     }
 }
 
-/* "Step k of N" over the visible SCREEN_ORDER entries (N is 14, or 15 with the
+/* "Step k of N" over the visible SCREEN_ORDER entries (N is 15, or 16 with the
  * Decoy page in Hidden-OS mode); Welcome is step 1, Install is step N. */
 static void step_position(struct app *app, int *k, int *n)
 {
@@ -951,7 +979,8 @@ static const char *primary_label(struct app *app)
 static int screen_is_list(int s)
 {
     return s == SCREEN_LANGUAGE || s == SCREEN_KEYBOARD || s == SCREEN_TIMEZONE ||
-           s == SCREEN_NETWORK || s == SCREEN_FILESYSTEM || s == SCREEN_BOOTINTEGRITY;
+           s == SCREEN_NETWORK || s == SCREEN_FILESYSTEM || s == SCREEN_BOOTINTEGRITY ||
+           s == SCREEN_FIREWALL;
 }
 
 static const struct opt *screen_opts(int s, int *count)
@@ -963,6 +992,7 @@ static const struct opt *screen_opts(int s, int *count)
     case SCREEN_NETWORK:       *count = ARRAY_LEN(NETWORKS);      return NETWORKS;
     case SCREEN_FILESYSTEM:    *count = ARRAY_LEN(FILESYSTEMS);   return FILESYSTEMS;
     case SCREEN_BOOTINTEGRITY: *count = ARRAY_LEN(BOOTINTEGRITY); return BOOTINTEGRITY;
+    case SCREEN_FIREWALL:      *count = ARRAY_LEN(FIREWALLS);     return FIREWALLS;
     default: *count = 0; return NULL;
     }
 }
@@ -976,6 +1006,7 @@ static int *screen_sel_ptr(struct app *app, int s)
     case SCREEN_NETWORK:       return &app->network_idx;
     case SCREEN_FILESYSTEM:    return &app->filesystem_idx;
     case SCREEN_BOOTINTEGRITY: return &app->bootintegrity_idx;
+    case SCREEN_FIREWALL:      return &app->firewall_idx;
     default: return NULL;
     }
 }
@@ -997,6 +1028,8 @@ static int opt_is_disabled(struct app *app, int s, int idx)
     if (s == SCREEN_BOOTINTEGRITY && strcmp(o[idx].code, "zksync") == 0 &&
         !zksync_attestation_has_contract())
         return 1;
+    if (s == SCREEN_FIREWALL && idx > 0 && app->encryption_mode != ENC_NONE)
+        return 1;
     return 0;
 }
 
@@ -1011,7 +1044,16 @@ static const char *opt_disabled_reason(struct app *app, int s, int idx)
             return "needs Wired or Wi-Fi";
         return "no contract — deploy one first (scripts/attest-deploy.sh)";
     }
+    if (s == SCREEN_FIREWALL)
+        return "plain install only";
     return "unavailable";
+}
+
+/* The firewall choice as it will be installed: OPNsense only on a plain install. */
+static int firewall_on(struct app *app)
+{
+    return app->encryption_mode == ENC_NONE &&
+           strcmp(FIREWALLS[app->firewall_idx].code, "opnsense") == 0;
 }
 
 /* ── disk enumeration ──────────────────────────────────────────────────────── */
@@ -2602,6 +2644,9 @@ static void opt_detail(struct app *app, int screen, int idx, char *out, size_t c
     case SCREEN_FILESYSTEM:
         snprintf(out, cap, "%s", FILESYSTEM_DETAIL[idx]);
         break;
+    case SCREEN_FIREWALL:
+        snprintf(out, cap, "%s", FIREWALL_DETAIL[idx]);
+        break;
     case SCREEN_BOOTINTEGRITY:
         snprintf(out, cap, "%s", BOOTINTEGRITY_DETAIL[idx]);
         break;
@@ -2712,6 +2757,11 @@ static void review_disk(struct review_ctx *c)
         snprintf(v, sizeof v, "None - plain; 8 MB boot + two 512 MB slots");
     review_row(c, "Encryption", v, "applied at install");
     review_row(c, "Filesystem", FILESYSTEMS[app->filesystem_idx].label, "recorded only");
+    {
+        const int fw = firewall_on(app);
+        review_row(c, "Firewall", fw ? "OPNsense VM - 3 GB partition, downloaded after install" : "None",
+                   fw ? "fetched when online" : "nothing added");
+    }
     int zk = strcmp(BOOTINTEGRITY[app->bootintegrity_idx].code, "zksync") == 0;
     review_row(c, "Boot check", zk ? "Ethereum - checked at every boot, needs network" : "Off",
                zk ? "checked at every boot" : "nothing checked");
@@ -3190,6 +3240,7 @@ static void screen_card(struct app *app, struct card *c)
     case SCREEN_TIMEZONE:
     case SCREEN_NETWORK:
     case SCREEN_FILESYSTEM:
+    case SCREEN_FIREWALL:
     case SCREEN_BOOTINTEGRITY: {
         int idx = (o && sel) ? *sel : 0;
         if (idx < 0 || idx >= count) idx = 0;
@@ -3205,11 +3256,15 @@ static void screen_card(struct app *app, struct card *c)
         } else if (app->screen == SCREEN_BOOTINTEGRITY) {
             if (idx == 0) { kind = CARD_INFO; tag = "Nothing checked"; }
             else { kind = CARD_CAUTION; tag = "Checked at every boot"; color = COL_AMBER; }
+        } else if (app->screen == SCREEN_FIREWALL) {
+            if (idx == 0) { kind = CARD_INFO; tag = "Nothing added"; }
+            else { kind = CARD_INFO; tag = "Downloaded after install"; color = COL_GREEN; }
         }
         /* Network and Boot integrity subs are sentences, not codes: "<label>  -  <sub>"
          * would not fit beside the tag at 820px, and the sub is already on the
          * selected row, so the header is the label alone there. */
-        if (app->screen == SCREEN_BOOTINTEGRITY || app->screen == SCREEN_NETWORK)
+        if (app->screen == SCREEN_BOOTINTEGRITY || app->screen == SCREEN_NETWORK ||
+            app->screen == SCREEN_FIREWALL)
             snprintf(buf, sizeof buf, "%s", o[idx].label);
         else
             snprintf(buf, sizeof buf, "%s  -  %s", o[idx].label, o[idx].sub);
@@ -4056,6 +4111,7 @@ static size_t build_install_config(struct app *app, char *buf, size_t cap, int r
     append_json_string(buf, cap, &pos, "identities", ids, 1);
     append_json_string(buf, cap, &pos, "domains", doms, 1);
     append_json_string(buf, cap, &pos, "drivers", drv, 1);
+    append_json_string(buf, cap, &pos, "firewall", firewall_on(app) ? "opnsense" : "none", 1);
     append_json_string(buf, cap, &pos, "encryption", encryption_name(app), 1);
     /* Full disk encrypts the whole EpinAnonymOS system volume with one password asked
      * at boot; it is collected in FIELD_HIDDEN_PASSWORD and emitted as diskPassword

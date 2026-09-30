@@ -113,6 +113,7 @@ struct app {
     int                   width, height;
     int                   cfg_w, cfg_h; // last compositor-requested surface size (tiling WM)
     int                   cell_w, cell_h;
+    int                   pad_x;             // left margin: the domain border + a gap, so column 0 is whole
     int                   font_px, baseline;
     int                   scale;
     int                   committed;
@@ -182,7 +183,8 @@ static void init_layout(struct app *a) {
     a->cell_w = BASE_CELL_W * a->scale;
     a->cell_h = BASE_CELL_H * a->scale;
     a->deco_h = DECO_BASE_H * a->scale;             // reserve a titlebar strip on top
-    a->width = COLS * a->cell_w + SCROLLBAR_W * a->scale;  // grid + a strip for the scrollback bar
+    a->pad_x = 8 * a->scale;                        // the 4px domain border covers the left edge
+    a->width = a->pad_x + COLS * a->cell_w + SCROLLBAR_W * a->scale;  // margin + grid + scrollback strip
     a->height = ROWS * a->cell_h + a->deco_h;
     a->baseline = (BASE_FONT_PX - 3) * a->scale;
 }
@@ -200,7 +202,7 @@ static void apply_size(struct app *a, int w, int h) {
     if (h < 1) h = 1;
     a->width  = w;
     a->height = h;
-    int content_w = w - SCROLLBAR_W * a->scale;   // usable grid area (minus scrollbar)
+    int content_w = w - SCROLLBAR_W * a->scale - a->pad_x;   // usable grid area (minus scrollbar, margin)
     int content_h = h - a->deco_h;                // usable grid area (minus titlebar)
     if (content_w < COLS) content_w = COLS;       // guarantee >=1px per column
     if (content_h < ROWS) content_h = ROWS;       // guarantee >=1px per row
@@ -666,7 +668,7 @@ static void render(struct app *a) {
         uint32_t *gfg = from_ring ? rfg : a->fgc[live_r];
         uint32_t *gbg = from_ring ? rbg : a->bgc[live_r];
         for (int c = 0; c < COLS; c++) {
-            int x = c * a->cell_w;
+            int x = a->pad_x + c * a->cell_w;
             if (x + a->cell_w > content_w) break;
             int y = top + r * a->cell_h;
             uint32_t bg = gbg[c];
@@ -686,11 +688,11 @@ static void render(struct app *a) {
     // cursor block — only when following the live bottom (hidden while viewing scrollback)
     if (a->view_offset == 0) {
         gf_fill(a->pixels, a->width, a->width, a->height,
-                a->cur_c * a->cell_w, top + a->cur_r * a->cell_h,
+                a->pad_x + a->cur_c * a->cell_w, top + a->cur_r * a->cell_h,
                 a->cell_w, a->cell_h, COL_CURSOR);
         char cc = a->grid[a->cur_r][a->cur_c];
         if (cc != ' ') {
-            int x = a->cur_c * a->cell_w;
+            int x = a->pad_x + a->cur_c * a->cell_w;
             int y = top + a->cur_r * a->cell_h;
             if (a->font_ready)
                 render_ft_glyph(a, x, y, (unsigned char)cc, COL_BG);
@@ -780,37 +782,13 @@ static void term_notice(struct app *a, const char *l1, const char *l2, const cha
 }
 
 static int spawn_shell(struct app *a) {
-    // IDENTITY_DOMAIN: honor the requested shell flavor (Z11).  Both run real zsh now:
-    // "linux" = zsh in the Linux personality (/bin/zsh), "native" = zsh in the native
-    // personality (/hos-zsh, the object shell); "windows" = not implemented (notice).
-    const char *flavor = getenv("EPIN_SHELL");
-    const int is_native = (flavor && strcmp(flavor, "native") == 0);
-    // "light" = zsh with NO startup files (zsh -f -i): skips compinit / oh-my-zsh / powerlevel10k,
-    // which otherwise fork a storm of short-lived processes at startup.  Used for lightweight/utility
-    // terminals (e.g. the temporary WiFi-check terminal) so they don't starve the cooperative
-    // scheduler or exhaust the task table.
-    const int is_light = (flavor && strcmp(flavor, "light") == 0);
-    if (flavor && *flavor && strcmp(flavor, "linux") != 0 && !is_native && !is_light) {
-        char l1[80];
-        snprintf(l1, sizeof(l1), "Domain: %s", g_has_domain ? g_domain : "(none)");
-        term_notice(a, l1, "Windows subsystem is not implemented yet.",
-                    "Pick the 'Linux' or 'Native' shell in the Domain Manager.");
-        a->ptm = -1;
-        printf("G4TERM: shell flavor '%s' not implemented; showing notice\n", flavor);
-        fflush(stdout);
-        return 0;
-    }
-    // The shell binary depends on the flavor; the PTY plumbing + argv[0] are shared.
-    // BOTH personalities run zsh — ONE shell, two personalities (ZSH_INTEGRATION_ROADMAP):
-    //  - Linux:  /bin/zsh  (Z1) — real upstream zsh, the POSIX Linux-personality login shell,
-    //    confined to Linux (HOS_SYS_QUERY -> ENOSYS; the native-launch authorization is dropped
-    //    on this exec, L5.2).
-    //  - Native: /hos-zsh (Z4) — the SAME zsh launched into the native personality, with **LFE
-    //    embedded inside it**: the `zsh/anonymos` module gives in-process obj/id/ns/svc/sys object
-    //    builtins (Z4c.4) AND an `lfe` builtin running the full LFE evaluator (L2–L4) in-process.
-    //    So the native shell is zsh + LFE, not a separate shell.
-    const char *shell_path = is_native ? "/hos-zsh" : "/bin/zsh";
-    char *const shell_arg0 = "-zsh";
+    // Every terminal starts dash, the native shell (docs/DASH.md): bash where you run programs,
+    // Haskell where you compute, over the object model.  Its `linux` command drops into the Linux
+    // shell (zsh) on this same terminal and returns when that exits -- there is no longer a
+    // per-domain choice between a Linux and a native shell.  (/bin/zsh only if dash is missing.)
+    const int have_dash = access("/hos-sh", X_OK) == 0;
+    const char *shell_path = have_dash ? "/hos-sh" : "/bin/zsh";
+    char *const shell_arg0 = have_dash ? "-dash" : "-zsh";
 
     int m = open("/dev/ptmx", O_RDWR | O_NONBLOCK);
     if (m < 0) { perror("G4TERM: open /dev/ptmx"); return -1; }
@@ -857,7 +835,7 @@ static int spawn_shell(struct app *a) {
         // and a HOME, then start in the user's home directory.  Commands themselves
         // run via busybox standalone (fork + applet), so they work even without PATH.
         setenv("PATH", "/bin:/usr/bin:/sbin:/usr/sbin:/usr/local/bin", 1);
-        setenv("HOME", "/root", 1);
+        setenv("HOME", access("/home/user", F_OK) == 0 ? "/home/user" : "/root", 1);
         setenv("TERM", "linux", 1);
         // Z1: give zsh a username so %n (and \u) resolve; the passwd DB has uid 1000=user.
         setenv("USER", "user", 1);
@@ -897,12 +875,12 @@ static int spawn_shell(struct app *a) {
         // Make EPIN_SHELL in the child reflect the shell actually launched, so the zshrc's
         // native-only object-command block (Z4c) keys off the real flavor — not just whatever
         // the Domain Manager passed in.
-        setenv("EPIN_SHELL", is_native ? "native" : (is_light ? "light" : "linux"), 1);
+        setenv("EPIN_SHELL", have_dash ? "native" : "linux", 1);
+        setenv("SHELL", shell_path, 1);
         // Launch the chosen shell on the pty.  Login zsh (argv0="-zsh") reads the rc files;
         // the "light" shell runs `zsh -f -i` (interactive, NO rc files) so it starts instantly.
         char *argv_norm[]  = { shell_arg0, NULL };
-        char *argv_light[] = { "zsh", "-f", "-i", NULL };
-        execve(shell_path, is_light ? argv_light : argv_norm, environ);
+        execve(shell_path, argv_norm, environ);
         _exit(127);
     }
 

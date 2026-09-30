@@ -1110,10 +1110,18 @@ private int cloneThread(int parentTid, ulong flags, ulong childStack,
     child.brkCurrent = parent.brkCurrent;
     child.parentId   = parentTid;
 
-    // A thread shares its process's fd table (CLONE_FILES semantics): same
-    // descriptors, opens/closes are visible to all threads of the process.
-    child.fdTabId    = parent.fdTabId;
-    child.capTabId   = parent.capTabId;
+    // A thread shares its process's fd table (CLONE_FILES): same descriptors, opens/closes are
+    // visible to all threads of the process.  Without CLONE_FILES -- posix_spawn's
+    // CLONE_VM|CLONE_VFORK child -- it gets its own copy, as with fork: that child's file actions
+    // (dup2 onto 0/1/2, close) and its exec's close-on-exec must not reach into the parent's table.
+    if (flags & CLONE_FILES) {
+        child.fdTabId    = parent.fdTabId;
+        child.capTabId   = parent.capTabId;
+    } else {
+        child.fdTabId    = childTid;
+        child.capTabId   = childTid;
+        fdtabForkCopy(parent.fdTabId, childTid);
+    }
     child.untypedObjId = parent.untypedObjId;
     child.userObjId  = parent.userObjId;
     child.identityObjId = parent.identityObjId; // IDENTITY_DOMAIN §3: threads share the label
@@ -1923,6 +1931,24 @@ private void maybeAutoPkg() {
     for (size_t i = 0; name[i] != 0 && n + 1 < cmd.length; ++i) cmd[n++] = name[i];
     klog("[software] TEST: AUTOPKG install of "); klog(name.ptr); klog("\n");
     softwareControlWrite(cmd.ptr, n);
+}
+
+// TEST IMAGES ONLY: AUTORUN='<command>' -- once the AUTOPKG install reports success, run the command
+// with sh -c as a desktop program would be (stdout/stderr go to the serial log).
+private __gshared bool g_autoRunDone = false;
+private __gshared char[1024] g_autoRunCmd;
+private __gshared immutable(char)*[4] g_autoRunArgv = [ "sh", "-c", null, null ];
+private void maybeAutoRun() {
+    if (g_autoRunDone || !g_autoPkgDone) return;
+    import core.software : g_swStatus, g_swStatusLen, g_swPendActive;
+    if (g_swPendActive || g_swStatusLen < 3) return;
+    g_autoRunDone = true;
+    if (!(g_swStatus[0] == 'o' && g_swStatus[1] == 'k' && g_swStatus[2] == ' ')) return;
+    import core.syscalls.posix : softwareAutoRun;
+    if (!softwareAutoRun(g_autoRunCmd.ptr, g_autoRunCmd.length)) return;
+    g_autoRunArgv[2] = cast(immutable(char)*)g_autoRunCmd.ptr;
+    klog("[software] TEST: AUTORUN "); klog(g_autoRunCmd.ptr); klog("\n");
+    spawnWaylandProgram("busybox\0".ptr, "[autorun]\0".ptr, cast(ulong)g_autoRunArgv.ptr);
 }
 
 private bool vmFetchRunning() {
@@ -4466,6 +4492,7 @@ private void dispatchSyscall(int tid) {
             if (ret == 0) {
                 // execve succeeded — re-enter userspace from scratch
                 // The task registers were reset by execveTask
+                execCloseOnExec();     // the new image does not get the FD_CLOEXEC descriptors
                 return;
             }
             break;
@@ -4481,7 +4508,7 @@ private void dispatchSyscall(int tid) {
             if (ctid < 0 || ctid >= MAX_TASKS || !g_taskNativeAbi[ctid]) { ret = -38; break; }
             if (rdi == HOSQ_SPAWN) {
                 ret = execveTask(ctid, rsi, rdx, r10);
-                if (ret == 0) return;   // image loaded — re-enter from scratch (regs reset)
+                if (ret == 0) { execCloseOnExec(); return; }   // image loaded — re-enter from scratch (regs reset)
                 break;
             }
             if (rdi == HOSQ_WAIT) {
@@ -4508,6 +4535,13 @@ private void dispatchSyscall(int tid) {
         // loop ends each from its own context with the group's exit code.
         case 231: {
             const int lead = task.processLeaderTid;
+            // A vfork child that has not exec'd yet (posix_spawn's child after a failed execve:
+            // `_exit(127)`) still counts as a thread of its parent's process -- the group it
+            // would take down is the suspended parent's.  It ends alone.
+            if (tid >= 0 && tid < MAX_TASKS && g_vforkParentPlus1[tid] != 0) {
+                exitTask(tid, cast(int)rdi);
+                return;
+            }
             if (lead > 0) {
                 for (int i = 1; i < MAX_TASKS; ++i) {        // never task 0 (the kernel)
                     if (i == tid || !g_tasks[i].active || g_tasks[i].exited) continue;
@@ -4591,12 +4625,12 @@ private void dispatchSyscall(int tid) {
             // Free the underlying physical pages only when they belong to an
             // owned (private anonymous / file) region; device (g_fb) and shared
             // (memfd) maps must stay intact.  Walk on the task's own page tables.
-            bool freePages = (rsi != 0) && regionOwnedAt(*task, rdi);
+            bool freePages = (rsi != 0) && regionOwnedAtShared(tid, rdi);
             if (rsi != 0) x64WriteCR3(task.pml4Phys);
             ret = sys_munmap(rdi, rsi, freePages);
             if (ret == 0 && rsi != 0) {
                 ulong ulen = (rsi + 0xFFF) & ~0xFFFUL;
-                removeRegion(*task, rdi, rdi + ulen);
+                removeRegionShared(tid, rdi, rdi + ulen);
             }
             break;
         }
@@ -5180,8 +5214,15 @@ private bool gtkTaskNow() {
     return nm[0] == 'g' && nm[1] == 't' && nm[2] == 'k';
 }
 
+// Every descriptor a call creates takes that call's close-on-exec flag (posix.d fdNoteCreated).
 private long dispatchLinuxSyscall(ulong n, ulong a, ulong b, ulong c,
                                    ulong d, ulong e, ulong f) {
+    const long r = dispatchLinuxSyscallCall(n, a, b, c, d, e, f);
+    if (r >= 0) fdNoteCreated(n, a, b, c, d, r);
+    return r;
+}
+private long dispatchLinuxSyscallCall(ulong n, ulong a, ulong b, ulong c,
+                                       ulong d, ulong e, ulong f) {
     if (n == 0x4100) return linux_sys_epin_lkl_pci(a, b, c, d, e);  // L3a: LKL PCI bridge (custom)
 
     // ROADMAP 2.3 DIAGNOSTIC: log every syscall a GTK task makes, at the single point they all
@@ -5380,6 +5421,7 @@ private long dispatchLinuxSyscall(ulong n, ulong a, ulong b, ulong c,
         case 332: return linux_sys_statx(a, b, c, d, e);
         case 334: return linux_sys_rseq(a, b, c, d);
         case 435: return linux_sys_clone3(a, b);
+        case 436: return linux_sys_close_range(a, b, c);
         case 439: return linux_sys_faccessat2(a, b, c, d);  // Z1: zsh/musl access() checks
         case 441: return linux_sys_epoll_pwait2(a, b, c, d, e);
 
@@ -5803,6 +5845,7 @@ private void kernelLoop() {
         maybeSyncNtp();        // NTP: set the wall clock from pool.ntp.org, with retries
         maybeVmStoreWork();    // the firewall chosen at install: download it, then start it headless
         maybeAutoPkg();        // TEST IMAGES ONLY: AUTOPKG=<name> installs a package headlessly
+        maybeAutoRun();        // TEST IMAGES ONLY: AUTORUN='<cmd>' runs once that install succeeded
         maybeSpawnLklTest();   // L2: boot LKL on EpinAnonymOS (musl + a thread-based timer host-op)
         //maybeSpawnNetLaunch(); // H3: standalone wpa (superseded by NM, which drives wpa itself at M5)
         maybeSpawnWpa();            // M5: launch wpa_supplicant (D-Bus) just before NM

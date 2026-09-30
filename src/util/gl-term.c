@@ -143,6 +143,7 @@ struct app {
     int                   width, height;
     int                   pend_w, pend_h;   // compositor-requested surface size (0 = unset)
     int                   cell_w, cell_h;
+    int                   pad_x;             // left margin: the domain border + a gap, so column 0 is whole
     int                   font_px, baseline;
     int                   scale;
     int                   committed;
@@ -234,7 +235,8 @@ static void init_layout(struct app *a) {
     a->cell_w = BASE_CELL_W * a->scale;
     a->cell_h = BASE_CELL_H * a->scale;
     a->deco_h = DECO_BASE_H * a->scale;             // reserve a titlebar strip on top
-    a->width = COLS * a->cell_w + SCROLLBAR_W * a->scale;  // grid + a strip for the scrollback bar
+    a->pad_x = 8 * a->scale;                        // the 4px domain border covers the left edge
+    a->width = a->pad_x + COLS * a->cell_w + SCROLLBAR_W * a->scale;  // margin + grid + scrollback strip
     a->height = ROWS * a->cell_h + a->deco_h;
     a->baseline = (BASE_FONT_PX - 3) * a->scale;
 }
@@ -798,7 +800,7 @@ static void render(struct app *a) {
         uint32_t *gfg = from_ring ? rfg : a->fgc[live_r];
         uint32_t *gbg = from_ring ? rbg : a->bgc[live_r];
         for (int c = 0; c < COLS; c++) {
-            int x = c * a->cell_w;
+            int x = a->pad_x + c * a->cell_w;
             if (x + a->cell_w > content_w) break;
             int y = top + r * a->cell_h;
             uint32_t bg = gbg[c];
@@ -822,11 +824,11 @@ static void render(struct app *a) {
     // hidden by the program (R5: ?25l DECTCEM).
     if (a->view_offset == 0 && a->cursor_vis) {
         gf_fill(a->pixels, a->width, a->width, a->height,
-                a->cur_c * a->cell_w, top + a->cur_r * a->cell_h,
+                a->pad_x + a->cur_c * a->cell_w, top + a->cur_r * a->cell_h,
                 a->cell_w, a->cell_h, COL_CURSOR);
         uint32_t cc = a->grid[a->cur_r][a->cur_c];
         if (cc != ' ' && cc != 0) {
-            int x = a->cur_c * a->cell_w;
+            int x = a->pad_x + a->cur_c * a->cell_w;
             int y = top + a->cur_r * a->cell_h;
             if (a->font_ready)
                 render_ft_glyph(a, x, y, cc, COL_BG);
@@ -1052,32 +1054,11 @@ static void term_notice(struct app *a, const char *l1, const char *l2, const cha
 }
 
 static int spawn_shell(struct app *a) {
-    // IDENTITY_DOMAIN: honor the requested shell flavor (Z11).  Both run real zsh now:
-    // "linux" = zsh in the Linux personality (/bin/zsh), "native" = zsh in the native
-    // personality (/hos-zsh, the object shell); "windows" = not implemented (notice).
-    const char *flavor = getenv("EPIN_SHELL");
-    const int is_native = (flavor && strcmp(flavor, "native") == 0);
-    if (flavor && *flavor && strcmp(flavor, "linux") != 0 && !is_native) {
-        char l1[80];
-        snprintf(l1, sizeof(l1), "Domain: %s", g_has_domain ? g_domain : "(none)");
-        term_notice(a, l1, "Windows subsystem is not implemented yet.",
-                    "Pick the 'Linux' or 'Native' shell in the Domain Manager.");
-        a->ptm = -1;
-        printf("G4TERM: shell flavor '%s' not implemented; showing notice\n", flavor);
-        fflush(stdout);
-        return 0;
-    }
-    // The shell binary depends on the flavor; the PTY plumbing + argv[0] are shared.
-    // BOTH personalities run zsh — ONE shell, two personalities (ZSH_INTEGRATION_ROADMAP):
-    //  - Linux:  /bin/zsh  (Z1) — real upstream zsh, the POSIX Linux-personality login shell,
-    //    confined to Linux (HOS_SYS_QUERY -> ENOSYS; the native-launch authorization is dropped
-    //    on this exec, L5.2).
-    //  - Native: /hos-zsh (Z4) — the SAME zsh launched into the native personality, with **LFE
-    //    embedded inside it**: the `zsh/anonymos` module gives in-process obj/id/ns/svc/sys object
-    //    builtins (Z4c.4) AND an `lfe` builtin running the full LFE evaluator (L2–L4) in-process.
-    //    So the native shell is zsh + LFE, not a separate shell.
-    const char *shell_path = is_native ? "/hos-zsh" : "/bin/zsh";
-    char *const shell_arg0 = "-zsh";
+    // Every terminal starts dash, the native shell (docs/DASH.md); its `linux` command drops into
+    // the Linux shell (zsh) and returns when that exits.  (/bin/zsh only if dash is missing.)
+    const int have_dash = access("/hos-sh", X_OK) == 0;
+    const char *shell_path = have_dash ? "/hos-sh" : "/bin/zsh";
+    char *const shell_arg0 = have_dash ? "-dash" : "-zsh";
 
     int m = open("/dev/ptmx", O_RDWR | O_NONBLOCK);
     if (m < 0) { perror("G4TERM: open /dev/ptmx"); return -1; }
@@ -1124,7 +1105,7 @@ static int spawn_shell(struct app *a) {
         // and a HOME, then start in the user's home directory.  Commands themselves
         // run via busybox standalone (fork + applet), so they work even without PATH.
         setenv("PATH", "/bin:/usr/bin:/sbin:/usr/sbin:/usr/local/bin", 1);
-        setenv("HOME", "/root", 1);
+        setenv("HOME", access("/home/user", F_OK) == 0 ? "/home/user" : "/root", 1);
         setenv("TERM", "linux", 1);
         // Z1: give zsh a username so %n (and \u) resolve; the passwd DB has uid 1000=user.
         setenv("USER", "user", 1);
@@ -1164,7 +1145,8 @@ static int spawn_shell(struct app *a) {
         // Make EPIN_SHELL in the child reflect the shell actually launched, so the zshrc's
         // native-only object-command block (Z4c) keys off the real flavor — not just whatever
         // the Domain Manager passed in.
-        setenv("EPIN_SHELL", is_native ? "native" : "linux", 1);
+        setenv("EPIN_SHELL", have_dash ? "native" : "linux", 1);
+        setenv("SHELL", shell_path, 1);
         // Launch the chosen shell on the pty.  For busybox, argv[0]="-sh" makes ash
         // an interactive login shell; for the native shell, /hos-sh.
         char *argv[] = { shell_arg0, NULL };
@@ -1299,7 +1281,7 @@ static int in_grid(struct app *a, double px, double py) {
 // 'm', legacy reports button 3.  Encodes SGR (?1006) or legacy X10.
 static void mouse_report(struct app *a, int cb, double px, double py, int release) {
     if (!a->mouse_mode) return;
-    int col = (int)(px / a->cell_w) + 1;
+    int col = (int)((px - a->pad_x) / a->cell_w) + 1;
     int row = (int)((py - a->deco_h) / a->cell_h) + 1;
     if (col < 1) col = 1;
     if (row < 1) row = 1;
@@ -1372,7 +1354,7 @@ static void ptr_button(void *d, struct wl_pointer *p, uint32_t serial, uint32_t 
     }
     // R5: OSC-8 hyperlink click -> copy the URI to the clipboard (there is no browser to "open" it).
     if (a->view_offset == 0 && in_grid(a, a->px, a->py)) {
-        int col = (int)(a->px / a->cell_w), row = (int)((a->py - a->deco_h) / a->cell_h);
+        int col = (int)((a->px - a->pad_x) / a->cell_w), row = (int)((a->py - a->deco_h) / a->cell_h);
         if (row >= 0 && row < ROWS && col >= 0 && col < COLS && a->link[row][col]) {
             uint32_t id = a->link[row][col];
             if (id >= 1 && id <= (uint32_t)a->link_count) {

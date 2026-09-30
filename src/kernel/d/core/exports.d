@@ -984,7 +984,7 @@ ulong linux_seed_initial_stack(
     // 46 fixed entries + up to 2 staged per-spawn ones (EPIN_DOMAIN / EPIN_SHELL) + the NULL
     // terminator.  Raised from 48 so adding a spawn var cannot silently overrun the array --
     // at 48 the fixed list was already within two slots of the ceiling.
-    enum bootEnvCount = 56;
+    enum bootEnvCount = 64;
     ulong[bootEnvCount] envVirts;
     ulong envc = 0;
 
@@ -1257,6 +1257,12 @@ ulong linux_seed_initial_stack(
     // xkb.blob (rtUnpackXkb) so xkb_context_new() can add an include path and
     // keymap compilation finds rules/keycodes/symbols/...
     envVirt = _copyKernelStrToStack(stackPhysVirt, stackVirtBase, strCursor, "XKB_CONFIG_ROOT=/usr/share/X11/xkb\0".ptr);
+    if (envVirt != 0) envVirts[envc++] = envVirt;
+    // Mesa's loader looks for its DRI driver (swrast_dri.so, kms_swrast_dri.so -- boot modules,
+    // found by basename like every .so) under the baked host path /build/.../sysroot/lib/dri.
+    // A domain's namespace has no /build, so a confined GL client (ratty, gl-term) failed to load
+    // any driver ("Unable to find a GPU").  /usr/lib/dri is inside every namespace's /usr.
+    envVirt = _copyKernelStrToStack(stackPhysVirt, stackVirtBase, strCursor, "LIBGL_DRIVERS_PATH=/usr/lib/dri\0".ptr);
     if (envVirt != 0) envVirts[envc++] = envVirt;
     // libXcursor's baked default XCURSOR_PATH has several host/sysroot entries.
     // Collapse it to the guest asset theme root mounted from cursors/icons blobs.

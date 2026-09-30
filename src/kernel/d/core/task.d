@@ -661,17 +661,20 @@ bool regionOwnedAt(ref Task task, ulong vaddr) {
     return r !is null && r.owned;
 }
 
-// Remove regions fully contained in [start, end) from a task's table (compacting
-// via swap-remove).  Called by munmap so the per-task region table doesn't leak
-// one entry per mmap — Mesa/softpipe churn many short-lived maps and otherwise
-// exhaust MAX_REGIONS ("addRegion: full").  Partial/straddling unmaps (rare) are
-// left intact; their pages are still unmapped by sys_munmap.
+// Take [start, end) out of a task's region table: an entry wholly inside is dropped (swap-remove),
+// one the range cuts is trimmed to what is left, and one it punches a hole in is split in two.
+// Called by munmap so the per-task table doesn't leak an entry per mapping -- Mesa/softpipe churn
+// many short-lived maps, and aligned allocators (Rust's, wgpu's) map size+alignment and unmap
+// the head and tail, so their mappings are only ever unmapped in PIECES.  Dropping just the
+// wholly-contained entries leaked one per such allocation until "addRegion: full" failed the
+// next mmap (ratty died "memory allocation of 118272 bytes failed" a minute after start).
 void removeRegion(ref Task task, ulong start, ulong end) {
     if (end <= start) return;
     int n = task.regionCount;
     int i = 0;
     while (i < n) {
         auto r = &task.regions[i];
+        if (r.end <= start || r.start >= end) { ++i; continue; }      // untouched
         if (r.start >= start && r.end <= end) {
             objReleaseRegion(r);
             task.regions[i] = task.regions[n - 1];   // swap-remove
@@ -692,9 +695,53 @@ void removeRegion(ref Task task, ulong start, ulong end) {
             --n;
             continue;                                 // re-check swapped-in entry
         }
+        if (r.start < start && r.end > end) {
+            // A hole in the middle: this entry keeps the head, a new one takes the tail.  With the
+            // table full it stays whole (still correct: its pages are unmapped all the same, and a
+            // live tail must stay listed -- fork copies and exit frees only what is listed).
+            if (n >= MAX_REGIONS) { ++i; continue; }
+            auto t = &task.regions[n++];
+            *t = *r;
+            t.start = end;
+            if (t.physBase != 0) t.physBase += end - r.start;
+            t.objId = 0; t.vmoRetained = false;       // its own object and VMO reference
+            objEnsureRegion(t);
+            r.end = start;
+        } else if (r.start < start) {
+            r.end = start;                            // the range took its tail
+        } else {
+            if (r.physBase != 0) r.physBase += end - r.start;
+            r.start = end;                            // the range took its head
+        }
         ++i;
     }
     task.regionCount = n;
+}
+
+// Threads keep a region table each but share one address space, so an unmap -- which may come
+// from any of them, not the one that mapped -- must reach every table that lists the range.
+void removeRegionShared(int tid, ulong start, ulong end) {
+    if (tid < 0 || tid >= MAX_TASKS) return;
+    const ulong pml4 = g_tasks[tid].pml4Phys;
+    foreach (i; 0 .. MAX_TASKS) {
+        auto t = &g_tasks[i];
+        if (i != tid && (!t.active || t.exited || pml4 == 0 || t.pml4Phys != pml4)) continue;
+        removeRegion(*t, start, end);
+    }
+}
+// Does any table of this address space own the pages at `vaddr` (safe to free on unmap)?
+bool regionOwnedAtShared(int tid, ulong vaddr) {
+    if (tid < 0 || tid >= MAX_TASKS) return false;
+    if (regionOwnedAt(g_tasks[tid], vaddr)) return true;
+    const ulong pml4 = g_tasks[tid].pml4Phys;
+    if (pml4 == 0) return false;
+    foreach (i; 0 .. MAX_TASKS) {
+        auto t = &g_tasks[i];
+        if (i == tid || !t.active || t.exited || t.pml4Phys != pml4) continue;
+        auto r = findRegion(*t, vaddr);
+        if (r !is null) return r.owned;
+    }
+    return false;
 }
 
 void clearRegions(ref Task task) {

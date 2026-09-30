@@ -1,0 +1,867 @@
+ratty on anonymOS: OpenGL ES over Mesa EGL, the native shell, idle-friendly redraws
+
+1. GLES backend.  Enable wgpu's `gles` feature (ratty depends on wgpu directly
+   for this; Bevy only turns on Vulkan/Metal/DX12 natively) and hand winit's
+   display connection to the renderer (PlatformDisplayPlugin ->
+   bevy_render::renderer::RenderDisplayHandle, from the patched bevy_render in
+   anonymos-crates/, wired in with [patch.crates-io]).  With no Vulkan driver,
+   wgpu then picks Mesa's EGL/GL (llvmpipe in a VM) and presents to the Wayland
+   window.  The log filter drops wgpu-hal's per-frame GL texture-target
+   heuristic notice (it concerns Bevy's unused shadow-map arrays).
+
+2. Shell.  With neither --command nor [shell] program: $SHELL, unless it is the
+   generic /bin/sh anonymOS seeds into every process while a native shell
+   exists; then the native shell (/hos-sh = dash, else /-sh; EPIN_SHELL=native,
+   as the OS's other terminals export), then /bin/zsh as a login shell
+   (EPIN_SHELL=linux), then /bin/sh.  portable-pty comes from the patched copy
+   in anonymos-crates/ too: its child closes inherited fds even without
+   /dev/fd or close-on-exec.  The choice and the child pid are printed
+   to stderr ("ratty: shell ...", "ratty: spawned shell pid=N").  The window
+   also closes when the shell exits even if the PTY master never reports a
+   hangup (anonymOS PTYs have no EOF/EIO on slave close): the child is polled
+   with try_wait.  A failing getcwd() or an unwritable cache directory (the
+   runtime asset root falls back to $TMPDIR) no longer aborts startup.
+
+3. Font.  When the font is still the default family (DejaVu Sans Mono, which
+   anonymOS does not ship) and no font files are configured, use the file named
+   by $HOS_TERMINAL_FONT (the OS's terminal font, Noto Sans Mono) and its
+   -Bold sibling.
+
+4. Redraws.  New default update_mode "Auto": Continuous on a hardware GPU; on a
+   software rasterizer (llvmpipe) update reactively -- at once on input, window
+   events and PTY output, otherwise every software_frame_interval_ms (100) to
+   pace animations -- instead of pinning the CPU at 60 fps.  The PTY reader
+   thread now wakes the event loop (EventLoopProxy WakeUp) when output arrives
+   or the PTY closes, so reactive modes show output immediately; "LowPower"
+   therefore also makes unfocused windows reactive.
+---
+diff --git a/Cargo.lock b/Cargo.lock
+index 87a129b..3a47a92 100644
+--- a/Cargo.lock
++++ b/Cargo.lock
+@@ -1211,8 +1211,6 @@ dependencies = [
+ [[package]]
+ name = "bevy_render"
+ version = "0.19.0"
+-source = "registry+https://github.com/rust-lang/crates.io-index"
+-checksum = "a89b2cc850a4c3fd12a6a088a4fc3e80118b2e1b569da8936f6d4d99ca1b6ee7"
+ dependencies = [
+  "async-channel",
+  "bevy_app",
+@@ -2737,6 +2735,17 @@ dependencies = [
+  "wasip3",
+ ]
+ 
++[[package]]
++name = "gl_generator"
++version = "0.14.0"
++source = "registry+https://github.com/rust-lang/crates.io-index"
++checksum = "1a95dfc23a2b4a9a2f5ab41d194f8bfda3cabec42af4e39f08c339eb2a0c124d"
++dependencies = [
++ "khronos_api",
++ "log",
++ "xml-rs",
++]
++
+ [[package]]
+ name = "glam"
+ version = "0.32.1"
+@@ -2750,6 +2759,18 @@ dependencies = [
+  "serde_core",
+ ]
+ 
++[[package]]
++name = "glow"
++version = "0.17.0"
++source = "registry+https://github.com/rust-lang/crates.io-index"
++checksum = "29038e1c483364cc6bb3cf78feee1816002e127c331a1eec55a4d202b9e1adb5"
++dependencies = [
++ "js-sys",
++ "slotmap",
++ "wasm-bindgen",
++ "web-sys",
++]
++
+ [[package]]
+ name = "gltf"
+ version = "1.4.1"
+@@ -2786,6 +2807,15 @@ dependencies = [
+  "serde_json",
+ ]
+ 
++[[package]]
++name = "glutin_wgl_sys"
++version = "0.6.1"
++source = "registry+https://github.com/rust-lang/crates.io-index"
++checksum = "2c4ee00b289aba7a9e5306d57c2d05499b2e5dc427f84ac708bd2c090212cf3e"
++dependencies = [
++ "gl_generator",
++]
++
+ [[package]]
+ name = "gpu-allocator"
+ version = "0.28.0"
+@@ -3267,6 +3297,23 @@ dependencies = [
+  "thiserror 2.0.18",
+ ]
+ 
++[[package]]
++name = "khronos-egl"
++version = "6.0.0"
++source = "registry+https://github.com/rust-lang/crates.io-index"
++checksum = "6aae1df220ece3c0ada96b8153459b67eebe9ae9212258bb0134ae60416fdf76"
++dependencies = [
++ "libc",
++ "libloading",
++ "pkg-config",
++]
++
++[[package]]
++name = "khronos_api"
++version = "3.1.0"
++source = "registry+https://github.com/rust-lang/crates.io-index"
++checksum = "e2db585e1d738fc771bf08a151420d3ed193d9d895a36df7f6f8a9456b911ddc"
++
+ [[package]]
+ name = "ktx2"
+ version = "0.5.0"
+@@ -4369,8 +4416,6 @@ dependencies = [
+ [[package]]
+ name = "portable-pty"
+ version = "0.8.1"
+-source = "registry+https://github.com/rust-lang/crates.io-index"
+-checksum = "806ee80c2a03dbe1a9fb9534f8d19e4c0546b790cde8fd1fea9d6390644cb0be"
+ dependencies = [
+  "anyhow",
+  "bitflags 1.3.2",
+@@ -4674,6 +4719,7 @@ dependencies = [
+  "etcetera",
+  "fux-vt",
+  "image",
++ "libc",
+  "portable-pty",
+  "ratatui",
+  "rust-embed",
+@@ -4682,6 +4728,7 @@ dependencies = [
+  "stl_io",
+  "tobj",
+  "toml 0.8.23",
++ "wgpu",
+  "winit",
+  "winresource",
+ ]
+@@ -6175,6 +6222,7 @@ checksum = "d8eab23fefc9e41f8e841df4a9c707e8a8c4ed26e944ef69297184de2785e3be"
+ dependencies = [
+  "dlib",
+  "log",
++ "once_cell",
+  "pkg-config",
+ ]
+ 
+@@ -6345,6 +6393,7 @@ dependencies = [
+  "smallvec",
+  "thiserror 2.0.18",
+  "wgpu-core-deps-apple",
++ "wgpu-core-deps-emscripten",
+  "wgpu-core-deps-windows-linux-android",
+  "wgpu-hal",
+  "wgpu-naga-bridge",
+@@ -6360,6 +6409,15 @@ dependencies = [
+  "wgpu-hal",
+ ]
+ 
++[[package]]
++name = "wgpu-core-deps-emscripten"
++version = "29.0.3"
++source = "registry+https://github.com/rust-lang/crates.io-index"
++checksum = "3487cd6293a963bc5c0c0396f6a2192043c50003c07f4efdccbad3d90ec9d819"
++dependencies = [
++ "wgpu-hal",
++]
++
+ [[package]]
+ name = "wgpu-core-deps-windows-linux-android"
+ version = "29.0.3"
+@@ -6384,13 +6442,18 @@ dependencies = [
+  "bytemuck",
+  "cfg-if",
+  "cfg_aliases",
++ "glow",
++ "glutin_wgl_sys",
+  "gpu-allocator",
+  "gpu-descriptor",
+  "hashbrown 0.16.1",
++ "js-sys",
++ "khronos-egl",
+  "libc",
+  "libloading",
+  "log",
+  "naga",
++ "ndk-sys",
+  "objc2 0.6.4",
+  "objc2-core-foundation",
+  "objc2-foundation 0.3.2",
+@@ -6408,10 +6471,14 @@ dependencies = [
+  "renderdoc-sys",
+  "smallvec",
+  "thiserror 2.0.18",
++ "wasm-bindgen",
++ "wayland-sys",
++ "web-sys",
+  "wgpu-naga-bridge",
+  "wgpu-types",
+  "windows",
+  "windows-core",
++ "windows-result",
+ ]
+ 
+ [[package]]
+@@ -7003,6 +7070,12 @@ version = "0.2.1"
+ source = "registry+https://github.com/rust-lang/crates.io-index"
+ checksum = "b9cc00251562a284751c9973bace760d86c0276c471b4be569fe6b068ee97a56"
+ 
++[[package]]
++name = "xml-rs"
++version = "0.8.28"
++source = "registry+https://github.com/rust-lang/crates.io-index"
++checksum = "3ae8337f8a065cfc972643663ea4279e04e7256de865aa66fe25cec5fb912d3f"
++
+ [[package]]
+ name = "yazi"
+ version = "0.2.1"
+diff --git a/Cargo.toml b/Cargo.toml
+index 4273d58..c5db213 100644
+--- a/Cargo.toml
++++ b/Cargo.toml
+@@ -60,6 +60,10 @@ stl_io = "0.11.0"
+ tobj = "4.0"
+ toml = "0.8"
+ winit = { version = "0.30", default-features = false }
++# OpenGL ES backend (EGL), for systems without a Vulkan driver (e.g. Mesa
++# llvmpipe/softpipe): wgpu picks it when no Vulkan adapter is available.
++wgpu = { version = "29", default-features = false, features = ["gles"] }
++libc = "0.2"
+ 
+ [build-dependencies]
+ winresource = "0.1.31"
+@@ -88,3 +92,11 @@ inherits = "release"
+ lto = false
+ codegen-units = 16
+ incremental = true
++
++# anonymOS (scripts/build-ratty.sh unpacks + patches these, see patches/ratty/crates/):
++# bevy_render: the display handle for wgpu's GLES backend (RenderDisplayHandle); without it
++#   bevy_render creates a surfaceless EGL instance that cannot present on Wayland.
++# portable-pty: close the child's inherited fds without /dev/fd or close-on-exec.
++[patch.crates-io]
++bevy_render = { path = "anonymos-crates/bevy_render-0.19.0" }
++portable-pty = { path = "anonymos-crates/portable-pty-0.8.1" }
+diff --git a/config/ratty.toml b/config/ratty.toml
+index c3ded4d..d58ad93 100644
+--- a/config/ratty.toml
++++ b/config/ratty.toml
+@@ -3,8 +3,11 @@ width = 960
+ height = 620
+ opacity = 0.8
+ # scale_factor = 1.0
+-# update_mode = "Continuous"  # Use "LowPower" to redraw only after input or terminal output.
++# update_mode = "Auto"        # "Continuous" on a GPU; on a software renderer, redraw on input/output
++#                             # and every software_frame_interval_ms. "Continuous" always redraws;
++#                             # "LowPower" redraws on input/output and every frame_interval_ms.
+ # frame_interval_ms = 33      # Minimum milliseconds between LowPower redraws.
++# software_frame_interval_ms = 100  # Idle redraw interval for "Auto" on a software renderer.
+ 
+ [terminal]
+ default_cols = 104
+diff --git a/src/config.rs b/src/config.rs
+index 1c240ab..3ebaede 100644
+--- a/src/config.rs
++++ b/src/config.rs
+@@ -65,7 +65,9 @@ impl AppConfig {
+         };
+ 
+         let Some(path) = selected_path else {
+-            return Ok(Self::default());
++            let mut config = Self::default();
++            config.font.prefer_system_terminal_font();
++            return Ok(config);
+         };
+ 
+         let contents = fs::read_to_string(&path)
+@@ -73,6 +75,7 @@ impl AppConfig {
+         let mut config: Self = toml::from_str(&contents)
+             .with_context(|| format!("failed to parse {}", path.display()))?;
+         config.resolve_relative_paths(&path);
++        config.font.prefer_system_terminal_font();
+         Ok(config)
+     }
+ 
+@@ -158,6 +161,10 @@ pub struct WindowConfig {
+     /// Minimum time between redraws while focused, in milliseconds.
+     /// Only applies when `update_mode` is `LowPower`.
+     pub frame_interval_ms: u64,
++    /// With `update_mode = "Auto"` on a software renderer: the longest time
++    /// between redraws while idle, in milliseconds. Input and terminal output
++    /// still redraw at once; this paces animations such as the cursor model.
++    pub software_frame_interval_ms: u64,
+ }
+ 
+ impl Default for WindowConfig {
+@@ -167,8 +174,9 @@ impl Default for WindowConfig {
+             height: 620,
+             scale_factor: None,
+             opacity: 1.0,
+-            update_mode: UpdateModeConfig::Continuous,
++            update_mode: UpdateModeConfig::Auto,
+             frame_interval_ms: 33,
++            software_frame_interval_ms: 100,
+         }
+     }
+ }
+@@ -176,11 +184,17 @@ impl Default for WindowConfig {
+ /// How the window schedules redraws while focused.
+ #[derive(Debug, Clone, Copy, Deserialize, Default)]
+ pub enum UpdateModeConfig {
++    /// `Continuous` on a hardware GPU; on a software rasterizer (such as
++    /// llvmpipe) redraw on input and terminal output, and at least every
++    /// `software_frame_interval_ms`.
++    #[serde(rename = "Auto")]
++    #[default]
++    Auto,
+     /// Redraw continuously, regardless of input.
+     #[serde(rename = "Continuous")]
+-    #[default]
+     Continuous,
+-    /// Redraw in response to events, rate-limited to `frame_interval_ms`.
++    /// Redraw in response to input and terminal output, and at least every
++    /// `frame_interval_ms` (which paces animations).
+     #[serde(rename = "LowPower")]
+     LowPower,
+ }
+@@ -365,10 +379,46 @@ pub struct FontConfig {
+     pub line_height: f32,
+ }
+ 
++/// The default font family.
++pub const DEFAULT_FONT_FAMILY: &str = "DejaVu Sans Mono";
++
++/// Environment variable naming the system's terminal font file (set by anonymOS).
++pub const SYSTEM_TERMINAL_FONT_ENV: &str = "HOS_TERMINAL_FONT";
++
++impl FontConfig {
++    /// Uses the system's terminal font file when the font is still the default
++    /// family and no font files are configured.
++    ///
++    /// anonymOS names its terminal font in `HOS_TERMINAL_FONT` (a monospace
++    /// `*-Regular.ttf`) and ships no DejaVu; a sibling `*-Bold.ttf` is used for
++    /// bold when present. Nothing changes when the variable is unset or the file
++    /// is missing.
++    pub fn prefer_system_terminal_font(&mut self) {
++        let explicit = [&self.regular, &self.bold, &self.italic, &self.bold_italic];
++        if self.family != DEFAULT_FONT_FAMILY || explicit.iter().any(|face| face.is_some()) {
++            return;
++        }
++        let Some(regular) = std::env::var_os(SYSTEM_TERMINAL_FONT_ENV).map(PathBuf::from) else {
++            return;
++        };
++        if !regular.is_file() {
++            return;
++        }
++        let bold = regular
++            .file_name()
++            .and_then(|name| name.to_str())
++            .filter(|name| name.contains("-Regular."))
++            .map(|name| regular.with_file_name(name.replacen("-Regular.", "-Bold.", 1)))
++            .filter(|bold| bold.is_file());
++        self.regular = Some(regular);
++        self.bold = bold;
++    }
++}
++
+ impl Default for FontConfig {
+     fn default() -> Self {
+         Self {
+-            family: "DejaVu Sans Mono".to_string(),
++            family: DEFAULT_FONT_FAMILY.to_string(),
+             regular: None,
+             bold: None,
+             italic: None,
+diff --git a/src/main.rs b/src/main.rs
+index f03ef4d..10022ad 100644
+--- a/src/main.rs
++++ b/src/main.rs
+@@ -1,9 +1,14 @@
+ #[cfg(any(target_os = "linux", target_os = "windows"))]
+ use anyhow::anyhow;
+ use bevy::asset::AssetPlugin;
++use bevy::log::{DEFAULT_FILTER, LogPlugin};
+ use bevy::prelude::*;
++use bevy::render::RenderPlugin;
++use bevy::render::renderer::RenderDisplayHandle;
+ use bevy::window::{PrimaryWindow, WindowCreated, WindowResizeConstraints, WindowResolution};
+-use bevy::winit::{UpdateMode, WINIT_WINDOWS, WinitSettings};
++use bevy::winit::{
++    EventLoopProxyWrapper, UpdateMode, WINIT_WINDOWS, WinitSettings, WinitUserEvent,
++};
+ use clap::Parser;
+ use std::time::Duration;
+ 
+@@ -45,13 +50,19 @@ fn main() -> anyhow::Result<()> {
+         &app_config,
+         &RuntimeOptions {
+             command: cli.command.clone(),
+-            working_dir: Some(std::env::current_dir()?),
++            working_dir: std::env::current_dir().ok(),
+         },
+     )?;
+     let terminal = TerminalSurface::new(&app_config)?;
+     let window_title = cli.title;
+     let asset_root = runtime_asset_root();
+-    std::fs::create_dir_all(&asset_root)?;
++    if let Err(error) = std::fs::create_dir_all(&asset_root) {
++        // Only file-backed models (glTF) need it; the embedded OBJ/STL ones do not.
++        eprintln!(
++            "ratty: cannot create the asset directory {}: {error}",
++            asset_root.display()
++        );
++    }
+     let window_icon = load_window_icon()?;
+ 
+     let mut app = App::new();
+@@ -65,18 +76,17 @@ fn main() -> anyhow::Result<()> {
+     .insert_resource(runtime)
+     .insert_resource(terminal)
+     .insert_non_send(AppWindowIcon { icon: window_icon })
+-    // Unfocused windows always update continuously. Bevy's default switches
+-    // them to a reactive mode, which would delay background PTY output.
+-    // While focused, `update_mode` picks between updating continuously and
+-    // updating reactively at a capped frame rate to reduce idle CPU usage.
++    // `update_mode` picks between updating continuously and updating
++    // reactively (on input, window events and PTY output, which wakes the
++    // event loop, see `wake_on_pty_output`) at a capped frame rate to reduce
++    // idle CPU usage. Bevy's own default would make unfocused windows wait up
++    // to a minute between updates.
++    //
++    // `Auto` starts out continuous; `cap_software_redraws` switches it to the
++    // reactive mode once the renderer turns out to be a CPU rasterizer.
+     .insert_resource(match app_config.window.update_mode {
+-        UpdateModeConfig::Continuous => WinitSettings::continuous(),
+-        UpdateModeConfig::LowPower => WinitSettings {
+-            focused_mode: UpdateMode::reactive_low_power(Duration::from_millis(
+-                app_config.window.frame_interval_ms,
+-            )),
+-            unfocused_mode: UpdateMode::Continuous,
+-        },
++        UpdateModeConfig::Auto | UpdateModeConfig::Continuous => WinitSettings::continuous(),
++        UpdateModeConfig::LowPower => reactive_settings(app_config.window.frame_interval_ms),
+     })
+     .add_plugins(
+         DefaultPlugins
+@@ -99,10 +109,16 @@ fn main() -> anyhow::Result<()> {
+             .set(AssetPlugin {
+                 file_path: asset_root.to_string_lossy().into_owned(),
+                 ..default()
+-            }),
++            })
++            .set(LogPlugin {
++                filter: log_filter(),
++                ..default()
++            })
++            .add_before::<RenderPlugin>(PlatformDisplayPlugin),
+     );
+     let font_faces = load_configured_font_faces(&mut app, &app_config.font)?;
+     app.insert_resource(font_faces)
++        .add_systems(Startup, (wake_on_pty_output, cap_software_redraws))
+         .add_systems(Update, apply_window_icon)
+         .add_plugins(TerminalPlugin)
+         .run();
+@@ -110,6 +126,88 @@ fn main() -> anyhow::Result<()> {
+     Ok(())
+ }
+ 
++/// Bevy's default log filter, minus wgpu-hal's GL texture-target heuristic
++/// notice: on the GLES backend it fires on every bind group that holds one of
++/// Bevy's (unused, shadow maps are off) array or cube-array shadow textures,
++/// i.e. twice a frame. The GL backend's device, queue and EGL messages stay.
++fn log_filter() -> String {
++    format!(
++        "{},wgpu_hal::gles=off,wgpu_hal::gles::device=warn,\
++         wgpu_hal::gles::queue=warn,wgpu_hal::gles::command=warn,\
++         wgpu_hal::gles::egl=warn,wgpu_hal::gles::adapter=warn",
++        DEFAULT_FILTER.trim_end_matches(',')
++    )
++}
++
++/// Hands winit's display connection to the renderer before it is created.
++///
++/// wgpu's GLES backend has to create its EGL display against the same Wayland
++/// (or X11) connection the window lives on; created without it, EGL is
++/// surfaceless and cannot present to the window. This is what lets Ratty run
++/// on OpenGL ES (e.g. Mesa llvmpipe) where no Vulkan driver exists.
++struct PlatformDisplayPlugin;
++
++impl Plugin for PlatformDisplayPlugin {
++    fn build(&self, app: &mut App) {
++        let display = app
++            .world()
++            .get_resource::<bevy::winit::DisplayHandleWrapper>()
++            .map(|wrapper| wrapper.0.clone());
++        if let Some(display) = display {
++            app.insert_resource(RenderDisplayHandle(std::sync::Arc::new(display)));
++        }
++    }
++}
++
++/// With `update_mode = "Auto"`, caps redraws on a software rasterizer.
++///
++/// A CPU adapter (Mesa llvmpipe/softpipe, e.g. in a VM without 3D) spends
++/// every frame rasterizing the whole window, so updating continuously pins
++/// the CPU even while the terminal is idle. There, both focused and unfocused
++/// windows update reactively instead: at once on input, window events and PTY
++/// output, and otherwise every `software_frame_interval_ms` (animations).
++fn cap_software_redraws(
++    app_config: Res<AppConfig>,
++    adapter: Option<Res<bevy::render::renderer::RenderAdapterInfo>>,
++    mut winit_settings: ResMut<WinitSettings>,
++) {
++    let Some(adapter) = adapter else {
++        return;
++    };
++    if !matches!(app_config.window.update_mode, UpdateModeConfig::Auto)
++        || adapter.device_type != wgpu::DeviceType::Cpu
++    {
++        return;
++    }
++    info!(
++        "software renderer ({}): redrawing on input and output, at least every {} ms",
++        adapter.name,
++        app_config.window.software_frame_interval_ms.max(1)
++    );
++    *winit_settings = reactive_settings(app_config.window.software_frame_interval_ms);
++}
++
++/// Updates on input, window events and PTY output, and at least every
++/// `frame_interval_ms` (which paces animations such as the cursor model).
++fn reactive_settings(frame_interval_ms: u64) -> WinitSettings {
++    let interval = Duration::from_millis(frame_interval_ms.max(1));
++    WinitSettings {
++        focused_mode: UpdateMode::reactive_low_power(interval),
++        unfocused_mode: UpdateMode::reactive_low_power(interval),
++    }
++}
++
++/// Wakes the winit event loop whenever the PTY produces output, so a reactive
++/// update mode shows it at once rather than on the next timed update.
++fn wake_on_pty_output(runtime: Res<TerminalRuntime>, proxy: Res<EventLoopProxyWrapper>) {
++    let proxy = std::sync::Mutex::new((**proxy).clone());
++    runtime.set_output_waker(move || {
++        if let Ok(proxy) = proxy.lock() {
++            let _ = proxy.send_event(WinitUserEvent::WakeUp);
++        }
++    });
++}
++
+ /// Applies the platform window icon after winit creates the native window.
+ fn apply_window_icon(
+     mut window_created_events: MessageReader<WindowCreated>,
+diff --git a/src/paths.rs b/src/paths.rs
+index 201cbfb..61e7c26 100644
+--- a/src/paths.rs
++++ b/src/paths.rs
+@@ -1,6 +1,7 @@
+ //! Shared filesystem path helpers.
+ 
+ use std::path::{Path, PathBuf};
++use std::sync::OnceLock;
+ 
+ use etcetera::{BaseStrategy, choose_base_strategy};
+ 
+@@ -10,10 +11,26 @@ pub fn expand_path(path: &Path) -> PathBuf {
+ }
+ 
+ /// Returns the writable runtime asset root used for scene-backed object files.
++///
++/// The user's cache directory, or the temporary directory when that cannot be
++/// created (a sandboxed or read-only home); decided once per process.
+ pub fn runtime_asset_root() -> PathBuf {
+-    choose_base_strategy()
+-        .map(|strategy| strategy.cache_dir())
+-        .unwrap_or_else(|_| std::env::temp_dir())
+-        .join(env!("CARGO_PKG_NAME"))
+-        .join("assets")
++    static ROOT: OnceLock<PathBuf> = OnceLock::new();
++    ROOT.get_or_init(|| {
++        let under = |base: PathBuf| base.join(env!("CARGO_PKG_NAME")).join("assets");
++        let preferred = under(
++            choose_base_strategy()
++                .map(|strategy| strategy.cache_dir())
++                .unwrap_or_else(|_| std::env::temp_dir()),
++        );
++        if std::fs::create_dir_all(&preferred).is_ok() {
++            return preferred;
++        }
++        let fallback = under(std::env::temp_dir());
++        if std::fs::create_dir_all(&fallback).is_ok() {
++            return fallback;
++        }
++        preferred
++    })
++    .clone()
+ }
+diff --git a/src/runtime.rs b/src/runtime.rs
+index 502d8e3..cfa4935 100644
+--- a/src/runtime.rs
++++ b/src/runtime.rs
+@@ -5,7 +5,7 @@ use std::env;
+ use std::io::{ErrorKind, Read, Write};
+ use std::path::PathBuf;
+ use std::sync::mpsc::{self, Receiver, TryRecvError};
+-use std::sync::{Arc, Mutex};
++use std::sync::{Arc, Mutex, OnceLock};
+ use std::thread::{self, JoinHandle};
+ 
+ use anyhow::Context;
+@@ -149,6 +149,8 @@ pub struct TerminalRuntime {
+     child: Option<Box<dyn portable_pty::Child + Send + Sync>>,
+     /// PTY reader thread.
+     reader_thread: Option<JoinHandle<()>>,
++    /// Wakes the app when PTY output arrives (see [`Self::set_output_waker`]).
++    output_waker: Arc<OnceLock<OutputWaker>>,
+     /// Terminal parser: the VT state machine plus the screen it drives.
+     pub parser: Parser,
+     /// Replies and unhandled sequences the parser hands back.
+@@ -166,6 +168,9 @@ pub struct TerminalRuntime {
+     pending_resize: Option<PtyDimensions>,
+ }
+ 
++/// Called by the PTY reader thread after it queues output or sees the PTY close.
++pub type OutputWaker = Box<dyn Fn() + Send + Sync>;
++
+ /// `(cols, rows, pixel_width, pixel_height)` as sent to the PTY.
+ type PtyDimensions = (u16, u16, u16, u16);
+ /// `(cols, rows)` as applied to the parser grid.
+@@ -239,6 +244,99 @@ fn find_git_bash() -> Option<String> {
+     None
+ }
+ 
++/// The native shell of anonymOS, in order of preference: dash (`/hos-sh`,
++/// what the system's other terminals start) and `/-sh`. Both can drop into
++/// the Linux shell.
++const NATIVE_SHELLS: &[&str] = &["/hos-sh", "/-sh"];
++
++/// The Linux shell anonymOS falls back to when no native shell is installed.
++const LINUX_SHELL: &str = "/bin/zsh";
++
++/// A shell picked from the environment (see [`select_shell`]).
++struct ShellChoice {
++    /// Absolute path of the shell binary.
++    program: String,
++    /// Start it as a login shell (`argv[0]` = `-<basename>`), as a console login would.
++    login: bool,
++    /// The `EPIN_SHELL` flavor this shell provides, exported to it.
++    flavor: Option<&'static str>,
++}
++
++impl ShellChoice {
++    fn new(program: impl Into<String>, flavor: Option<&'static str>) -> Self {
++        Self {
++            program: program.into(),
++            login: false,
++            flavor,
++        }
++    }
++
++    fn into_command(self) -> CommandBuilder {
++        let mut cmd = if self.login {
++            // The default program is `$SHELL`, run with argv[0] = "-<basename>".
++            let mut cmd = CommandBuilder::new_default_prog();
++            cmd.env("SHELL", &self.program);
++            cmd
++        } else {
++            CommandBuilder::new(&self.program)
++        };
++        cmd.env("SHELL", &self.program);
++        if let Some(flavor) = self.flavor {
++            cmd.env("EPIN_SHELL", flavor);
++        }
++        cmd
++    }
++}
++
++/// Returns whether `path` names an executable file.
++fn is_executable(path: &str) -> bool {
++    #[cfg(unix)]
++    {
++        std::ffi::CString::new(path)
++            .is_ok_and(|path| unsafe { libc::access(path.as_ptr(), libc::X_OK) } == 0)
++    }
++    #[cfg(not(unix))]
++    {
++        std::path::Path::new(path).is_file()
++    }
++}
++
++/// Picks the shell to run when neither `--command` nor `[shell] program` names one.
++///
++/// 1. `$SHELL`, except the generic `/bin/sh` while a native shell exists:
++///    anonymOS seeds `SHELL=/bin/sh` into every process, and the terminal's
++///    default there is the native shell.
++/// 2. The anonymOS native shell (`/hos-sh`, else `/-sh`), exporting
++///    `EPIN_SHELL=native` as the system's other terminals do.
++/// 3. The Linux shell `/bin/zsh` as a login shell (`EPIN_SHELL=linux`).
++/// 4. The platform default (`/bin/sh`).
++fn select_shell() -> ShellChoice {
++    let native = NATIVE_SHELLS.iter().copied().find(|path| is_executable(path));
++
++    if let Ok(shell) = env::var("SHELL") {
++        let generic = shell == "/bin/sh" && native.is_some();
++        if !shell.is_empty() && !generic && is_executable(&shell) {
++            let flavor = if NATIVE_SHELLS.contains(&shell.as_str()) {
++                Some("native")
++            } else {
++                None
++            };
++            return ShellChoice::new(shell, flavor);
++        }
++    }
++
++    if let Some(native) = native {
++        return ShellChoice::new(native, Some("native"));
++    }
++    if is_executable(LINUX_SHELL) {
++        return ShellChoice {
++            login: true,
++            ..ShellChoice::new(LINUX_SHELL, Some("linux"))
++        };
++    }
++    ShellChoice::new(default_shell(), None)
++}
++
+ impl TerminalRuntime {
+     /// Spawns the shell PTY runtime.
+     ///
+@@ -266,17 +364,19 @@ impl TerminalRuntime {
+             let mut cmd = CommandBuilder::new(program);
+             cmd.args(command);
+             cmd
+-        } else {
+-            let shell = config
+-                .shell
+-                .program
+-                .as_ref()
+-                .map(|path| path.to_string_lossy().into_owned())
+-                .or_else(|| env::var("SHELL").ok())
+-                .unwrap_or_else(default_shell);
+-            let mut cmd = CommandBuilder::new(shell);
++        } else if let Some(program) = config.shell.program.as_ref() {
++            let mut cmd = CommandBuilder::new(program.to_string_lossy().into_owned());
+             cmd.args(&config.shell.args);
+             cmd
++        } else {
++            let shell = select_shell();
++            eprintln!(
++                "ratty: shell {}{} (EPIN_SHELL={})",
++                shell.program,
++                if shell.login { " (login)" } else { "" },
++                shell.flavor.unwrap_or("-")
++            );
++            shell.into_command()
+         };
+ 
+         if let Some(working_dir) = &options.working_dir {
+@@ -294,6 +394,12 @@ impl TerminalRuntime {
+             .spawn_command(cmd)
+             .context("failed to spawn shell")?;
+         drop(pair.slave);
++        eprintln!(
++            "ratty: spawned shell pid={}",
++            child
++                .process_id()
++                .map_or_else(|| "?".to_string(), |pid| pid.to_string())
++        );
+ 
+         let mut reader = pair
+             .master
+@@ -305,6 +411,13 @@ impl TerminalRuntime {
+             .context("failed to create PTY writer")?;
+ 
+         let (tx, rx) = mpsc::sync_channel::<Vec<u8>>(16);
++        let output_waker: Arc<OnceLock<OutputWaker>> = Arc::default();
++        let waker = Arc::clone(&output_waker);
++        let wake = move || {
++            if let Some(wake) = waker.get() {
++                wake();
++            }
++        };
+         let reader_thread = thread::spawn(move || {
+             let mut buf = [0_u8; 16 * 1024];
+             loop {
+@@ -314,11 +427,14 @@ impl TerminalRuntime {
+                         if tx.send(buf[..size].to_vec()).is_err() {
+                             break;
+                         }
++                        wake();
+                     }
+                     Err(err) if err.kind() == ErrorKind::Interrupted => continue,
+                     Err(_) => break,
+                 }
+             }
++            drop(tx);
++            wake();
+         });
+ 
+         let parser = Parser::with_options(
+@@ -335,6 +451,7 @@ impl TerminalRuntime {
+             master: SyncCell::new(Some(pair.master)),
+             child: Some(child),
+             reader_thread: Some(reader_thread),
++            output_waker,
+             parser,
+             sink: TerminalParserSink::default(),
+             scrollback: 0,
+@@ -346,6 +463,24 @@ impl TerminalRuntime {
+         })
+     }
+ 
++    /// Returns whether the child (the shell) has exited.
++    ///
++    /// Checked next to the PTY hangup because not every kernel ends master
++    /// reads with EOF/EIO once the slave's last holder is gone -- anonymOS's
++    /// PTYs never do -- which would leave the window open on a dead shell.
++    pub fn child_exited(&mut self) -> bool {
++        self.child
++            .as_mut()
++            .is_some_and(|child| matches!(child.try_wait(), Ok(Some(_))))
++    }
++
++    /// Registers `wake` to run whenever the PTY produces output or closes, so an
++    /// event loop that updates reactively (not continuously) picks the output
++    /// up at once instead of on its next timed update. Only the first call counts.
++    pub fn set_output_waker(&self, wake: impl Fn() + Send + Sync + 'static) {
++        let _ = self.output_waker.set(Box::new(wake));
++    }
++
+     /// Feeds bytes from the PTY into the VT state machine.
+     ///
+     /// While the view is scrolled back it stays on the rows it shows as new
+@@ -739,6 +874,7 @@ mod resize_tests {
+             master: SyncCell::new(Some(master)),
+             child: None,
+             reader_thread: None,
++            output_waker: Arc::default(),
+             parser: Parser::with_options(24, 80, 100, PARSER_OPTIONS).expect("parser"),
+             sink: TerminalParserSink::default(),
+             scrollback: 0,
+diff --git a/src/systems.rs b/src/systems.rs
+index 219e257..5a0b252 100644
+--- a/src/systems.rs
++++ b/src/systems.rs
+@@ -175,7 +175,7 @@ pub fn pump_pty_output(
+     for update in camera_updates {
+         camera_update_writer.write(update);
+     }
+-    if drained.disconnected && !runtime.pty_disconnected {
++    if (drained.disconnected || runtime.child_exited()) && !runtime.pty_disconnected {
+         runtime.pty_disconnected = true;
+         app_exit.write(AppExit::Success);
+     }

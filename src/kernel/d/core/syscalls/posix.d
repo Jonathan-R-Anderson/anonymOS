@@ -152,6 +152,7 @@ struct File {
     void* backend; // Generic pointer for driver-specific data
     ulong fileSize; // Size for bundle files or others
     uint  objId;    // Phase 2: id of the core.objmgr Object mirroring this fd (0 = none)
+    bool  cloexec;  // FD_CLOEXEC: execve closes it (set by the creating call; see fdNoteCreated)
 }
 
 private struct BootModuleRecord {
@@ -256,6 +257,8 @@ public void fdtabForkCopy(int srcTabId, int dstTabId) {
         return;
     }
     if (dstTabId == srcTabId) return;
+    g_cwdLenTab[dstTabId] = g_cwdLenTab[srcTabId];                  // the child starts where the parent is
+    foreach (ci; 0 .. cast(size_t)g_cwdLenTab[srcTabId] + 1) g_cwdTab[dstTabId][ci] = g_cwdTab[srcTabId][ci];
     capTableCloneNarrowing(srcTabId, dstTabId, CAP_RIGHT_ALL);
     foreach (i; 0 .. 1024) {
         g_fdTabs[dstTabId][i] = g_fdTabs[srcTabId][i];
@@ -753,8 +756,21 @@ private int pipeIdFromFd(File* f) {
 }
 
 // --- CWD ---
-__gshared char[4096] g_cwd_buf = "/\0";
-__gshared size_t g_cwd_len = 1;
+// The working directory is per PROCESS, kept with its fd table: threads share it, fork copies it
+// (fdtabForkCopy), a kernel-started program starts at "/" (fdtabSetup*Stdio).  It used to be ONE
+// global for the whole system, so a `cd` in any terminal -- or a terminal's pty child chdir'ing
+// into its start directory -- moved every other process's relative paths along with it.
+__gshared char[4096][FDTAB_COUNT] g_cwdTab = '\0';     // '\0', not char.init: keeps it in .bss
+__gshared ushort[FDTAB_COUNT] g_cwdLenTab;              // 0 = a fresh table: "/"
+private int cwdTabId() { return (g_activeFdTabId >= 0 && g_activeFdTabId < FDTAB_COUNT) ? g_activeFdTabId : 0; }
+private const(char)[] cwdNow() {
+    const int t = cwdTabId();
+    const size_t l = g_cwdLenTab[t];
+    return l ? g_cwdTab[t][0 .. l] : "/";
+}
+private void cwdReset(int tableId) {
+    if (tableId >= 0 && tableId < FDTAB_COUNT) g_cwdLenTab[tableId] = 0;
+}
 
 // --- Umask ---
 __gshared uint g_umask = 18; // Octal 022
@@ -1892,6 +1908,7 @@ private long copySockoptUcred(ulong val, ulong len, LocalSocket* sock = null)
 // write(1)/(2) reach the serial console without going through initFdTable().
 public void fdtabSetupConsoleStdio(int tableId) {
     if (tableId < 0 || tableId >= g_fdTabs.length) return;
+    cwdReset(tableId);
 
     g_fdTabs[tableId][0] = File.init;
     g_fdTabs[tableId][0].type = FileType.FD_CONSOLE;
@@ -1914,6 +1931,7 @@ public void fdtabSetupConsoleStdio(int tableId) {
 // its teardown), stdout/stderr=console (-> serial).
 public void fdtabSetupProbeStdio(int tableId) {
     if (tableId < 0 || tableId >= g_fdTabs.length) return;
+    cwdReset(tableId);
     g_fdTabs[tableId][0] = File.init;
     g_fdTabs[tableId][0].type  = FileType.FD_NULL;
     g_fdTabs[tableId][0].flags = O_RDWR;
@@ -2916,9 +2934,10 @@ private int nsPathVerdict(const(char)* path, uint need) {
     const uint ns = g_tasks[tid].namespaceObjId;
     char[1024] absb = void;
     const(char)* ap = path;
-    if (path[0] != '/') {                                   // relative: the (global) cwd shim
+    if (path[0] != '/') {                                   // relative: against this process's cwd
         size_t cl = 0;
-        for (; cl < g_cwd_len && cl < absb.length - 2; ++cl) absb[cl] = g_cwd_buf[cl];
+        const cwd = cwdNow();
+        for (; cl < cwd.length && cl < absb.length - 2; ++cl) absb[cl] = cwd[cl];
         if (cl == 0 || absb[cl - 1] != '/') absb[cl++] = '/';
         size_t pi = 0;
         while (path[pi] != 0 && cl < absb.length - 1) absb[cl++] = path[pi++];
@@ -4031,12 +4050,12 @@ public int sys_open(const(char)* path, int flags) {
     }
 
     // A4: resolve a relative path against the current working directory (busybox top
-    // chdir's into /proc/<pid> then opens "stat").  The cwd is global (single shim),
-    // so this is best-effort but correct for the common foreground-tool case.
+    // chdir's into /proc/<pid> then opens "stat").  The cwd is this process's (cwdNow).
     char[1024] _cwdAbs = void;
     if (path[0] != '/' && path[0] != 0) {
         size_t cl = 0;
-        for (; cl < g_cwd_len && cl < 1022; ++cl) _cwdAbs[cl] = g_cwd_buf[cl];
+        const cwd = cwdNow();
+        for (; cl < cwd.length && cl < 1022; ++cl) _cwdAbs[cl] = cwd[cl];
         if (cl == 0 || _cwdAbs[cl - 1] != '/') _cwdAbs[cl++] = '/';
         size_t pi = 0;
         while (path[pi] != 0 && cl < 1023) _cwdAbs[cl++] = path[pi++];
@@ -4918,6 +4937,7 @@ private long fileObjClose(ObjHeader* oh) {
     f.offset = 0;
     f.fileSize = 0;
     f.objId = 0;
+    f.cloexec = false;
     objRelease(oid);
     return 0;
 }
@@ -4965,7 +4985,90 @@ public void taskCloseAllFds(int fdTabId) {
             if (cop !is null) cop(oh);
         }
         g_fdTable[fd].type = FileType.FD_NONE;
+        g_fdTable[fd].cloexec = false;
     }
+}
+
+// execve's close-on-exec: the new image does not get the descriptors marked FD_CLOEXEC.  Callers
+// rely on it to learn an exec happened: Rust's Command::spawn and musl's posix_spawn wait for EOF
+// on a CLOEXEC pipe/socketpair whose write end only the exec closes, so without this they hang
+// forever (and every CLOEXEC socket, epoll and timer leaked into every program a process started).
+public void execCloseOnExec() {
+    if (g_fdTable is null) return;
+    foreach (fd; 0 .. 1024) {
+        if (g_fdTable[fd].type == FileType.FD_NONE || !g_fdTable[fd].cloexec) continue;
+        ObjHeader* oh = fdObjectByIndex(cast(int)fd);
+        if (oh !is null) {
+            auto cop = g_objOps[oh.type].close;
+            if (cop !is null) cop(oh);
+        }
+        g_fdTable[fd].type = FileType.FD_NONE;
+        g_fdTable[fd].cloexec = false;
+        capClear(cast(uint)fd);
+        epollForgetFd(cast(int)fd);
+    }
+}
+
+// close_range(first, last, flags): close every open descriptor in [first, last], or with
+// CLOSE_RANGE_CLOEXEC mark them close-on-exec instead.  What a spawner calls in its child to shed
+// everything but 0/1/2 (Rust's portable-pty, glibc/musl posix_spawn helpers) -- without it they
+// fall back to close()ing every number up to RLIMIT_NOFILE.  CLOSE_RANGE_UNSHARE is accepted: a
+// process that forked already has its own table.
+public long linux_sys_close_range(ulong first, ulong last, ulong flags) {
+    enum ulong CLOSE_RANGE_UNSHARE = 2, CLOSE_RANGE_CLOEXEC = 4;
+    if ((flags & ~(CLOSE_RANGE_UNSHARE | CLOSE_RANGE_CLOEXEC)) != 0 || first > last) return negErrno(EINVAL);
+    initFdTable();
+    if (g_fdTable is null || first >= 1024) return 0;
+    const ulong hi = last < 1023 ? last : 1023;
+    foreach (fd; cast(int)first .. cast(int)hi + 1) {
+        if (g_fdTable[fd].type == FileType.FD_NONE) continue;
+        if (flags & CLOSE_RANGE_CLOEXEC) g_fdTable[fd].cloexec = true;
+        else cast(void)sys_close(fd);
+    }
+    return 0;
+}
+
+// Every call that makes a descriptor says whether it is close-on-exec (O_CLOEXEC, SOCK_CLOEXEC,
+// EFD_/TFD_/EPOLL_/IN_CLOEXEC all 0x80000; MFD_CLOEXEC 1), and the new slot takes exactly that --
+// set OR cleared, so a reused slot never inherits a closed descriptor's flag.  Called by the
+// syscall dispatcher with the call's arguments and (non-negative) result.
+public void fdNoteCreated(ulong n, ulong a, ulong b, ulong c, ulong d, long r) {
+    enum ulong CX = 0x80000;
+    switch (n) {
+        case 2:   fdSetCloexec(r, (b & CX) != 0); break;                      // open
+        case 85:  fdSetCloexec(r, false); break;                              // creat
+        case 257: fdSetCloexec(r, (c & CX) != 0); break;                      // openat
+        case 41:  fdSetCloexec(r, (b & CX) != 0); break;                      // socket (type)
+        case 43:  fdSetCloexec(r, false); break;                              // accept
+        case 288: fdSetCloexec(r, (d & CX) != 0); break;                      // accept4
+        case 32: case 33: fdSetCloexec(r, false); break;                      // dup, dup2
+        case 292: fdSetCloexec(r, (c & CX) != 0); break;                      // dup3
+        case 72:  if (b == 0) fdSetCloexec(r, false);                         // F_DUPFD
+                  else if (b == 1030) fdSetCloexec(r, true); break;           // F_DUPFD_CLOEXEC
+        case 22:  fdPairCloexec(a, false); break;                             // pipe
+        case 293: fdPairCloexec(a, (b & CX) != 0); break;                     // pipe2
+        case 53:  fdPairCloexec(d, (b & CX) != 0); break;                     // socketpair (type)
+        case 213: fdSetCloexec(r, false); break;                              // epoll_create
+        case 291: fdSetCloexec(r, (a & CX) != 0); break;                      // epoll_create1
+        case 284: fdSetCloexec(r, false); break;                              // eventfd
+        case 290: fdSetCloexec(r, (b & CX) != 0); break;                      // eventfd2
+        case 283: fdSetCloexec(r, (b & CX) != 0); break;                      // timerfd_create
+        case 282: if (cast(int)a == -1) fdSetCloexec(r, false); break;        // signalfd (a new one)
+        case 289: if (cast(int)a == -1) fdSetCloexec(r, (d & CX) != 0); break; // signalfd4
+        case 319: fdSetCloexec(r, (b & 1) != 0); break;                       // memfd_create
+        case 253: fdSetCloexec(r, false); break;                              // inotify_init
+        case 294: fdSetCloexec(r, (a & CX) != 0); break;                      // inotify_init1
+        default: break;
+    }
+}
+private void fdSetCloexec(long fd, bool on) {
+    if (g_fdTable is null || fd < 0 || fd >= 1024) return;
+    if (g_fdTable[cast(int)fd].type != FileType.FD_NONE) g_fdTable[cast(int)fd].cloexec = on;
+}
+private void fdPairCloexec(ulong fdsPtr, bool on) {         // pipe/socketpair: int[2] in user memory
+    if (!isUserRange(fdsPtr, 8)) return;
+    auto fds = cast(const(int)*)fdsPtr;
+    fdSetCloexec(fds[0], on); fdSetCloexec(fds[1], on);
 }
 
 public long linux_sys_read(ulong fd, ulong buf, ulong count) {
@@ -6805,6 +6908,42 @@ public bool posixCanonExecPath(const(char)* path, char* outbuf, size_t outlen) {
 }
 
 // Seed one skeleton directory (idempotent).
+// A domain's private home, /Domains/<name>/Home: its namespace grants it read-write, but the grant
+// is only a gate -- the directory has to exist, or every file an app "saved" there went to a
+// throwaway fd (open O_CREAT under a missing parent) and was gone.  Created on the domain's first
+// namespace build, owned by the session user.  No-op when present.
+//
+// The directories themselves are SHARED nodes (ownerDom 0): this runs in whichever task builds the
+// namespace (often a System-domain one), and a node private to that domain would be invisible to
+// the domain it is for.  What an app then writes INSIDE is stamped with its own domain as usual,
+// and no other domain's namespace reaches /Domains/<name> anyway.
+public void rtEnsureDomainHome(const(char)* path) {
+    rtInit();
+    int cur = 0;                                   // the root node
+    size_t i = 0;
+    while (path[i] == '/') ++i;
+    while (path[i] != 0) {
+        const size_t st = i;
+        while (path[i] != 0 && path[i] != '/') ++i;
+        const(char)* nm = path + st;
+        const size_t nl = i - st;
+        int found = -1;
+        foreach (k; 1 .. g_rtNodes)
+            if (g_rt[k].kind != RT_FREE && g_rt[k].parent == cur && g_rt[k].ownerDom == 0 && rtNameEq(g_rt[k], nm, nl)) {
+                found = cast(int)k; break;
+            }
+        if (found < 0) {
+            found = rtCreate(cur, nm, nl, RT_DIR, cast(ushort)0x1C0 /*0700*/, 1000, 1000);
+            if (found < 0) return;
+            g_rt[found].ownerDom = 0;
+        } else if (g_rt[found].kind != RT_DIR) {
+            return;
+        }
+        cur = found;
+        while (path[i] == '/') ++i;
+    }
+}
+
 private void rtMkdirPath(const(char)* path, ushort mode, uint uid, uint gid) {
     int parent; const(char)* leaf; size_t leafLen;
     const int idx = rtResolve(path, parent, leaf, leafLen);
@@ -7296,6 +7435,7 @@ private void rtInit() {
     // at /bin/zsh (so `exec /bin/zsh` + PATH find it) and at the canonical
     // /system/shell/zsh/zsh.  execveTask follows the leading symlink to the boot module.
     rtSymlinkCreate("/zsh\0".ptr, "/bin/zsh\0".ptr);
+    rtSymlinkCreate("/hos-sh\0".ptr, "/bin/dash\0".ptr);   // dash, the native shell (#!/bin/dash scripts)
     rtMkdirPath("/system/shell\0".ptr,      M0755, 0, 0);
     rtMkdirPath("/system/shell/zsh\0".ptr,  M0755, 0, 0);
     rtSymlinkCreate("/zsh\0".ptr, "/system/shell/zsh/zsh\0".ptr);
@@ -7971,6 +8111,18 @@ public bool softwareAutoPkg(char* out_, size_t cap) @nogc nothrow {
     auto t = cast(const(char)*)phys_to_virt(phys);
     size_t n = 0;
     while (n < size && n + 1 < cap && t[n] != '\n' && t[n] != 0) { out_[n] = t[n]; ++n; }
+    out_[n] = 0;
+    return n > 0;
+}
+
+/// TEST IMAGES ONLY (AUTORUN='<shell command>' make iso stages /autorun): a command to run once the
+/// AUTOPKG install has succeeded.  Copies it into `out`; false without the module.
+public bool softwareAutoRun(char* out_, size_t cap) @nogc nothrow {
+    ulong phys, size;
+    if (cap == 0 || !findBootModule("/autorun\0".ptr, phys, size) || phys == 0 || size == 0) return false;
+    auto t = cast(const(char)*)phys_to_virt(phys);
+    size_t n = 0;
+    while (n < size && n + 1 < cap && t[n] != 0) { out_[n] = t[n]; ++n; }
     out_[n] = 0;
     return n > 0;
 }
@@ -12867,6 +13019,7 @@ public ssize_t sys_recvmsg(int sockfd, msghdr* msg, int flags) {
                 if (newFd < 0) break;
                 g_fdTable[newFd] = sock.passedFiles[sock.passedTail];
                 g_fdTable[newFd].objId = 0;
+                g_fdTable[newFd].cloexec = (flags & 0x40000000) != 0;   // MSG_CMSG_CLOEXEC, not the sender's flag
                 // No kvmFdDuped here: the queue-time pin (see sendmsg) transfers
                 // to this fd — the receiver's copy IS the queued live view.
                 auto oh = ensureFileObject(&g_fdTable[newFd]);
@@ -13749,8 +13902,8 @@ public long linux_sys_fcntl(ulong fd, ulong cmd, ulong arg) {
             if (!isUserRange(arg, FLOCK_SIZE)) return negErrno(EFAULT);
             *cast(short*)arg = F_UNLCK;           // no conflicting lock
             return 0;
-        case F_GETFD: return 0;
-        case F_SETFD: return 0;
+        case F_GETFD: return g_fdTable[ifd].cloexec ? 1 : 0;        // FD_CLOEXEC
+        case F_SETFD: g_fdTable[ifd].cloexec = (arg & 1) != 0; return 0;
         case F_GETFL: return g_fdTable[ifd].flags;
         case F_SETFL:
             // F_SETFL changes fd *status* flags (O_NONBLOCK, O_APPEND, …); it is
@@ -13802,10 +13955,12 @@ public long linux_sys_fcntl(ulong fd, ulong cmd, ulong arg) {
 public long linux_sys_getcwd(ulong buf, ulong size) {
     if (buf == 0)  return negErrno(EFAULT);
     if (size == 0) return negErrno(EINVAL);
-    if (g_cwd_len + 1 > size) return negErrno(ERANGE);
+    const cwd = cwdNow();
+    if (cwd.length + 1 > size) return negErrno(ERANGE);
     auto out_ = cast(char*)buf;
-    for (size_t i = 0; i <= g_cwd_len; ++i) out_[i] = g_cwd_buf[i];
-    return cast(long)(g_cwd_len + 1);
+    foreach (i; 0 .. cwd.length) out_[i] = cwd[i];
+    out_[cwd.length] = 0;
+    return cast(long)(cwd.length + 1);
 }
 
 public long linux_sys_chdir(ulong path) {
@@ -13822,10 +13977,11 @@ public long linux_sys_chdir(ulong path) {
         if (ri >= 0 && ri < g_rtNodes && g_rt[ri].kind == RT_DIR) ok = true;
     }
     if (!ok) return negErrno(ENOENT);
+    const int t = cwdTabId();
     size_t len = 0;
-    while (len < g_cwd_buf.length - 1 && p[len] != 0) g_cwd_buf[len] = p[len++];
-    g_cwd_buf[len] = 0;
-    g_cwd_len = len;
+    while (len < g_cwdTab[t].length - 1 && p[len] != 0) { g_cwdTab[t][len] = p[len]; ++len; }
+    g_cwdTab[t][len] = 0;
+    g_cwdLenTab[t] = cast(ushort)len;
     return 0;
 }
 

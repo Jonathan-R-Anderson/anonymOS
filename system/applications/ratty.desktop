@@ -1,0 +1,9 @@
+[Desktop Entry]
+Type=Application
+Name=Ratty
+GenericName=GPU Terminal
+Comment=GPU-rendered terminal with inline 3D graphics (orhun/ratty on OpenGL ES; Ctrl+Alt+Enter for 3D mode)
+Exec=/ratty
+Icon=terminal
+Categories=System;TerminalEmulator;
+Keywords=terminal;shell;3d;gpu;ratty;

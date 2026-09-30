@@ -297,6 +297,7 @@ public uint domainBuildNamespace(uint domObjId) {
     immutable string suf = "/Home";
     foreach (c; suf) home[hp++] = c;
     home[hp] = 0;
+    { import core.syscalls.posix : rtEnsureDomainHome; rtEnsureDomainHome(home.ptr); }
     nsBind(ns, home.ptr, root, RW);
 
     nsBind(ns, "/tmp\0".ptr,    root, RW);
@@ -351,6 +352,10 @@ public uint domainBuildNamespace(uint domObjId) {
     nsBind(ns, "/vm-alpine.vmlinuz\0".ptr, root, RO);  // the Virtual Machines app's bundled guest
     nsBind(ns, "/vm-alpine.initrd\0".ptr,  root, RO);
     nsBind(ns, "/vm-firmware.fd\0".ptr,    root, RO);   // UEFI for firmware-booted guests (OPNsense)
+    nsBind(ns, "/hos-sh\0".ptr,            root, RO);   // dash, the native shell every terminal starts
+    nsBind(ns, "/busybox\0".ptr,           root, RO);   // the target of every /bin/<applet> link (ls, cat, ...)
+    nsBind(ns, "/zsh\0".ptr,               root, RO);   // the target of /bin/zsh: dash's `linux` shell
+    nsBind(ns, "/dash.md\0".ptr,           root, RO);   // its manual
     nsBind(ns, "/libnshim.so\0".ptr, root, RO); // the network shim (LD_PRELOAD) -- TCP/IP is the LKL's
     // ...minus the secrets that live in /etc (explicit deny overrides the shorter allow).
     nsBindDeny(ns, "/etc/shadow\0".ptr);

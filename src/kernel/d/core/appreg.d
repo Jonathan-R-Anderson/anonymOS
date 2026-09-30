@@ -79,6 +79,8 @@ static immutable AppRegEntry[] g_appReg = [
     AppRegEntry("wl-term",           "hos-wifiterm",  APP, SES, DSE, null, DLG | DSK),
     AppRegEntry("gl-term",           "hos-wifiterm",  APP, SES, DSE, null, DLG | DSK),
     AppRegEntry("hos-term",          "hos-wifiterm",  APP, SES, DSE, null, DLG | DSK),
+    // ratty (orhun/ratty, scripts/build-ratty.sh): one more emulator of the same Terminal app.
+    AppRegEntry("ratty",             "hos-wifiterm",  APP, SES, DSE, null, DLG | DSK),
     AppRegEntry("wl-files",          "wl-files",      APP, SES, DSE, null, DLG | DSK),
     AppRegEntry("wl-editor",         "wl-editor",     APP, SES, DSE, null, DLG | DSK),
     AppRegEntry("wl-calc",           "wl-calc",       APP, SES, DSE, null, DLG | DSK),

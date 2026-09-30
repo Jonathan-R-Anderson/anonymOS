@@ -20,6 +20,7 @@ import xpcom.vboxxpcom, xpcom, xpcom.components  # noqa: E401,F401
 VM = sys.argv[1]
 TEXT = sys.argv[2] if len(sys.argv) > 2 else ""
 ENTER = "--enter" in sys.argv[3:]
+DELAY = float(os.environ.get('VBTYPE_DELAY', '0.02'))   # seconds per scancode; raise it when the guest is busy
 
 # unshifted and shifted characters -> scancode (set 1 make code)
 BASE = {
@@ -61,7 +62,7 @@ try:
     def send(codes):
         for c in codes:
             kbd.putScancode(c)
-            time.sleep(0.02)
+            time.sleep(DELAY)
 
     send([0xaa, 0xb6, 0x9d, 0xb8])      # release every modifier an earlier tool may have left down
     for ch in TEXT + ("\n" if ENTER else ""):

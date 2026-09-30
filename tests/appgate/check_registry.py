@@ -83,7 +83,8 @@ DATA_SUFFIX = (".blob", ".conf", ".bin", ".json", ".png", ".iso", ".ext4", ".pem
                ".img", ".hosupd", ".txt", ".cfg", ".sig", ".pub", ".tar", ".gz", ".xz", ".zst")
 DATA_NAMES = {"hiddeninstall-test", "epin-debug-ssh-key", "test.hosupd", "install.json", "anos.key",
               "manifest.blob", "guest-vmlinuz", "guest-initrd",
-              "vm-alpine.vmlinuz", "vm-alpine.initrd", "vm-firmware.fd"}
+              "vm-alpine.vmlinuz", "vm-alpine.initrd", "vm-firmware.fd",
+              "autopkg", "autorun"}                    # AUTOPKG=/AUTORUN= test inputs: a package list, a command
 DATA_PATTERN = re.compile(r'^esp-[a-z-]*image$')      # ESP / hidden-volume disk images
 
 def is_library(name):

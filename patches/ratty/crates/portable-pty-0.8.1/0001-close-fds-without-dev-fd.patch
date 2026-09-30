@@ -1,0 +1,64 @@
+portable-pty 0.8.1: close the child's inherited descriptors without /dev/fd
+
+close_random_fds() (run in the forked child before exec) closes every fd above
+stdio that /dev/fd lists.  anonymOS has no /dev/fd and, more importantly, no
+close-on-exec at all (fcntl F_SETFD/O_CLOEXEC are accepted and ignored), so
+nothing was closed: the Wayland socket, eventfds and EGL descriptors leaked into
+the shell, and so did the write end of std::process's exec-status pipe -- whose
+read end the parent blocks on until EOF, i.e. until the shell EXITS.  ratty
+would hang in spawn_command() before ever opening its window.
+
+After the /dev/fd pass, close everything above stdio with close_range(2), or
+(ENOSYS there too) one by one up to RLIMIT_NOFILE.  On Linux close_range
+succeeds at once and nothing changes.
+
+Applied by scripts/build-ratty.sh to the checksum-verified portable-pty-0.8.1
+.crate unpacked in deps/ratty/anonymos-crates/.
+---
+diff --git a/src/unix.rs b/src/unix.rs
+index 53389eb..ab67336 100644
+--- a/src/unix.rs
++++ b/src/unix.rs
+@@ -112,9 +112,9 @@ impl Read for PtyFd {
+ /// 3 or higher, effectively closing all descriptors except for the stdio
+ /// streams.
+ ///
+-/// The implementation of this function relies on `/dev/fd` being available
+-/// to provide the list of open fds.  Any errors in enumerating or closing
+-/// the fds are silently ignored.
++/// The listed fds come from `/dev/fd`; anything not listed there is then
++/// closed with close_range(2), or one by one up to RLIMIT_NOFILE.  Any errors
++/// in enumerating or closing the fds are silently ignored.
+ pub fn close_random_fds() {
+     // FreeBSD, macOS and presumably other BSDish systems have /dev/fd as
+     // a directory listing the current fd numbers for the process.
+@@ -140,6 +140,29 @@ pub fn close_random_fds() {
+             }
+         }
+     }
++
++    // Without a listable /dev/fd, or on a kernel that has no close-on-exec (anonymOS), whatever
++    // was not listed above would leak into the child -- including std::process's exec-status
++    // pipe, whose parent end then never sees EOF, so spawn() blocks until the shell exits.
++    // Close everything above stdio: close_range(2) where the kernel has it, else one by one
++    // up to the descriptor limit.
++    #[cfg(any(target_os = "linux", target_os = "android"))]
++    if unsafe { libc::syscall(libc::SYS_close_range, 3 as libc::c_uint, libc::c_uint::MAX, 0) } == 0 {
++        return;
++    }
++    let mut limit: libc::rlimit = unsafe { mem::zeroed() };
++    let max_fd = if unsafe { libc::getrlimit(libc::RLIMIT_NOFILE, &mut limit) } == 0
++        && limit.rlim_cur != libc::RLIM_INFINITY
++    {
++        limit.rlim_cur.min(65536) as libc::c_int
++    } else {
++        1024
++    };
++    for fd in 3..max_fd {
++        unsafe {
++            libc::close(fd);
++        }
++    }
+ }
+ 
+ impl PtyFd {

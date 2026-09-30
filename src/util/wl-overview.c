@@ -141,6 +141,18 @@ static int desktop_allows(const char *exec)
     return strstr(g_desktop_list, quoted) != NULL;
 }
 
+/* Is the program an Exec= line starts installed?  An optional app (ratty, built by
+ * scripts/build-ratty.sh) ships its .desktop entry in every image but its binary only when it was
+ * built, and a tile for a missing binary could only fail ENOENT.  Relative commands pass. */
+static int exec_installed(const char *exec)
+{
+    char first[128];
+    size_t i = 0;
+    while (exec[i] && exec[i] != ' ' && i < sizeof first - 1) { first[i] = exec[i]; i++; }
+    first[i] = 0;
+    return first[0] != '/' || access(first, X_OK) == 0;
+}
+
 static int cmp_entry(const void *a, const void *b)
 {
     return strcmp(((const struct appentry *)a)->label, ((const struct appentry *)b)->label);
@@ -158,6 +170,7 @@ static void load_apps(void)
             snprintf(path, sizeof path, "%s/%s", APPDIR, e->d_name);
             char *nm = APP_STRINGS[N_APPS * 2], *ex = APP_STRINGS[N_APPS * 2 + 1];
             if (!parse_desktop(path, nm, ex, 128)) continue;
+            if (!exec_installed(ex)) continue;
             APPS[N_APPS].label = nm;
             APPS[N_APPS].exec  = ex;
             N_APPS++;
@@ -452,6 +465,10 @@ static void launch_and_exit(struct app *app, const char *exec){
     if (pid == 0){
         for (int fd = 3; fd < 64; fd++) close(fd);   /* don't leak the Wayland socket into the child */
         setsid();
+        /* The app's stdout/stderr go where every kernel-started program's do -- the console (the
+         * serial log and /run/klog) -- not the compositor's /dev/null, so a crash leaves its reason. */
+        int con = open("/dev/console", O_WRONLY);
+        if (con >= 0) { dup2(con, 1); dup2(con, 2); if (con > 2) close(con); }
         /* .desktop Exec= lines carry arguments -- "/wl-sysmon --view=cpu" is one binary serving
          * several launcher entries -- so split on spaces.  execve()ing the whole string as a
          * path would fail ENOENT the moment any entry took an argument. */

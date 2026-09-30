@@ -816,10 +816,14 @@ $(THREADTEST_BIN): src/util/hos-thread-test.c
 # Track B: the native EpinAnonymOS object shell (-sh / dash), written in D (-betterC,
 # same language as the kernel) and linked against musl for crt0 + stdio. It drives the
 # native object syscall ABI (HOS_SYS_QUERY) instead of the Linux-compat layer.
-$(HOS_SH_BIN): src/util/hos-sh.d
-	@echo "==== Building hos-sh (native object shell, D + musl) ===="
-	ldc2 -betterC -O2 -release -boundscheck=off -c src/util/hos-sh.d -of=build/hos-sh.o
-	$(MUSL_CC) -o $@ build/hos-sh.o
+# dash, the native shell (docs/DASH.md): bash + Haskell over the object model.  Staged as /hos-sh,
+# the image the kernel trusts with the native object ABI; every terminal starts it.
+DASH_SRCS := $(wildcard src/util/dash/*.d)
+$(HOS_SH_BIN): $(DASH_SRCS)
+	@echo "==== Building dash (the native shell, D + musl) ===="
+	@mkdir -p build/dash
+	ldc2 -betterC -O2 -release -boundscheck=on -c $(DASH_SRCS) -I src/util -od=build/dash
+	$(MUSL_CC) -o $@ build/dash/*.o
 
 # R0 — hello-wl: a "hello, Wayland" client in Rust, static-musl, validating the Rust toolchain.
 $(HELLO_WL_BIN): src/util/hello-wl.rs
@@ -1106,7 +1110,9 @@ stage-iso-tree: kernel.elf $(WLSOFTWARE_BIN) $(PKGFETCH_BIN) $(VMFETCH_BIN) $(SO
 	@echo "Included inotify-test (ROADMAP 2.2 verification)"
 
 	cp $(HOS_SH_BIN) cd/hos-sh
-	@echo "Included hos-sh (native object shell)"
+	cp docs/DASH.md cd/dash.md
+	printf '\n    module_path: boot():/dash.md\n' >> cd/boot/limine/limine.conf
+	@echo "Included hos-sh (dash, the native shell) + /dash.md (its manual)"
 
 	cp $(HOS_WIFI_BIN) cd/hos-wifi
 	@echo "Included hos-wifi (H1a native WiFi client for the cap-gated LKL net provider)"
@@ -1507,6 +1513,29 @@ stage-iso-tree: kernel.elf $(WLSOFTWARE_BIN) $(PKGFETCH_BIN) $(VMFETCH_BIN) $(SO
 	   echo "Included attest-vault.bin (EncryptedAttestationVault creation bytecode)"; \
 	 else echo "Skipping attest-vault.bin (run scripts/compile-contracts.sh to produce $(ATTEST_VAULT_BIN))"; fi
 
+	@# ── ratty: the GPU terminal (orhun/ratty) ── OPTIONAL: staged only if built ─────────────────
+	@# scripts/build-ratty.sh builds it (pinned upstream + patches/ratty/, DYNAMIC musl, wgpu's
+	@# OpenGL ES backend on Mesa EGL/Wayland -- llvmpipe in a VM) into RATTY_BIN (build/ratty) and
+	@# links the libEGL.so.1 it dlopens from the sysroot's static Mesa into RATTY_EGL
+	@# (build/libEGL.so.1); override either with `make RATTY_BIN=... RATTY_EGL=...`.  Its runtime
+	@# closure: ld-musl + libgcc_s.so.1 (staged here unless the deploy-backend block above did) +
+	@# libfontconfig.so.1 (DT_NEEDED); dlopen'd: libEGL.so.1 (here) -> libglapi.so + swrast_dri.so
+	@# (the Hyprland block) and libwayland-client/-egl + libxkbcommon (the SONAME loop below).  The
+	@# launcher entry (system/applications/ratty.desktop -> apps.blob) is always shipped; the app
+	@# grid hides it when /ratty is absent.  appgate: appreg.d row "ratty" = the Terminal app.
+	@RATTY_BIN='$(or $(RATTY_BIN),build/ratty)'; RATTY_EGL='$(or $(RATTY_EGL),build/libEGL.so.1)'; \
+	 LIBGCC="$(HOME)/lkl-build/x86_64-linux-musl-cross/x86_64-linux-musl/lib/libgcc_s.so.1"; \
+	 if [ -s "$$RATTY_BIN" ] && [ -s "$$RATTY_EGL" ] && [ -f "$$LIBGCC" ]; then \
+	   cp "$$RATTY_BIN" cd/ratty && cp "$$RATTY_EGL" cd/libEGL.so.1 && \
+	   printf '\n    module_path: boot():/ratty\n    module_path: boot():/libEGL.so.1\n' >> cd/boot/limine/limine.conf && \
+	   if ! grep -q 'boot():/libgcc_s.so.1' cd/boot/limine/limine.conf; then \
+	     cp "$$LIBGCC" cd/libgcc_s.so.1 && \
+	     printf '    module_path: boot():/libgcc_s.so.1\n' >> cd/boot/limine/limine.conf; \
+	   fi && \
+	   echo "Included ratty (GPU terminal: wgpu GLES on Mesa) + libEGL.so.1"; \
+	 else echo "ratty NOT staged (run scripts/build-ratty.sh; needs $$RATTY_BIN, $$RATTY_EGL, libgcc_s.so.1)"; fi
+	@# ── end ratty ─────────────────────────────────────────────────────────────────────────────
+
 	@# ROADMAP 2.3: upstream GTK's own demo applications.  gtk-hello proves the toolkit links
 	@# and opens a window, but we wrote it; these are unmodified upstream application code.
 	@if [ -f $(GTK_WIDGETFAC_BIN) ]; then \
@@ -1805,6 +1834,13 @@ stage-iso-tree: kernel.elf $(WLSOFTWARE_BIN) $(PKGFETCH_BIN) $(VMFETCH_BIN) $(SO
 		printf '\n    module_path: boot():/autopkg\n' >> cd/boot/limine/limine.conf; \
 		echo "Included AUTOPKG=$(AUTOPKG) (TEST IMAGE -- installs a package unattended)"; \
 	else rm -f cd/autopkg; fi
+	@# TEST IMAGES: AUTORUN='<shell command>' runs it (sh -c, stdout/stderr on the serial log) once the
+	@# AUTOPKG install has succeeded.
+	@if [ -n "$(AUTORUN)" ]; then \
+		printf '%s' "$(AUTORUN)" > cd/autorun; \
+		printf '\n    module_path: boot():/autorun\n' >> cd/boot/limine/limine.conf; \
+		echo "Included AUTORUN (TEST IMAGE -- runs a command after the AUTOPKG install)"; \
+	else rm -f cd/autorun; fi
 	@if [ "$(AUTOINSTALL_HIDDEN)" = "1" ]; then \
 		printf 'hiddeninstall-test' > cd/hiddeninstall-test; \
 		printf '\n    module_path: boot():/hiddeninstall-test\n' >> cd/boot/limine/limine.conf; \

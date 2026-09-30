@@ -558,10 +558,17 @@ App launchers / desktop (configurable in [`src/desktop.conf`](src/desktop.conf))
 - **`shell.json` declarative config** (Z5): a pure-zsh translator
   (`__hos_apply_shell_json`) applies system → user → user-zshrc at startup. The
   **four-field prompt** `[domain] user [perms]:cwd` is live in every shell.
-- **`hos-sh`** (`src/util/hos-sh.d`) — the native object shell in D, the `-sh`
-  (LFE) bootstrap; drives the kernel model via `syscall(0x4000, …)`. **Evaluates**
-  LFE s-expressions to data (L2): object-ABI verbs are composable functions —
-  `(obj)`/`(ns)`/`(id)`, `(ns-enter (ns-clone))`, `(cap-grant h r)`, `(+ 1 (* 2 3))`.
+- **`dash`** (`src/util/dash/`, staged as `/hos-sh` and `/bin/dash`) — the native
+  shell every terminal starts: bash where you run programs, Haskell where you
+  compute. Pipelines mix `|` (commands) and `|>` (functions); the OS's objects are
+  typed values (`domains`, `me`, `apps`, `usbDevices`, …) whose fields and methods
+  Tab completes after a `.`, and `Type.member self = …` extends them. `linux` drops
+  into zsh and `exit` returns. Manual: `docs/DASH.md` (`less /dash.md` in the OS).
+- **ratty** ([orhun/ratty](https://github.com/orhun/ratty): Bevy + `wgpu`, inline 3D) —
+  the upstream GPU terminal, built by `scripts/build-ratty.sh` (pinned commit +
+  `patches/ratty/`, dynamic musl, `wgpu`'s GLES backend on Mesa EGL/llvmpipe) and
+  staged when built; launch it from the app grid or pick it as a domain's terminal
+  in the Domain Manager.
 - **`esh`** — a from-scratch D Unix shell with ~94 applets (awk, ls, cp, grep,
   find, dd, …) and an LFE REPL.
 - **BusyBox 1.36.1** — 381 applets on a hardened FHS tmpfs, fully interactive
@@ -720,7 +727,7 @@ src/
 │   └── network/     ethernet → tls full stack
 ├── libs/            Haskell RTS (jhc) + D userland glue + vendored containers
 ├── progs/           esh D-shell, Haskell userspace services (init/storage/pci/ata)
-├── util/            userspace tools: hos-sh, wl-term, wl-files, wl-domain-manager,
+├── util/            userspace tools: dash/, wl-term, wl-files, wl-domain-manager,
 │                    store-app, idle, hello-gui, compositor, …
 └── test-dyn/        dynamic-linker verification harness
 anonymos-config/     declarative-config compiler (D + Phobos) + examples + tests
@@ -778,11 +785,6 @@ anonymOS is honest about its gaps (each roadmap names them):
 - **Userspace relocation** of Wayland/DRM/fs into user-space servers — the
   in-kernel services work but are not yet demoted (the "honestly rootless"
   finish line).
-- **ratty Rust/GPU terminal** (R3) — the GPU stack now renders guest GL (on softpipe
-  until virgl-as-renderer lands, above); the CPU intermediate `hos-term` ships today.
-  Porting upstream [ratty](https://github.com/orhun/ratty) needs a Rust **crate**
-  toolchain (cargo + crates.io for `wgpu`/winit/etc., beyond R0's single-`rustc`
-  no-crates build) and its `wgpu` GLES backend wired to the guest Mesa GL above.
 - **Full LFE native shell `-sh`** ([`ZSH_INTEGRATION_ROADMAP`](roadmap/ZSH_INTEGRATION_ROADMAP.md),
   L-series) — the native-personality Lisp shell is up to **L2**: a `-betterC` D evaluator in
   `hos-sh` where object-ABI verbs are *composable* LFE functions (`(ns-enter (ns-clone))`,

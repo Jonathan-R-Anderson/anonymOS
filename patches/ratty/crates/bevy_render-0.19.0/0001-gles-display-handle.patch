@@ -1,0 +1,145 @@
+bevy_render 0.19.0: let the app pass the platform display to the wgpu instance
+
+wgpu's GLES backend creates its EGL display at *instance* creation.  bevy_render
+creates the instance with `display: None`, so on GLES the EGL display is the
+surfaceless platform, and presenting to a Wayland window then fails
+("Initialized platform Unknown doesn't work with window Wayland" / incompatible
+window kind).  That leaves Bevy with no working backend on a machine that has
+Mesa GL but no Vulkan driver -- anonymOS in a VM (llvmpipe).
+
+Add a `RenderDisplayHandle` resource: when one is present before RenderPlugin
+builds (the app copies bevy_winit's DisplayHandleWrapper into it), the instance
+is created against that display.  Vulkan/Metal/DX12 ignore the field.
+
+Also, on the GL backend, cap max_storage_textures_per_shader_stage at 4 so the
+SSAO plugin stays off: naga's GLSL output for SSAO's depth prepass calls
+textureGatherOffset(sampler2DShadow, vec2, ivec2, int), which no GLSL version
+accepts, so creating that pipeline at startup brings the whole renderer down.
+
+Applied by scripts/build-ratty.sh to the checksum-verified bevy_render-0.19.0
+.crate unpacked in deps/ratty/anonymos-crates/.
+---
+diff --git a/src/lib.rs b/src/lib.rs
+index 036f647..86f1ed5 100644
+--- a/src/lib.rs
++++ b/src/lib.rs
+@@ -511,10 +511,15 @@ fn insert_future_resources(render_creation: &RenderCreation, main_world: &mut Wo
+         .cloned()
+         .unwrap_or_default();
+ 
++    let display = main_world
++        .get_resource::<renderer::RenderDisplayHandle>()
++        .cloned();
++
+     let future_resources = FutureRenderResources::default();
+     let success = render_creation.create_render(
+         future_resources.clone(),
+         primary_window,
++        display,
+         #[cfg(feature = "raw_vulkan_init")]
+         raw_vulkan_init_settings,
+     );
+diff --git a/src/renderer/mod.rs b/src/renderer/mod.rs
+index 733252f..8369b8b 100644
+--- a/src/renderer/mod.rs
++++ b/src/renderer/mod.rs
+@@ -176,6 +176,23 @@ async fn find_adapter_by_name(
+     None
+ }
+ 
++/// The platform display connection (e.g. the Wayland `wl_display`) that the wgpu
++/// [`Instance`] is created against.
++///
++/// wgpu's GLES backend needs the display at *instance* creation to present to a Wayland
++/// (or X11) window: without it EGL falls back to the surfaceless platform and every window
++/// surface is rejected ("incompatible window kind").  Vulkan, Metal and DX12 ignore it.
++/// Insert it as a resource before [`RenderPlugin`](crate::RenderPlugin) is built, e.g. from
++/// `bevy_winit`'s `DisplayHandleWrapper` (the event loop's owned display handle).
++#[derive(Resource, Clone, Debug)]
++pub struct RenderDisplayHandle(pub Arc<dyn wgpu::wgt::WgpuHasDisplayHandle>);
++
++impl wgpu::rwh::HasDisplayHandle for RenderDisplayHandle {
++    fn display_handle(&self) -> Result<wgpu::rwh::DisplayHandle<'_>, wgpu::rwh::HandleError> {
++        self.0.display_handle()
++    }
++}
++
+ /// Initializes the renderer by retrieving and preparing the GPU instance, device and queue
+ /// for the specified backend.
+ pub async fn initialize_renderer(
+@@ -184,12 +201,34 @@ pub async fn initialize_renderer(
+     options: &WgpuSettings,
+     #[cfg(feature = "raw_vulkan_init")]
+     raw_vulkan_init_settings: raw_vulkan_init::RawVulkanInitSettings,
++) -> RenderResources {
++    initialize_renderer_with_display(
++        backends,
++        primary_window,
++        None,
++        options,
++        #[cfg(feature = "raw_vulkan_init")]
++        raw_vulkan_init_settings,
++    )
++    .await
++}
++
++/// Like [`initialize_renderer`], but creates the wgpu [`Instance`] against `display`
++/// (see [`RenderDisplayHandle`]).
++pub async fn initialize_renderer_with_display(
++    backends: Backends,
++    primary_window: Option<RawHandleWrapperHolder>,
++    display: Option<RenderDisplayHandle>,
++    options: &WgpuSettings,
++    #[cfg(feature = "raw_vulkan_init")]
++    raw_vulkan_init_settings: raw_vulkan_init::RawVulkanInitSettings,
+ ) -> RenderResources {
+     let instance_descriptor = wgpu::InstanceDescriptor {
+         backends,
+         flags: options.instance_flags,
+         memory_budget_thresholds: options.instance_memory_budget_thresholds,
+-        display: None,
++        display: display
++            .map(|display| Box::new(display) as Box<dyn wgpu::wgt::WgpuHasDisplayHandle>),
+         backend_options: wgpu::BackendOptions {
+             gl: wgpu::GlBackendOptions {
+                 gles_minor_version: options.gles3_minor_version,
+@@ -327,6 +366,15 @@ pub async fn initialize_renderer(
+         limits = limits.or_worse_values_from(constrained_limits);
+     }
+ 
++    // On the GL backend, keep the passes that need 5+ storage textures (SSAO) off: naga's GLSL
++    // output for SSAO's depth prepass gathers from a depth texture through a shadow sampler
++    // (`textureGatherOffset(sampler2DShadow, vec2, ivec2, int)`), which no GLSL version accepts,
++    // so creating that pipeline fails at startup and takes the whole renderer down with it.
++    if adapter_info.backend == wgpu::Backend::Gl {
++        limits.max_storage_textures_per_shader_stage =
++            limits.max_storage_textures_per_shader_stage.min(4);
++    }
++
+     let device_descriptor = wgpu::DeviceDescriptor {
+         label: options.device_label.as_ref().map(AsRef::as_ref),
+         required_features: features,
+diff --git a/src/settings.rs b/src/settings.rs
+index 07eff23..6edbd8d 100644
+--- a/src/settings.rs
++++ b/src/settings.rs
+@@ -260,6 +260,7 @@ impl RenderCreation {
+         &self,
+         future_resources: FutureRenderResources,
+         primary_window: Option<RawHandleWrapperHolder>,
++        display: Option<renderer::RenderDisplayHandle>,
+         #[cfg(feature = "raw_vulkan_init")]
+         raw_vulkan_init_settings: renderer::raw_vulkan_init::RawVulkanInitSettings,
+     ) -> bool {
+@@ -274,9 +275,10 @@ impl RenderCreation {
+                 let settings = render_creation.clone();
+ 
+                 let async_renderer = async move {
+-                    let render_resources = renderer::initialize_renderer(
++                    let render_resources = renderer::initialize_renderer_with_display(
+                         backends,
+                         primary_window,
++                        display,
+                         &settings,
+                         #[cfg(feature = "raw_vulkan_init")]
+                         raw_vulkan_init_settings,

@@ -173,6 +173,7 @@ enum FileType {
     FD_KVM_VCPU,   // vCPU fd; fileSize = packed (vcpuObjId, vcpuGen)
     // Virtual network: /dev/net/tun.  backend = the vnet TAP port index (0 until TUNSETIFF).
     FD_TUN,
+    FD_BINDER,           // /dev/binder -- Android IPC (core/android/binder.d, phase A1)
 }
 
 struct File {
@@ -3135,6 +3136,8 @@ private uint devClassForPath(const(char)* path) {
     if (cstrEqPrefix(path, "/dev/snd/"))         return DEVCLASS_AUDIO;
     if (cstrEq(path, "/dev/kvm"))                  return DEVCLASS_VIRT;
     if (cstrEq(path, "/dev/net/tun"))              return DEVCLASS_VIRT;   // VM network cards
+    // /dev/binder is not brokered hardware -- it is per-process IPC (core/android/binder.d); the
+    // domain's own isolation applies, so it is ungated like /dev/null.
     return 0;
 }
 
@@ -4377,6 +4380,22 @@ public int sys_open(const(char)* path, int flags) {
         return publishActiveFdReturn(fd);
     }
 
+    // /dev/binder -- Android's IPC driver (core/android/binder.d, docs/hw-bringup/ANDROID.md).
+    // Each open is a binder "proc"; its index rides in backend.  ioctl-only (plus mmap in phase A2).
+    if (cstrEq(path, "/dev/binder")) {
+        import core.android.binder : binderAlloc;
+        const int bp = binderAlloc();
+        if (bp < 0) return negErrno(ENOMEM);
+        g_fdTable[fd].type     = FileType.FD_BINDER;
+        g_fdTable[fd].flags    = flags;
+        g_fdTable[fd].offset   = 0;
+        g_fdTable[fd].backend  = cast(void*)cast(size_t)bp;
+        g_fdTable[fd].fileSize = 0;
+        g_fdTable[fd].objId    = 0;
+        deviceNoteOpen(path);
+        return publishActiveFdReturn(fd);
+    }
+
     // /dev/dri/card0, /dev/dri/renderD128 → DRM/KMS device
     if (cstrEq(path, "/dev/dri/card0") || cstrEq(path, "/dev/dri/renderD128")) {
         g_fdTable[fd].type    = FileType.FD_DRM;
@@ -5046,6 +5065,9 @@ private long fileObjClose(ObjHeader* oh) {
                 if (g_fdTable[i].type == FileType.FD_TUN && cast(int)cast(size_t)g_fdTable[i].backend == port) ++refs;
             if (refs <= 1) { import network.vnet : vnetTapRelease; vnetTapRelease(port); }
         }
+    } else if (f.type == FileType.FD_BINDER) {
+        import core.android.binder : binderFree;
+        binderFree(cast(int)cast(size_t)f.backend);
     } else if (f.type == FileType.FD_EPOLL) {
         // Instance is shared across fork-copied tables and dups (see fdInstanceRef);
         // destroy only when the LAST reference closes — a forked child exiting must
@@ -11979,11 +12001,81 @@ public long linux_sys_ioctl(ulong fd, ulong cmd, ulong arg) {
             return 0;
         }
     }
+    if (fd < 1024 && g_fdTable !is null && g_fdTable[cast(int)fd].type == FileType.FD_BINDER) {
+        return binderIoctl(cast(int)cast(size_t)g_fdTable[cast(int)fd].backend, cast(uint)cmd, arg);
+    }
     ObjHeader* oh = fdObjectByIndexWithRights(cast(int)fd, CAP_RIGHT_IOCTL);
     if (oh is null) return negErrno(EBADF);
     auto iop = g_objOps[oh.type].ioctl;
     if (iop is null) return negErrno(EBADF);
     return iop(oh, cmd, arg);
+}
+
+// ── binder ioctl (core/android/binder.d, docs/hw-bringup/ANDROID.md phase A1) ────────────────────
+// The user-memory side of binder lives here (binder.d is pure kernel buffers): this copies the
+// BINDER_WRITE_READ struct and its write/read buffers in and out under SMAP and hands kernel
+// pointers to binderWriteRead.  Bounce buffers are fixed and bounded -- binder runs under the BKL.
+private enum ulong BINDER_BOUNCE = 64 * 1024;
+private __gshared ubyte[BINDER_BOUNCE] g_binderWBounce;
+private __gshared ubyte[BINDER_BOUNCE] g_binderRBounce;
+
+private long binderIoctl(int id, uint cmd, ulong arg) {
+    import core.android.binder : binderVersion, binderSetMaxThreads, binderSetContextMgr,
+                                 binderWriteRead, BINDER_VERSION, BINDER_SET_MAX_THREADS,
+                                 BINDER_SET_CONTEXT_MGR, BINDER_WRITE_READ, BINDER_THREAD_EXIT;
+    enum uint BINDER_SET_CONTEXT_MGR_EXT = 0x4020_620D;
+    switch (cmd) {
+        case BINDER_VERSION:
+            if (arg == 0) return negErrno(EFAULT);
+            smapBegin(); *cast(int*)arg = binderVersion(); smapEnd();
+            return 0;
+        case BINDER_SET_MAX_THREADS:
+            if (arg == 0) return negErrno(EFAULT);
+            smapBegin(); const uint mt = *cast(uint*)arg; smapEnd();
+            binderSetMaxThreads(id, mt);
+            return 0;
+        case BINDER_SET_CONTEXT_MGR:
+        case BINDER_SET_CONTEXT_MGR_EXT:
+            return binderSetContextMgr(id);
+        case BINDER_THREAD_EXIT:
+            return 0;
+        case BINDER_WRITE_READ: {
+            if (arg == 0) return negErrno(EFAULT);
+            ulong wsize, wconsumed, wbuf, rsize, rconsumed, rbuf;
+            smapBegin();
+            auto u = cast(ulong*)arg;
+            wsize = u[0]; wconsumed = u[1]; wbuf = u[2];
+            rsize = u[3]; rconsumed = u[4]; rbuf = u[5];
+            smapEnd();
+            ulong wavail = (wsize > wconsumed) ? (wsize - wconsumed) : 0;
+            ulong ravail = (rsize > rconsumed) ? (rsize - rconsumed) : 0;
+            if (wavail > BINDER_BOUNCE) wavail = BINDER_BOUNCE;
+            if (ravail > BINDER_BOUNCE) ravail = BINDER_BOUNCE;
+            if (wavail > 0 && wbuf != 0) {
+                smapBegin();
+                auto src = cast(const(ubyte)*)(wbuf + wconsumed);
+                foreach (i; 0 .. wavail) g_binderWBounce[i] = src[i];
+                smapEnd();
+            }
+            ulong wc = 0, rc = 0;
+            const long r = binderWriteRead(id, g_binderWBounce.ptr, wavail, &wc,
+                                           g_binderRBounce.ptr, ravail, &rc);
+            if (r < 0) return r;
+            if (rc > 0 && rbuf != 0) {
+                smapBegin();
+                auto dst = cast(ubyte*)(rbuf + rconsumed);
+                foreach (i; 0 .. rc) dst[i] = g_binderRBounce[i];
+                smapEnd();
+            }
+            smapBegin();
+            u[1] = wconsumed + wc;   // write_consumed
+            u[4] = rconsumed + rc;   // read_consumed
+            smapEnd();
+            return 0;
+        }
+        default:
+            return negErrno(EINVAL);
+    }
 }
 
 public long linuxSyscallCapPrecheck(ulong n, ulong a, ulong b, ulong c,

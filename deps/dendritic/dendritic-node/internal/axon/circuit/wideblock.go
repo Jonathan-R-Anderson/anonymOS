@@ -232,7 +232,19 @@ func (w *WideBlock) Decipher(block []byte, tweak uint64) error {
 type HopWide struct {
 	fwd, bwd   *WideBlock
 	ctrF, ctrB uint64
+	// af, ab are the hop's end-to-end authentication keys (KeySet.Af/Ab): the
+	// key SealInnermost/OpenInnermost use when this hop is the terminal. They
+	// were dropped here, which left every caller to invent one.
+	af, ab [32]byte
 }
+
+// AuthForward is the key that authenticates a cell's innermost region on its
+// way to this hop as terminal (KeySet.Af).
+func (h *HopWide) AuthForward() [32]byte { return h.af }
+
+// AuthBackward is the key for cells this hop originates toward the client
+// (KeySet.Ab).
+func (h *HopWide) AuthBackward() [32]byte { return h.ab }
 
 // NewHopWide builds the permutation pair from a completed handshake.
 func NewHopWide(ks KeySet) (*HopWide, error) {
@@ -244,7 +256,7 @@ func NewHopWide(ks KeySet) (*HopWide, error) {
 	if err != nil {
 		return nil, err
 	}
-	return &HopWide{fwd: f, bwd: b}, nil
+	return &HopWide{fwd: f, bwd: b, af: ks.Af, ab: ks.Ab}, nil
 }
 
 // Counters reports the forward and backward counters.

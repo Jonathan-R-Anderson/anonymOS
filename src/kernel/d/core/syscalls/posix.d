@@ -175,6 +175,7 @@ enum FileType {
     FD_TUN,
     FD_BINDER,           // /dev/binder|hwbinder|vndbinder + binderfs nodes -- Android IPC (A1-A4)
     FD_BINDER_CTL,       // /dev/binderfs/binder-control -- BINDER_CTL_ADD creates named contexts (A4)
+    FD_CGROUP,           // a cgroup v2 control file under /sys/fs/cgroup (A6); backend=(node<<8)|fileId
 }
 
 struct File {
@@ -2471,6 +2472,20 @@ private long fileObjRead(ObjHeader* oh, void* _buf, ulong _count) {
         return cast(ssize_t)read;
     }
 
+    // A6: a cgroup v2 control file -- content is synthesised from the cgroup tree, streamed by offset.
+    if (f.type == FileType.FD_CGROUP) {
+        const int enc = cast(int)cast(size_t)f.backend;
+        char[512] tmp;
+        const size_t tlen = cgRender(enc >> 8, enc & 0xFF, tmp.ptr, tmp.length);
+        if (f.offset >= tlen) return 0;  // EOF
+        const size_t remaining = tlen - cast(size_t)f.offset;
+        const size_t toRead = _count < remaining ? cast(size_t)_count : remaining;
+        auto dst = cast(ubyte*)_buf;
+        for (size_t i = 0; i < toRead; ++i) dst[i] = cast(ubyte)tmp[cast(size_t)f.offset + i];
+        f.offset += toRead;
+        return cast(ssize_t)toRead;
+    }
+
     // Virtual file (backend > 2 is a pointer into static string data)
     if (f.type == FileType.FD_FILE && cast(size_t)f.backend > fileBackendDirectory) {
         auto content = cast(const(ubyte)*)f.backend;
@@ -2661,6 +2676,12 @@ private long fileObjWrite(ObjHeader* oh, const(void)* buf, ulong count) {
 
     if (fileIsSyntheticDirectory(f)) {
         return cast(ssize_t)negErrno(EISDIR);
+    }
+
+    // A6: a cgroup v2 control file -- parse the write into the cgroup tree.
+    if (f.type == FileType.FD_CGROUP) {
+        const int enc = cast(int)cast(size_t)f.backend;
+        return cast(ssize_t)cgWrite(enc >> 8, enc & 0xFF, cast(const(ubyte)*)buf, cast(size_t)count);
     }
 
     if (f.type == FileType.FD_CONSOLE) {
@@ -4433,6 +4454,28 @@ public int sys_open(const(char)* path, int flags) {
     // ashmem ioctls are served in linux_sys_ioctl.  Per-process memory, so ungated like /dev/null.
     if (cstrEq(path, "/dev/ashmem")) {
         return ashmemOpen(fd, flags);
+    }
+
+    // /sys/fs/cgroup/... -- the cgroup v2 hierarchy (A6).  Must be claimed here, before the generic
+    // "/sys/fs/" synthetic-directory prefix rule would serve it as an empty directory.  A cgroup
+    // directory becomes a synthetic-dir fd tagged for getdents; a control file becomes an FD_CGROUP.
+    if (cgIsPath(path)) {
+        int cgFid;
+        const int cgNode = cgResolve(path, cgFid);
+        if (cgNode >= 0) {
+            if (cgFid == CGF_NONE) {
+                initSyntheticFileFd(fd, flags, fileBackendDirectory);
+                g_fdTable[fd].fileSize = SYNTHDIR_CGROUP + cast(ulong)cgNode;
+                return publishActiveFdReturn(fd);
+            }
+            g_fdTable[fd].type     = FileType.FD_CGROUP;
+            g_fdTable[fd].flags    = flags;
+            g_fdTable[fd].offset   = 0;
+            g_fdTable[fd].backend  = cast(void*)cast(size_t)((cgNode << 8) | cgFid);
+            g_fdTable[fd].fileSize = 0;
+            return publishActiveFdReturn(fd);
+        }
+        // An unknown path under the cgroup root: fall through to ENOENT handling.
     }
 
     // /dev/dri/card0, /dev/dri/renderD128 → DRM/KMS device
@@ -10966,6 +11009,11 @@ private void initSyntheticFileFd(int fd, int flags, size_t kind) {
 }
 
 private bool isSyntheticDirectoryPath(const(char)* path) {
+    // A6: a cgroup v2 directory (the root or a created sub-cgroup), so stat() reports it as a dir.
+    if (cgIsPath(path)) {
+        int cgFid;
+        if (cgResolve(path, cgFid) >= 0 && cgFid == CGF_NONE) return true;
+    }
     // A4: /proc/<pid> is a (live) process directory.
     {
         const(char)* psub; size_t psubLen;
@@ -14896,6 +14944,32 @@ public long linux_sys_getdents64(ulong fd, ulong dirp, ulong count) {
         f.offset = 2;
     }
 
+    // A6: cgroup directory enumeration — child cgroups (DT_DIR) then control files (DT_REG).
+    if (f.fileSize >= SYNTHDIR_CGROUP && f.fileSize < SYNTHDIR_CGROUP + CG_MAX_NODES) {
+        const int cgnode = cast(int)(f.fileSize - SYNTHDIR_CGROUP);
+        ulong logical = 2;
+        for (int c = 0; c < CG_MAX_NODES; ++c) {
+            if (!g_cg[c].used || g_cg[c].parent != cgnode) continue;
+            if (f.offset <= logical) {
+                if (!writeDirent64(buf, count, &written, cast(ulong)(c + 20000),
+                                   cast(long)logical + 1, DT_DIR, g_cg[c].name.ptr, g_cg[c].nameLen))
+                    return cast(long)written;
+                f.offset = logical + 1;
+            }
+            ++logical;
+        }
+        foreach (ci; 0 .. CG_FILES.length) {
+            if (f.offset <= logical) {
+                if (!writeDirent64(buf, count, &written, cast(ulong)(ci + 30000),
+                                   cast(long)logical + 1, DT_REG, CG_FILES[ci].name.ptr, CG_FILES[ci].name.length))
+                    return cast(long)written;
+                f.offset = logical + 1;
+            }
+            ++logical;
+        }
+        return cast(long)written;
+    }
+
     // A4: /proc enumeration — one directory entry per live process (ps/top).
     if (f.fileSize == SYNTHDIR_PROC) {
         ulong logical = 2;
@@ -15945,6 +16019,13 @@ public long linux_sys_statfs(ulong path, ulong buf) {
     if (!buf) return negErrno(EFAULT);
     auto s = cast(linux_statfs*)buf; *s = linux_statfs.init;
     s.f_type = 0xEF53; s.f_bsize = 4096; s.f_namelen = 255;
+    // A6: paths under /sys/fs/cgroup are a cgroup2 filesystem (LXC checks the statfs magic).
+    if (path != 0) {
+        smapBegin();
+        const bool isCg = cgIsPath(cast(const(char)*)path);
+        smapEnd();
+        if (isCg) s.f_type = cast(long)CGROUP2_SUPER_MAGIC;
+    }
     return 0;
 }
 public long linux_sys_fstatfs(ulong fd, ulong buf) { return linux_sys_statfs(0, buf); }
@@ -16111,6 +16192,7 @@ private long rtMkdirSyscall(int dirfd, const(char)* path, ushort mode) {
         abs[bl] = 0;
         path = abs.ptr;
     }
+    if (cgIsPath(path)) return cgMkdir(path);   // A6: mkdir a cgroup under /sys/fs/cgroup
     int parent; const(char)* leaf; size_t leafLen;
     const int idx = rtResolve(path, parent, leaf, leafLen);
     // A directory that already exists is EEXIST before any write check, as on Linux: `mkdir -p
@@ -16152,6 +16234,7 @@ public long linux_sys_mkdirat(ulong d, ulong p, ulong m) {
 private long rtUnlinkSyscall(const(char)* path, bool dirOnly) {
     initFdTable();
     if (path is null) return negErrno(EFAULT);
+    if (cgIsPath(path)) return dirOnly ? cgRmdir(path) : negErrno(EPERM);   // A6: rmdir a cgroup
     { const int g = nsWriteGate(path); if (g != 0) return g; }   // appgate: the domain's view
     int parent; const(char)* leaf; size_t leafLen;
     const int idx = rtResolve(path, parent, leaf, leafLen);
@@ -18130,6 +18213,290 @@ public void ashmemSelfTest() {
 
     klog(ok ? "[ashmem] selftest PASS (/dev/ashmem: name, size, mappable backing, prot mask, pin)\n"
             : "[ashmem] selftest FAIL\n");
+}
+
+// ── A6: cgroup v2 pseudo-filesystem ──────────────────────────────────────────────────────────────
+// A mutable hierarchy under /sys/fs/cgroup (the static stub was read-only).  LXC's `lxc-start`
+// mkdir's a cgroup, enables controllers via cgroup.subtree_control, and writes the container's pid
+// into cgroup.procs; readers consult cgroup.controllers/procs.  This is an in-kernel tree, hooked
+// into open/read/write/getdents/mkdir/rmdir/statfs only for the /sys/fs/cgroup prefix, so the hot FS
+// paths are untouched.  Limits are stored but not enforced (lxc-start needs the interface, not the
+// accounting).
+enum ulong CGROUP2_SUPER_MAGIC = 0x6367_7270;          // "cgrp"
+private enum ulong SYNTHDIR_CGROUP = 0x0C670000;        // + cgroup node index => a cgroup directory fd
+private enum int CG_MAX_NODES = 64;
+private enum int CG_MAX_PROCS = 64;
+private enum int CG_NAME_MAX  = 48;
+
+private enum int CGF_NONE = -1;
+private enum int CGF_CONTROLLERS = 1, CGF_SUBTREE = 2, CGF_PROCS = 3, CGF_THREADS = 4, CGF_TYPE = 5,
+                 CGF_EVENTS = 6, CGF_STAT = 7, CGF_MEMMAX = 8, CGF_MEMCUR = 9,
+                 CGF_PIDSMAX = 10, CGF_PIDSCUR = 11, CGF_CPUMAX = 12;
+
+private struct CgFileDef { string name; int id; }
+private static immutable CgFileDef[12] CG_FILES = [
+    CgFileDef("cgroup.controllers",     CGF_CONTROLLERS),
+    CgFileDef("cgroup.subtree_control", CGF_SUBTREE),
+    CgFileDef("cgroup.procs",           CGF_PROCS),
+    CgFileDef("cgroup.threads",         CGF_THREADS),
+    CgFileDef("cgroup.type",            CGF_TYPE),
+    CgFileDef("cgroup.events",          CGF_EVENTS),
+    CgFileDef("cgroup.stat",            CGF_STAT),
+    CgFileDef("memory.max",             CGF_MEMMAX),
+    CgFileDef("memory.current",         CGF_MEMCUR),
+    CgFileDef("pids.max",               CGF_PIDSMAX),
+    CgFileDef("pids.current",           CGF_PIDSCUR),
+    CgFileDef("cpu.max",                CGF_CPUMAX),
+];
+
+private struct CgNode {
+    bool  used;
+    int   parent;                     // -1 for the root (node 0)
+    ubyte nameLen; char[CG_NAME_MAX] name;
+    ubyte subtreeLen; char[96] subtree;   // cgroup.subtree_control contents (no trailing newline)
+    int   procN; int[CG_MAX_PROCS] procs; // cgroup.procs
+    bool  memMaxSet;  long memMax;
+    bool  pidsMaxSet; long pidsMax;
+}
+private __gshared CgNode[CG_MAX_NODES] g_cg;
+private __gshared bool g_cgReady = false;
+
+private void cgInit() @nogc nothrow {
+    if (g_cgReady) return;
+    foreach (ref n; g_cg) n = CgNode.init;
+    g_cg[0].used = true; g_cg[0].parent = -1; g_cg[0].nameLen = 0;   // the mount root
+    g_cgReady = true;
+}
+
+private int cgFileId(const(char)* nm, size_t len) @nogc nothrow {
+    foreach (ref e; CG_FILES) {
+        if (e.name.length != len) continue;
+        bool same = true;
+        foreach (i; 0 .. len) if (nm[i] != e.name[i]) { same = false; break; }
+        if (same) return e.id;
+    }
+    return CGF_NONE;
+}
+
+private int cgFindChild(int parent, const(char)* nm, size_t len) @nogc nothrow {
+    if (len == 0 || len > CG_NAME_MAX) return -1;
+    foreach (c; 0 .. CG_MAX_NODES) {
+        if (!g_cg[c].used || g_cg[c].parent != parent || g_cg[c].nameLen != len) continue;
+        bool same = true;
+        foreach (i; 0 .. len) if (g_cg[c].name[i] != nm[i]) { same = false; break; }
+        if (same) return c;
+    }
+    return -1;
+}
+
+private bool cgIsPath(const(char)* p) @nogc nothrow {
+    static immutable string pre = "/sys/fs/cgroup";
+    size_t i = 0;
+    foreach (c; pre) { if (p[i] != c) return false; ++i; }
+    return p[i] == '\0' || p[i] == '/';
+}
+
+// Resolve a path to a cgroup node (>=0) and, via `fileId`, whether it names a control file
+// (CGF_*) or the directory itself (CGF_NONE).  -1 if the path is not in the cgroup fs or absent.
+private int cgResolve(const(char)* path, out int fileId) @nogc nothrow {
+    fileId = CGF_NONE;
+    cgInit();
+    static immutable string pre = "/sys/fs/cgroup";
+    size_t i = 0;
+    foreach (c; pre) { if (path[i] != c) return -1; ++i; }
+    if (path[i] == '\0') return 0;        // the root directory
+    if (path[i] != '/') return -1;
+    ++i;
+    int cur = 0;
+    while (path[i] != '\0') {
+        size_t j = i;
+        while (path[j] != '\0' && path[j] != '/') ++j;
+        const size_t clen = j - i;
+        if (clen > 0) {
+            if (path[j] == '\0') {        // last component: may be a control file
+                const int fid = cgFileId(path + i, clen);
+                if (fid != CGF_NONE) { fileId = fid; return cur; }
+            }
+            const int child = cgFindChild(cur, path + i, clen);
+            if (child < 0) return -1;
+            cur = child;
+        }
+        i = j;
+        if (path[i] == '/') ++i;
+    }
+    return cur;
+}
+
+private void cgAppend(char* b, size_t cap, ref size_t pos, const(char)[] s) @nogc nothrow {
+    foreach (c; s) if (pos < cap) b[pos++] = c;
+}
+private void cgAppendLong(char* b, size_t cap, ref size_t pos, long v) @nogc nothrow {
+    if (v < 0) { cgAppend(b, cap, pos, "-"); v = -v; }
+    char[20] t; int ti = 0;
+    if (v == 0) t[ti++] = '0';
+    while (v > 0) { t[ti++] = cast(char)('0' + v % 10); v /= 10; }
+    while (ti > 0) { --ti; if (pos < cap) b[pos++] = t[ti]; }
+}
+
+// Render a control file's contents into `b`; returns the byte length.
+private size_t cgRender(int node, int fid, char* b, size_t cap) @nogc nothrow {
+    size_t p = 0;
+    if (node < 0 || node >= CG_MAX_NODES || !g_cg[node].used) return 0;
+    switch (fid) {
+        case CGF_CONTROLLERS: cgAppend(b, cap, p, "cpu io memory pids\n"); break;
+        case CGF_SUBTREE:
+            foreach (i; 0 .. g_cg[node].subtreeLen) if (p < cap) b[p++] = g_cg[node].subtree[i];
+            cgAppend(b, cap, p, "\n"); break;
+        case CGF_PROCS: case CGF_THREADS:
+            foreach (i; 0 .. g_cg[node].procN) { cgAppendLong(b, cap, p, g_cg[node].procs[i]); cgAppend(b, cap, p, "\n"); }
+            break;
+        case CGF_TYPE:   cgAppend(b, cap, p, "domain\n"); break;
+        case CGF_EVENTS: cgAppend(b, cap, p, "populated 0\nfrozen 0\n"); break;
+        case CGF_STAT:   cgAppend(b, cap, p, "nr_descendants 0\nnr_dying_descendants 0\n"); break;
+        case CGF_MEMMAX: if (g_cg[node].memMaxSet) cgAppendLong(b, cap, p, g_cg[node].memMax); else cgAppend(b, cap, p, "max"); cgAppend(b, cap, p, "\n"); break;
+        case CGF_MEMCUR: cgAppend(b, cap, p, "0\n"); break;
+        case CGF_PIDSMAX: if (g_cg[node].pidsMaxSet) cgAppendLong(b, cap, p, g_cg[node].pidsMax); else cgAppend(b, cap, p, "max"); cgAppend(b, cap, p, "\n"); break;
+        case CGF_PIDSCUR: cgAppendLong(b, cap, p, g_cg[node].procN); cgAppend(b, cap, p, "\n"); break;
+        case CGF_CPUMAX: cgAppend(b, cap, p, "max 100000\n"); break;
+        default: break;
+    }
+    return p;
+}
+
+// A pid lives in exactly one cgroup: drop it from every node, then add it to `node`.
+private void cgAttachPid(int node, int pid) @nogc nothrow {
+    foreach (c; 0 .. CG_MAX_NODES) {
+        if (!g_cg[c].used) continue;
+        int w = 0;
+        foreach (i; 0 .. g_cg[c].procN) if (g_cg[c].procs[i] != pid) g_cg[c].procs[w++] = g_cg[c].procs[i];
+        g_cg[c].procN = w;
+    }
+    if (node >= 0 && node < CG_MAX_NODES && g_cg[node].used && g_cg[node].procN < CG_MAX_PROCS)
+        g_cg[node].procs[g_cg[node].procN++] = pid;
+}
+
+// Write to a control file (`user` is the caller's buffer, copied under SMAP).  Returns n, or -errno.
+private long cgWrite(int node, int fid, const(ubyte)* user, size_t n) @nogc nothrow {
+    if (node < 0 || node >= CG_MAX_NODES || !g_cg[node].used) return negErrno(EBADF);
+    char[256] buf;
+    const size_t cn = n < 255 ? n : 255;
+    smapBegin();
+    foreach (i; 0 .. cn) buf[i] = cast(char)user[i];
+    smapEnd();
+    switch (fid) {
+        case CGF_SUBTREE: {
+            size_t m = cn;
+            while (m > 0 && (buf[m-1] == '\n' || buf[m-1] == ' ')) --m;
+            const size_t keep = m < g_cg[node].subtree.length ? m : g_cg[node].subtree.length;
+            foreach (i; 0 .. keep) g_cg[node].subtree[i] = buf[i];
+            g_cg[node].subtreeLen = cast(ubyte)keep;
+            return cast(long)n;
+        }
+        case CGF_PROCS: case CGF_THREADS: {
+            long pid = 0; bool any = false;
+            foreach (i; 0 .. cn) { const char c = buf[i]; if (c >= '0' && c <= '9') { pid = pid*10 + (c-'0'); any = true; } else break; }
+            if (!any) return negErrno(EINVAL);
+            cgAttachPid(node, cast(int)pid);
+            return cast(long)n;
+        }
+        case CGF_MEMMAX: case CGF_PIDSMAX: {
+            const bool isMax = (cn >= 3 && buf[0]=='m' && buf[1]=='a' && buf[2]=='x');
+            long v = 0;
+            if (!isMax) foreach (i; 0 .. cn) { const char c = buf[i]; if (c >= '0' && c <= '9') v = v*10 + (c-'0'); else break; }
+            if (fid == CGF_MEMMAX)  { g_cg[node].memMaxSet  = !isMax; g_cg[node].memMax  = v; }
+            else                    { g_cg[node].pidsMaxSet = !isMax; g_cg[node].pidsMax = v; }
+            return cast(long)n;
+        }
+        case CGF_CPUMAX: return cast(long)n;        // accepted, not enforced
+        default: return negErrno(EACCES);           // controllers/type/events/stat/current are read-only
+    }
+}
+
+// mkdir under /sys/fs/cgroup: create a child cgroup.
+private long cgMkdir(const(char)* path) {
+    cgInit();
+    int fid;
+    if (cgResolve(path, fid) >= 0) return negErrno(EEXIST);
+    size_t len = 0; while (path[len] != '\0') ++len;
+    if (len > 0 && path[len-1] == '/') --len;
+    size_t ls = 0; foreach (i; 0 .. len) if (path[i] == '/') ls = i;
+    char[1024] par;
+    if (ls >= par.length) return negErrno(EINVAL);
+    foreach (i; 0 .. ls) par[i] = path[i];
+    par[ls] = '\0';
+    const(char)* leaf = path + ls + 1;
+    const size_t leafLen = len - (ls + 1);
+    if (leafLen == 0 || leafLen > CG_NAME_MAX) return negErrno(EINVAL);
+    if (cgFileId(leaf, leafLen) != CGF_NONE) return negErrno(EEXIST);
+    int pfid; const int parent = cgResolve(par.ptr, pfid);
+    if (parent < 0 || pfid != CGF_NONE) return negErrno(ENOENT);
+    int slot = -1;
+    foreach (c; 1 .. CG_MAX_NODES) if (!g_cg[c].used) { slot = c; break; }
+    if (slot < 0) return negErrno(ENOSPC);
+    g_cg[slot] = CgNode.init;
+    g_cg[slot].used = true; g_cg[slot].parent = parent; g_cg[slot].nameLen = cast(ubyte)leafLen;
+    foreach (i; 0 .. leafLen) g_cg[slot].name[i] = leaf[i];
+    g_cg[slot].subtreeLen = 0; g_cg[slot].procN = 0;
+    return 0;
+}
+
+// rmdir under /sys/fs/cgroup: remove an empty cgroup.
+private long cgRmdir(const(char)* path) {
+    cgInit();
+    int fid; const int node = cgResolve(path, fid);
+    if (node < 0) return negErrno(ENOENT);
+    if (fid != CGF_NONE) return negErrno(ENOTDIR);
+    if (node == 0) return negErrno(EBUSY);
+    foreach (c; 0 .. CG_MAX_NODES) if (g_cg[c].used && g_cg[c].parent == node) return negErrno(ENOTEMPTY);
+    if (g_cg[node].procN > 0) return negErrno(EBUSY);
+    g_cg[node] = CgNode.init;
+    return 0;
+}
+
+// Boot self-test: drive lxc-start's cgroup sequence through the real syscalls (mkdir, statfs, rmdir)
+// and the fs helpers, proving a cgroup can be created, controllers enabled, a pid attached and read
+// back, and the cgroup removed.
+public void cgroupSelfTest() {
+    bool ok = true;
+    cgInit();
+    static immutable char[] P = "/sys/fs/cgroup/selftest\0";
+    ok = ok && (linux_sys_mkdir(cast(ulong)P.ptr, 0x1ED) == 0);        // mkdir 0755 via the real path
+    int fid; const int node = cgResolve(P.ptr, fid);
+    ok = ok && (node > 0) && (fid == CGF_NONE);
+    ok = ok && (linux_sys_mkdir(cast(ulong)P.ptr, 0x1ED) != 0);        // again -> EEXIST
+
+    char[160] b;
+    size_t n = cgRender(node, CGF_CONTROLLERS, b.ptr, b.length);
+    ok = ok && n >= 18 && b[0]=='c' && b[1]=='p' && b[2]=='u';         // "cpu io memory pids\n"
+
+    static immutable char[] SC = "+cpu +memory";
+    ok = ok && (cgWrite(node, CGF_SUBTREE, cast(const(ubyte)*)SC.ptr, SC.length) == SC.length);
+    n = cgRender(node, CGF_SUBTREE, b.ptr, b.length);
+    ok = ok && n >= 12 && b[0]=='+' && b[1]=='c';
+
+    static immutable char[] PID = "1234\n";
+    ok = ok && (cgWrite(node, CGF_PROCS, cast(const(ubyte)*)PID.ptr, PID.length) == PID.length);
+    ok = ok && (g_cg[node].procN == 1) && (g_cg[node].procs[0] == 1234);
+    n = cgRender(node, CGF_PROCS, b.ptr, b.length);
+    ok = ok && n >= 5 && b[0]=='1' && b[1]=='2' && b[2]=='3' && b[3]=='4';
+    n = cgRender(node, CGF_PIDSCUR, b.ptr, b.length);
+    ok = ok && (b[0] == '1');
+
+    // statfs must report the cgroup2 magic, via the real syscall
+    linux_statfs st;
+    ok = ok && (linux_sys_statfs(cast(ulong)P.ptr, cast(ulong)&st) == 0);
+    ok = ok && (cast(ulong)st.f_type == CGROUP2_SUPER_MAGIC);
+
+    // a cgroup with a pid cannot be removed; after detaching it, rmdir succeeds
+    ok = ok && (linux_sys_rmdir(cast(ulong)P.ptr) != 0);              // EBUSY (has a proc)
+    cgAttachPid(0, 1234);                                             // move the pid to the root
+    ok = ok && (linux_sys_rmdir(cast(ulong)P.ptr) == 0);
+    ok = ok && (cgResolve(P.ptr, fid) < 0);
+    cgAttachPid(0, 1234);                                             // leave the root clean
+    { int w = 0; foreach (i; 0 .. g_cg[0].procN) if (g_cg[0].procs[i] != 1234) g_cg[0].procs[w++] = g_cg[0].procs[i]; g_cg[0].procN = w; }
+
+    klog(ok ? "[cgroup] selftest PASS (cgroup2: mkdir, controllers, subtree_control, attach pid, statfs magic, rmdir)\n"
+            : "[cgroup] selftest FAIL\n");
 }
 
 public long linux_sys_seccomp(ulong op, ulong f, ulong a) { return negErrno(EINVAL); }

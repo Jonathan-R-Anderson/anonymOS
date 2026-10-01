@@ -34,7 +34,7 @@ anonymOS has none of binder, ashmem, cgroups, or the `CLONE_NEW*` namespace flag
 | **A3b — fd passing** (done) | `BINDER_TYPE_FD` translation: install the sender's fd into the target's fd table across a transaction, via a cross-table dup that mirrors `fork`'s fd-table copy (shares the open file description, bumps the shared backend's refcount, publishes the capability). | A fd object carried in a transaction is dup'd into the receiver's fd table and rewritten to the receiver's new fd. **Done: `binderFdInstall` in posix.d + `BINDER_TYPE_FD` case in `translateObject`; `[binder] selftest PASS (… fd passing …)` + `[binder] fd-pass selftest PASS`.** |
 | **A4 — binderfs + hw/vnd binder** (done) | Independent binder *contexts* (each its own context manager + handle-0 + node namespace), the three well-known devices `/dev/binder` / `/dev/hwbinder` / `/dev/vndbinder`, and binderfs: `/dev/binderfs/binder-control` with `BINDER_CTL_ADD` creating named devices, opened at `/dev/binderfs/<name>`. | Two contexts each register their own context manager without EBUSY-ing the other, and handle 0 in each routes to that context's manager. **Done: context table in binder.d + name→context map + binder-control in posix.d; `[binder] selftest PASS (… independent contexts)`.** |
 | **A5 — ashmem / memfd seals** (done) | `memfd_create` with `F_SEAL_*` (already present) **and** `/dev/ashmem` ioctls (SET/GET NAME, SET/GET SIZE, SET/GET PROT_MASK, PIN/UNPIN, GET_PIN_STATUS, PURGE_ALL_CACHES), backed by the memfd machinery so mmap/fstat/dup reuse that path. | Android's `libcutils` ashmem path allocates and maps a region. **Done: `/dev/ashmem` in posix.d (memfd-backed) + the memfd+seals path; `[ashmem] selftest PASS`.** |
-| **A6 — cgroups v2** | A cgroup2 mount, the controllers Android/LXC require, and the clone/attach plumbing. | `lxc-start` creates and enters a cgroup without error. |
+| **A6 — cgroups v2** (done) | A mutable cgroup2 hierarchy under `/sys/fs/cgroup`: `mkdir`/`rmdir` sub-cgroups, per-cgroup control files (cgroup.controllers / subtree_control / procs / threads / type / events / stat, memory.max/current, pids.max/current, cpu.max), pid attachment, and the cgroup2 statfs magic. | A cgroup is created, controllers enabled, a pid attached and read back, and the cgroup removed. **Done: in-kernel cgroup tree in posix.d hooked into open/read/write/getdents/mkdir/rmdir/statfs; `[cgroup] selftest PASS`.** |
 | **A7 — namespaces** | `CLONE_NEWNS/NEWPID/NEWNET/NEWIPC/NEWUTS/NEWUSER`, `unshare`, `setns`, `pivot_root` (the last is stubbed today). | A process unshares a mount+pid namespace and `pivot_root`s into an image. |
 | **A8 — LXC** | The container runtime Waydroid drives (`lxc` + liblxc), or a built-in equivalent that satisfies Waydroid's container contract. | `waydroid init` lays down the container config; `waydroid session start` gets Android's `init` to run. |
 | **A9 — Android image + Wayland** | Fetch/verify a Waydroid GSI (system + vendor), and wire Android's SurfaceFlinger/Wayland output into the domain's compositor surface. | The Android launcher renders in the domain; an `.apk` installed with `waydroid app install` launches and draws. |
@@ -72,10 +72,15 @@ already dispatches `waydroid app …`). None of A2–A9 is a flag: each is a sub
   and dup reuse that code) with the ashmem ioctl surface (name, size, prot mask, pin) and freed on
   last close. `[ashmem] selftest PASS` drives the libcutils create sequence and proves the region is
   named, sized and backed by real mappable memory.
-- **Everything from A6 on is not started.** `hos-waydroid` reports Waydroid-not-installed until the
+- **A6 cgroups v2: implemented and self-tested** — `/sys/fs/cgroup` is now a mutable cgroup2
+  hierarchy (an in-kernel tree in `posix.d`, hooked into open/read/write/getdents/mkdir/rmdir/statfs
+  only on the `/sys/fs/cgroup` prefix). `mkdir` creates a cgroup with the full control-file set,
+  `cgroup.subtree_control` and `cgroup.procs` are writable, and statfs reports `CGROUP2_SUPER_MAGIC`.
+  `[cgroup] selftest PASS` drives the lxc-start sequence end-to-end through the real syscalls.
+  Limits (memory.max/pids.max) are stored but not accounted — lxc-start needs the interface.
+- **Everything from A7 on is not started.** `hos-waydroid` reports Waydroid-not-installed until the
   stack can start a session, so nothing pretends to run.
 
-This is the honest state: the binder IPC subsystem and Android's shared-memory surface are complete
-and proven (binder: device, mmap buffers, object/handle translation, reply routing, fd passing,
-death notifications, independent contexts; shared memory: memfd+seals and /dev/ashmem). cgroups,
-namespaces, LXC and the Android image are not built.
+This is the honest state: the binder IPC subsystem, Android's shared-memory surface, and the cgroup2
+hierarchy are complete and proven. A7 namespaces (`CLONE_NEW*`, `setns`, `unshare`, `pivot_root`),
+A8 LXC and the A9 Android image are not built.

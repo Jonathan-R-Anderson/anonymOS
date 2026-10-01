@@ -2974,6 +2974,13 @@ private int nsPathVerdict(const(char)* path, uint need) {
 // appgate: the gate for the path-mutating syscalls (mkdir, unlink, rename, symlink, chmod, chown),
 // which never consulted the namespace -- a confined task could unlink or rename its way into files
 // its view does not include.  Domain-bound tasks only; the root view is unchanged.
+// May the calling task's domain see `path` at all (read)?
+private bool nsReadable(const(char)* path) {
+    const int tid = cast(int)g_current_task_id;
+    if (tid < 0 || tid >= MAX_TASKS || g_tasks[tid].domainObjId == 0) return true;
+    return nsPathVerdict(path, CAP_RIGHT_READ) == 0;
+}
+
 private int nsWriteGate(const(char)* path) {
     const int tid = cast(int)g_current_task_id;
     if (tid < 0 || tid >= MAX_TASKS || g_tasks[tid].domainObjId == 0) return 0;
@@ -12477,6 +12484,13 @@ private int inetSocketCreate(int type, int protocol) @nogc nothrow {
         if (sid < 0) return negErrno(EMFILE);
         const int conn = tcpAlloc();
         if (conn < 0) { releaseLocalSocket(sid); return negErrno(ENOBUFS); }
+        // Owner, for loopback: a listener is reached only from its own domain or by a trusted
+        // caller -- unconfined infrastructure (domain 0) or System (network/tcp.d listenerTakes).
+        {
+            import network.tcp : tcpSetOwner;
+            const uint dom = inetCallerDomain();
+            tcpSetOwner(conn, dom, dom == 0 || dom == domainSystemId());
+        }
         g_localSockets[sid].inetTcp   = conn;
         g_localSockets[sid].inetUdpFd = -1;
         const int sfd = allocSocketFd(sid, O_RDWR);
@@ -12510,10 +12524,11 @@ private int inetBind(LocalSocket* s, const(sockaddr)* addr, uint addrlen) @nogc 
     auto sin = cast(const(sockaddr_in)*)addr;
     ushort port = cast(ushort)((sin.sin_port >> 8) | (sin.sin_port << 8));   // ntohs
     if (s.inetTcp >= 0) {
-        import network.tcp : tcpBindPort;
+        import network.tcp : tcpBindPort, tcpSetLocalAddr;
         const int r = tcpBindPort(s.inetTcp, port);
         if (r < 0) return negErrno(-r);
         s.inetLocalPort = cast(ushort)r;
+        tcpSetLocalAddr(s.inetTcp, sin.sin_addr);   // 127.x: loopback only, never the network
         return 0;
     }
     if (port == 0) port = g_inetNextEphemeral++;
@@ -12585,7 +12600,9 @@ private ssize_t inetSendTo(LocalSocket* s, const(void)* buf, size_t len,
 
     auto ip = IPv4Address(cast(ubyte)(dip & 0xFF), cast(ubyte)((dip >> 8) & 0xFF),
                           cast(ubyte)((dip >> 16) & 0xFF), cast(ubyte)((dip >> 24) & 0xFF));
-    const int nif = inetRouteIf();
+    import network.loopback : NETIF_LOOPBACK;
+    const bool loop = ip.bytes[0] == 127;          // this machine: the loopback interface
+    const int nif = loop ? NETIF_LOOPBACK : inetRouteIf();
     if (nif < 0) return negErrno(ENETUNREACH);
     MACAddress mac;
     if (nif == 0 && !arpLookup(ip, &mac)) {
@@ -12759,6 +12776,13 @@ private ssize_t inetSendMsg(LocalSocket* s, msghdr* msg) @nogc nothrow {
 // The calling task's network route (network/vnet.d): 0 = the host network, > 0 = the domain's
 // interface on a gateway VM's segment (the Domain Manager's `route` verb), -1 = no way out (a
 // routing loop): fail closed.
+// The calling task's domain (0 = unconfined), for socket ownership.
+private uint inetCallerDomain() @nogc nothrow {
+    const int tid = cast(int)g_current_task_id;
+    if (tid < 0 || tid >= MAX_TASKS) return 0;
+    return g_tasks[tid].domainObjId;
+}
+
 private int inetRouteIf() @nogc nothrow {
     import network.vnet : vnetIfForDomain;
     const int tid = cast(int)g_current_task_id;
@@ -12856,21 +12880,27 @@ private int inetTcpConnect(LocalSocket* s, File* f, const(sockaddr)* addr, uint 
     if (addr is null || addrlen < sockaddr_in.sizeof) return negErrno(EINVAL);
     auto sin = cast(const(sockaddr_in)*)addr;
     if (sin.sin_family != AF_INET) return negErrno(EAFNOSUPPORT);
-    { const int pol = netPolicyGate(sin.sin_addr); if (pol != 0) return pol; }
     const ubyte first = cast(ubyte)(sin.sin_addr & 0xFF);
-    if (first == 127 || sin.sin_addr == 0) return negErrno(ECONNREFUSED);   // no loopback device
+    if (sin.sin_addr == 0) return negErrno(ECONNREFUSED);
+    // 127.0.0.0/8: the loopback interface (network/loopback.d) -- local, so no domain network
+    // policy applies; the listener side decides whether this domain may reach it.  Every 127.x
+    // is this machine; 127.0.0.1 is the one address the connection then answers on.
+    const bool loop = first == 127;
+    uint dst = loop ? 0x0100007F : sin.sin_addr;
+    if (!loop) { const int pol = netPolicyGate(sin.sin_addr); if (pol != 0) return pol; }
     if (s.inetLocalPort == 0) {
         const int p = tcpBindPort(c, 0);
         if (p < 0) return negErrno(EADDRNOTAVAIL);
         s.inetLocalPort = cast(ushort)p;
     }
-    const int nif = inetRouteIf();
+    import network.loopback : NETIF_LOOPBACK;
+    const int nif = loop ? NETIF_LOOPBACK : inetRouteIf();
     if (nif < 0) return negErrno(ENETUNREACH);
     if (nif == 0) inetResolveNextHop(sin.sin_addr);
     import network.vnet : g_netIf;
     const int prevIf = g_netIf;
     g_netIf = nif;                               // the connection keeps this interface (TcpConn.nif)
-    const int r = tcpConnectStart(c, IPv4Address(sin.sin_addr),
+    const int r = tcpConnectStart(c, IPv4Address(dst),
                                   cast(ushort)((sin.sin_port >> 8) | (sin.sin_port << 8)));
     g_netIf = prevIf;
     if (r < 0) return negErrno(-r);
@@ -15626,10 +15656,14 @@ private long rtMkdirSyscall(int dirfd, const(char)* path, ushort mode) {
         abs[bl] = 0;
         path = abs.ptr;
     }
-    { const int g = nsWriteGate(path); if (g != 0) return g; }   // appgate: the domain's view
-
     int parent; const(char)* leaf; size_t leafLen;
     const int idx = rtResolve(path, parent, leaf, leafLen);
+    // A directory that already exists is EEXIST before any write check, as on Linux: `mkdir -p
+    // /tmp/x` starts with mkdir("/"), and EACCES there made it give up on the whole path in every
+    // domain that may not write "/".  Only for paths the domain may read -- existence is not
+    // revealed beyond its view.
+    if ((idx >= 0 || isSyntheticDirectoryPath(path)) && nsReadable(path)) return negErrno(EEXIST);
+    { const int g = nsWriteGate(path); if (g != 0) return g; }   // appgate: the domain's view
     if (idx >= 0) return negErrno(EEXIST);          // already exists in overlay
     if (isSyntheticDirectoryPath(path)) return negErrno(EEXIST); // exists read-only
     if (parent < 0 || leaf is null) {

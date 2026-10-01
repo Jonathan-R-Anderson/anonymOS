@@ -1986,7 +1986,7 @@ static void tab_appearance(struct app *app, cairo_t *cr) {
         }
         if (app->n_templates == 0)
             draw_text(app,"(none yet - click Export to publish this domain)",LABEL_X+10,TAB_Y+206,420,13,0xff8d97a6u);
-        draw_text(app,"Marketplace / I2P P2P sharing: out of scope (needs a network stack)",
+        draw_text(app,"Marketplace: software will arrive through the dendritic network (not yet available)",
                   LABEL_X, app->height-FOOTER_H-40, 560, 11, 0xff5b6675u);
     }
 }

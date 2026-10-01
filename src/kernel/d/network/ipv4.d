@@ -65,6 +65,13 @@ export extern(C) bool ipv4Send(const ref IPv4Address destIP,
                                 const(ubyte)* payload,
                                 size_t payloadLen) @nogc nothrow {
     if (payload is null || payloadLen == 0) return false;
+    // 127.0.0.0/8 never leaves the machine (network/loopback.d), whatever interface is current.
+    {
+        import network.vnet : g_netIf;
+        import network.loopback : NETIF_LOOPBACK, loopbackSendIPv4;
+        if (g_netIf == NETIF_LOOPBACK || destIP.bytes[0] == 127)
+            return loopbackSendIPv4(destIP, protocol, payload, payloadLen);
+    }
     // A domain interface (network/vnet.d: a domain routed through a gateway VM) has its own
     // address, next hop and segment.
     {
@@ -187,6 +194,8 @@ export extern(C) void getLocalIP(IPv4Address* outIP) @nogc nothrow {
         // The current packet's interface: a domain interface answers with its own address, so
         // TCP/UDP pseudo-header checksums and connect() source addresses follow it.
         import network.vnet : g_netIf, vnetIfAddr;
+        import network.loopback : NETIF_LOOPBACK, loopbackAddr;
+        if (g_netIf == NETIF_LOOPBACK) { *outIP = loopbackAddr(); return; }
         if (g_netIf != 0 && vnetIfAddr(g_netIf, outIP)) return;
         *outIP = g_localIP;
     }

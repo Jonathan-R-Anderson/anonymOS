@@ -2097,14 +2097,18 @@ private void maybeAutoRunDump() {
 private void maybeAutoRun() {
     maybeAutoRunDump();
     if (g_autoRunDone || !g_autoPkgDone) return;
+    // Without an AUTOPKG package the command runs as soon as the desktop has settled (maybeAutoPkg
+    // sets g_autoPkgDone 15 s after it is up): how a test image runs a staged program at boot.
+    import core.syscalls.posix : softwareAutoPkg;
+    char[64] pkgName = 0;
+    const bool withPkg = softwareAutoPkg(pkgName.ptr, pkgName.length);
     import core.software : g_swStatus, g_swStatusLen, g_swPendActive;
-    if (g_swPendActive || g_swStatusLen < 3) return;
+    if (withPkg && (g_swPendActive || g_swStatusLen < 3)) return;
     g_autoRunDone = true;
-    if (!(g_swStatus[0] == 'o' && g_swStatus[1] == 'k' && g_swStatus[2] == ' ')) return;
+    if (withPkg && !(g_swStatus[0] == 'o' && g_swStatus[1] == 'k' && g_swStatus[2] == ' ')) return;
     // The package goes to the session domain, as a user would delegate it in Domains -> Applications,
     // so a test image can start it from the desktop unattended.
-    {
-        import core.syscalls.posix : softwareAutoPkg;
+    if (withPkg) {
         import core.appport : appPortAdd;
         import core.domain : domainSessionId, domainById;
         char[64] name = 0;
@@ -2122,10 +2126,23 @@ private void maybeAutoRun() {
     }
     import core.syscalls.posix : softwareAutoRun;
     if (!softwareAutoRun(g_autoRunCmd.ptr, g_autoRunCmd.length)) return;
-    g_autoRunArgv[2] = cast(immutable(char)*)g_autoRunCmd.ptr;
+    // "system:<command>" runs it in System even after a package install (a service under test).
+    const bool inSystem = !withPkg || (g_autoRunCmd[0] == 's' && g_autoRunCmd[1] == 'y' && g_autoRunCmd[2] == 's'
+                          && g_autoRunCmd[3] == 't' && g_autoRunCmd[4] == 'e' && g_autoRunCmd[5] == 'm'
+                          && g_autoRunCmd[6] == ':');
+    const size_t cmdOff = (withPkg && inSystem) ? 7 : 0;
+    g_autoRunArgv[2] = cast(immutable(char)*)(g_autoRunCmd.ptr + cmdOff);
     klog("[software] TEST: AUTORUN "); klog(g_autoRunCmd.ptr); klog("\n");
     g_autoRunMs = pitMs();
-    spawnWaylandProgram("busybox\0".ptr, "[autorun]\0".ptr, cast(ulong)g_autoRunArgv.ptr);
+    if (!inSystem) {
+        spawnWaylandProgram("busybox\0".ptr, "[autorun]\0".ptr, cast(ulong)g_autoRunArgv.ptr);
+    } else {
+        // A staged program, not a delegated package: run it in System, which may run anything the
+        // image carries (a session-domain shell may not run an unregistered or System-only program).
+        import core.domain : domainSystemId;
+        const long r = domainSpawnProgramArgv(domainSystemId(), "busybox\0".ptr, cast(ulong)g_autoRunArgv.ptr);
+        if (r != 0) { klog("[software] TEST: AUTORUN spawn failed "); klog_dec(cast(ulong)(-r)); klog("\n"); }
+    }
 }
 
 private bool vmFetchRunning() {
@@ -2186,6 +2203,11 @@ private void maybeVmStoreWork() {
 // exec first, unconfined, and bind afterwards: the gate would have judged the wrong domain, and the
 // task held a clone of the ROOT namespace until the bind.)  execveTask does the bind itself.
 private extern(C) long domainSpawnProgram(uint domObjId, const(char)* prog) {
+    return domainSpawnProgramArgv(domObjId, prog, 0);
+}
+
+// The same, with an argv (0 = none) -- for the kernel's own launches into a domain.
+private long domainSpawnProgramArgv(uint domObjId, const(char)* prog, ulong argv) {
     if (domObjId == 0 || prog is null) return -22;
 
     int t = allocTask();
@@ -2236,7 +2258,7 @@ private extern(C) long domainSpawnProgram(uint domObjId, const(char)* prog) {
     ulong savedCr3 = x64ReadCR3();
     uint savedUntyped = physActiveUntyped();
     physSetActiveUntyped(g_tasks[t].untypedObjId);
-    long r = execveTask(t, cast(ulong)prog, 0, 0);
+    long r = execveTask(t, cast(ulong)prog, argv, 0);
     physSetActiveUntyped(savedUntyped);
     x64WriteCR3(savedCr3);
     if (r != 0) {
@@ -3215,6 +3237,16 @@ enum ulong NTP_RESYNC_MS    = 60_000;
 private __gshared ulong g_rtcNextMs = 0;
 private __gshared bool  g_rtcTried  = false;
 enum ulong RTC_REBASE_MS = 30_000;
+// Every general register of a task that just took a fatal fault, on one line: the backtrace scan
+// guesses at return addresses, the registers say what the faulting code actually held.
+private void faultRegsLog(ref const ulong[NUM_REGS] r) {
+    static immutable string[NUM_REGS] names = ["rax", "rbx", "rcx", "rdx", "rsi", "rdi", "r8", "r9", "r10",
+        "r11", "r12", "r13", "r14", "r15", "rip", "rsp", "rbp", "rfl"];
+    klog("\n[kernel] regs");
+    foreach (i; 0 .. NUM_REGS) { klog(" "); klog(names[i].ptr); klog("="); klog_hex(r[i]); }
+    klog("\n");
+}
+
 private void maybeRtcClock() {
     import drivers.rtc : rtcReadUnix;
     import network.ntp : clockSetFromRtc, clockFromRtc, ntpSynced;
@@ -6075,6 +6107,7 @@ bool kernelIrqDrainBottomHalf() @nogc nothrow {
             import network.stack : networkStackDrain;
             import network.tcp : tcpTick;
             networkStackDrain(32);
+            { import network.loopback : loopbackDrain; loopbackDrain(128); }   // 127.x, NIC or not
             tcpTick(pitMs());
             { import network.vnet : vnetTick; vnetTick(pitMs()); }
         }
@@ -6493,6 +6526,7 @@ private void kernelLoop() {
                         import network.stack : networkStackDrain;
                         import network.tcp : tcpTick;
                         networkStackDrain(32);
+                        { import network.loopback : loopbackDrain; loopbackDrain(128); }   // 127.x, NIC or not
                         tcpTick(pitMs());
                         { import network.vnet : vnetTick; vnetTick(pitMs()); }
                     }
@@ -6544,6 +6578,7 @@ private void kernelLoop() {
                 klog(" cr2="); klog_hex(cr2);
                 klog(" rip="); klog_hex(task.regs[REG_RIP]);
                 klog(" rsp="); klog_hex(task.regs[REG_RSP]);
+                faultRegsLog(task.regs);
                 // For a fault on the first instruction of a leaf like strlen(),
                 // [rsp] holds the return address into the caller — log it (and a
                 // few stack slots) to locate the offending call site.

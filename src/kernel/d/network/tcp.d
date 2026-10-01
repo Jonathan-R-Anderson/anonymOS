@@ -27,8 +27,11 @@ module network.tcp;
 import network.types;
 import network.ipv4;
 import network.vnet : g_netIf;
+import network.loopback : NETIF_LOOPBACK, g_loopSrcDom, g_loopSrcTrusted, g_netTxDom, g_netTxTrusted;
 
-enum int    TCP_MAX_CONN    = 32;
+// 1024: the dendritic node holds a libp2p connection per peer plus its local clients, and Firefox
+// opens dozens.  The 96 KiB of buffers per connection are allocated when it is, not in this table.
+enum int    TCP_MAX_CONN    = 1024;
 enum size_t TCP_RXBUF       = 65536;       // power of two
 enum size_t TCP_TXBUF       = 32768;       // power of two
 enum ushort TCP_MSS_OURS    = 1460;        // 1500 MTU - 20 IP - 20 TCP
@@ -38,7 +41,7 @@ enum uint   TCP_RTO_MAX     = 16000;
 enum uint   TCP_SYN_RETRIES = 5;
 enum uint   TCP_DATA_RETRIES= 8;
 enum uint   TCP_TIMEWAIT_MS = 2000;        // short 2MSL: nothing here reuses a 4-tuple quickly
-enum int    TCP_ACCEPT_Q    = 8;
+enum int    TCP_ACCEPT_Q    = 64;
 
 private enum : ubyte { F_FIN = 0x01, F_SYN = 0x02, F_RST = 0x04, F_PSH = 0x08, F_ACK = 0x10 }
 
@@ -61,6 +64,9 @@ private struct TcpConn {
     IPv4Address rip;
     ushort      lport, rport;
     int         nif;         // network/vnet.d interface (0 = the host NIC; > 0 = a domain's interface)
+    uint        lip;         // address bind() named (0 = any); a 127.x listener never answers the network
+    uint        dom;         // the owning socket's domain (core.domain objId; 0 = unconfined)
+    bool        trusted;     // owner is unconfined infrastructure or System: may reach any loopback listener
 
     // send side
     uint   iss, sndUna, sndNxt, sndWnd;
@@ -98,8 +104,9 @@ private struct TcpConn {
     TCPCloseCallback   onClose;
     TCPAcceptCallback  onAccept;
 
-    ubyte[TCP_TXBUF] tx;
-    ubyte[TCP_RXBUF] rx;
+    ubyte* tx;               // TCP_TXBUF bytes, allocated with the connection (allocConn)
+    ubyte* rx;               // TCP_RXBUF bytes
+    ulong  txPhys, rxPhys;   // their pages, for freeConn
 }
 
 private __gshared TcpConn[TCP_MAX_CONN] g_tcp;
@@ -209,6 +216,7 @@ private bool sendSeg(ref TcpConn c, uint seq, ubyte flags, bool fromRing, size_t
     }
     const int prevIf = g_netIf;
     g_netIf = c.nif;                        // the connection's interface (timers send outside any RX)
+    g_netTxDom = c.dom; g_netTxTrusted = c.trusted;   // who is sending, if this goes over loopback
     IPv4Address me; getLocalIP(&me);
     put16(pkt.ptr + 16, tcpCsum(me, c.rip, pkt.ptr, hlen + len));
     if (flags & F_ACK) c.advWnd = wnd;
@@ -242,6 +250,7 @@ private void sendResetFor(const ref IPv4Address to, ushort sport, ushort dport, 
     IPv4Address me; getLocalIP(&me);
     put16(pkt.ptr + 16, tcpCsum(me, to, pkt.ptr, 20));
     ++g_tcpResetsSent; ++g_tcpSegsOut;
+    g_netTxDom = 0; g_netTxTrusted = false;
     ipv4Send(to, IPProtocol.TCP, pkt.ptr, 20);
 }
 
@@ -251,7 +260,14 @@ private void sendReset(ref TcpConn c) @nogc nothrow {
 }
 
 private void freeConn(int id) @nogc nothrow {
+    import memory.mm : free_phys_pages, physActiveUntyped, physSetActiveUntyped;
+    import core.task : g_tasks;
     auto c = &g_tcp[id];
+    const uint savedUt = physActiveUntyped();             // back to the kernel's quota (allocConn)
+    physSetActiveUntyped(g_tasks[0].untypedObjId);
+    if (c.txPhys != 0) { free_phys_pages(c.txPhys, TCP_TXBUF / 4096); c.txPhys = 0; c.tx = null; }
+    if (c.rxPhys != 0) { free_phys_pages(c.rxPhys, TCP_RXBUF / 4096); c.rxPhys = 0; c.rx = null; }
+    physSetActiveUntyped(savedUt);
     c.used = false;
     c.owned = false;
     c.st = TCPState.CLOSED;
@@ -362,10 +378,27 @@ private ushort parseMss(const(ubyte)* opt, size_t olen) @nogc nothrow {
 }
 
 private int allocConn() @nogc nothrow {
+    import memory.mm : alloc_phys_pages, free_phys_pages;
+    import core.exports : phys_to_virt;
     foreach (i; 0 .. TCP_MAX_CONN) {
         if (g_tcp[i].used) continue;
         auto c = &g_tcp[i];
+        // Charged to the kernel (task 0), not to whichever task's syscall or tick happens to be
+        // running: a SYN arriving during some unrelated program's syscall must not spend its quota.
+        import core.task : g_tasks;
+        import memory.mm : physActiveUntyped, physSetActiveUntyped;
+        const uint savedUt = physActiveUntyped();
+        physSetActiveUntyped(g_tasks[0].untypedObjId);
+        const ulong txp = alloc_phys_pages(TCP_TXBUF / 4096);
+        const ulong rxp = txp ? alloc_phys_pages(TCP_RXBUF / 4096) : 0;
+        physSetActiveUntyped(savedUt);
+        if (txp == 0) return -1;
+        if (rxp == 0) { free_phys_pages(txp, TCP_TXBUF / 4096); return -1; }
+        c.txPhys = txp; c.rxPhys = rxp;
+        c.tx = cast(ubyte*)phys_to_virt(txp);
+        c.rx = cast(ubyte*)phys_to_virt(rxp);
         c.used = true; c.owned = false; c.started = false;
+        c.lip = 0; c.dom = 0; c.trusted = true;
         c.st = TCPState.CLOSED;
         c.rip = IPv4Address(0, 0, 0, 0);
         c.lport = 0; c.rport = 0; c.nif = 0;
@@ -406,7 +439,7 @@ export extern(C) void tcpHandlePacket(const(ubyte)* data, size_t len,
     foreach (i; 0 .. TCP_MAX_CONN) {
         auto c = &g_tcp[i];
         if (!c.used || c.lport != dport) continue;
-        if (c.st == TCPState.LISTEN) { lid = cast(int)i; continue; }
+        if (c.st == TCPState.LISTEN) { if (listenerTakes(*c)) lid = cast(int)i; continue; }
         if (c.st == TCPState.CLOSED) continue;
         if (c.rport == sport && c.rip.isEqual(srcIP) && c.nif == g_netIf) { id = cast(int)i; break; }
     }
@@ -567,6 +600,19 @@ export extern(C) void tcpHandlePacket(const(ubyte)* data, size_t len,
     output(id, false);
 }
 
+// May listener `l` take a SYN arriving on the current interface?  A listener bound to 127.x is
+// loopback-only and never answers the network.  Over loopback, a listener is reached only from its
+// own domain or by a trusted caller (unconfined infrastructure / System): otherwise any confined app
+// could drive another domain's local services -- the dendritic node's operator API, for one.
+private bool listenerTakes(ref const TcpConn l) @nogc nothrow {
+    const bool lipLoop = (l.lip & 0xFF) == 127;
+    if (g_netIf == NETIF_LOOPBACK) {
+        if (l.lip != 0 && !lipLoop) return false;
+        return g_loopSrcTrusted || g_loopSrcDom == l.dom;
+    }
+    return !lipLoop;
+}
+
 private void listenerSyn(int lid, const ref IPv4Address src, ushort sport, ushort dport,
                          uint seq, uint win, const(ubyte)* opt, size_t olen) @nogc nothrow {
     auto l = &g_tcp[lid];
@@ -581,6 +627,7 @@ private void listenerSyn(int lid, const ref IPv4Address src, ushort sport, ushor
     c.parent = lid;
     c.rip = src; c.rport = sport; c.lport = dport;
     c.nif = g_netIf;                        // answered on the interface the SYN came in on
+    c.lip = l.lip; c.dom = l.dom; c.trusted = l.trusted;
     c.irs = seq; c.rcvNxt = seq + 1;
     c.iss = tcpNewIss(); c.sndUna = c.iss; c.sndNxt = c.iss + 1; c.sndMax = c.sndNxt;
     c.sndWnd = win;
@@ -687,6 +734,17 @@ export extern(C) int tcpBindPort(int id, ushort port) @nogc nothrow {
 }
 
 export extern(C) ushort tcpLocalPort(int id) @nogc nothrow { return validId(id) ? g_tcp[id].lport : 0; }
+
+/// The socket's owner: its domain, and whether it is trusted to reach any loopback listener.
+export extern(C) void tcpSetOwner(int id, uint dom, bool trusted) @nogc nothrow {
+    if (!validId(id)) return;
+    g_tcp[id].dom = dom; g_tcp[id].trusted = trusted;
+}
+
+/// The address bind() named (network byte order as stored; 0 = any).
+export extern(C) void tcpSetLocalAddr(int id, uint ip) @nogc nothrow {
+    if (validId(id)) g_tcp[id].lip = ip;
+}
 
 /// Send the SYN.  Completion (or failure) shows up through tcpIsConnected / tcpError.
 export extern(C) int tcpConnectStart(int id, IPv4Address ip, ushort port) @nogc nothrow {

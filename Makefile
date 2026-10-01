@@ -159,10 +159,10 @@ DBUSLAUNCH_BIN := build/hos-dbus-launch
 # block nor a shell wrapper can set a variable for a keybinding-launched app (see the source).
 WLTRACE_BIN   := build/hos-wl-trace
 SSHDLAUNCH_BIN := build/hos-sshd-launch        # SSH-in: AF_UNIX->dropbear -i launcher
-# AXON anonymous-overlay node (dendritic/syndichan-node) — the I2P replacement, a static Go binary.
+# The dendritic network node (deps/dendritic/dendritic-node, syndichan-node), a static Go binary.
 # OPT-IN: built by `make syndichan-node` and staged only if the binary exists (see stage-iso-tree),
 # so a normal build without a Go toolchain is unaffected.
-SYNDICHAN_NODE_SRC := dendritic/dendritic-node
+SYNDICHAN_NODE_SRC := deps/dendritic/dendritic-node
 SYNDICHAN_NODE_BIN := build/syndichan-node
 DROPBEAR_SERVER_BIN := deps/dropbear/install/bin/dropbear   # SSH-in: the SSH server (inetd mode)
 # VMM: Cloud Hypervisor (static-musl), built by scripts/build-cloud-hypervisor.sh
@@ -1203,7 +1203,7 @@ stage-iso-tree: kernel.elf $(WLSOFTWARE_BIN) $(PKGFETCH_BIN) $(VMFETCH_BIN) $(SO
 		echo "pfsense.iso NOT staged (opt-in: 'PFSENSE=1 make iso'; adds ~1 GiB, ISO exceeds 2 GiB)"; \
 	fi
 
-	@# AXON anonymous-overlay node (dendritic/syndichan-node) — the I2P replacement.  Staged as a
+	@# The dendritic network node (deps/dendritic, syndichan-node).  Staged as a
 	@# boot module so it is PRESENT in the image; launched on demand, NOT auto-started at boot yet
 	@# (it needs its anonymizing transport wired — see roadmap/DENDRITIC_NETWORK_ROADMAP.md).
 	@if [ -f $(SYNDICHAN_NODE_BIN) ]; then \
@@ -1860,6 +1860,13 @@ stage-iso-tree: kernel.elf $(WLSOFTWARE_BIN) $(PKGFETCH_BIN) $(VMFETCH_BIN) $(SO
 		printf '\n    module_path: boot():/autorun\n' >> cd/boot/limine/limine.conf; \
 		echo "Included AUTORUN (TEST IMAGE -- runs a command after the AUTOPKG install)"; \
 	else rm -f cd/autorun; fi
+	@# TEST IMAGES: STAGE_EXTRA='<file> ...' stages each file as a boot module /<basename> (a test
+	@# program for AUTORUN to start, a config for it, ...).
+	@for f in $(STAGE_EXTRA); do \
+		cp "$$f" "cd/$$(basename $$f)"; \
+		printf '\n    module_path: boot():/%s\n' "$$(basename $$f)" >> cd/boot/limine/limine.conf; \
+		echo "Included $$f as /$$(basename $$f) (TEST IMAGE extra)"; \
+	done
 	@if [ "$(AUTOINSTALL_HIDDEN)" = "1" ]; then \
 		printf 'hiddeninstall-test' > cd/hiddeninstall-test; \
 		printf '\n    module_path: boot():/hiddeninstall-test\n' >> cd/boot/limine/limine.conf; \

@@ -26,13 +26,12 @@ import (
 // silent by nature: a lookup over one circuit returns the same answer as a
 // lookup over d, just less anonymously, and nothing in the result would say so.
 //
-// WHAT THIS DOES NOT DO. It does not implement the wire protocol. Sending a
-// FIND_NODE over a circuit and reading the reply needs the session layer, which
-// is P23 and `[NEEDS RESEARCH]`; §7's own note says lookups stay direct until
-// something carries them. This is the BINDING and the REFUSALS — the part that
-// decides which circuit a query may use and what happens when there is not one.
-// Supply a Dispatcher and the lookups are circuit-borne; supply none and Lookup
-// still records UnsafeDirectLookup, which is the honest state today.
+// WHAT THIS DOES NOT DO. It does not carry the query: the wire format is in
+// lookupwire.go and the transport -- a session (internal/axon/session) with each
+// path's terminal relay -- is internal/axon/dhtcircuit (item 2.10b). This file
+// is the BINDING and the REFUSALS — the part that decides which circuit a query
+// may use and what happens when there is not one. Supply a Dispatcher and the
+// lookups are circuit-borne; supply none and Lookup records UnsafeDirectLookup.
 
 var (
 	// ErrNoCircuit means no circuit was available for a path. The lookup fails

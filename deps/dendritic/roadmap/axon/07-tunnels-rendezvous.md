@@ -16,8 +16,11 @@
 > it, `IntroPointRecord` already carries `pow_seed` and `pow_difficulty` for it,
 > and §9.6's parameters are `[NEEDS RESEARCH]`. It is **P6a / PAR-16**, one of two
 > `critical` parity gaps, and until it lands `IntroPoint.UnsafeModes()` declares
-> `no-intro-puzzle` and admission is rate-limited only. **The session layer** is
-> `[NEEDS RESEARCH]` (P23), so **T7.2** and **E7.1** are not claimed. **T7.5/E7.3**
+> `no-intro-puzzle` and admission is rate-limited only. **The session layer is
+> BUILT** (2026-09-30, `internal/axon/session` + case-A state in
+> `internal/axon/rendez/point.go`; see §9.8 "As built"): **T7.2** and **E7.1** are
+> discharged -- in-process, over real circuit crypto -- with the bound T7.2 asked
+> for now stated (`params.SessionMigrationBound`). **T7.5/E7.3**
 > need descriptor publication at 8 replica positions, which is unbuilt.
 > **E6.2, E6.3 and T6.6** are multi-node and have not been run.
 
@@ -442,6 +445,7 @@ the commands.
 | `RENDEZVOUS2` | RP → client | client's rend circuit | `Y`, `AUTH` |
 | `RESUME_REGISTER` | client → RP | spliced circuit | `commit` (32 B), `counter` (u32) — §9.8 |
 | `RESUME_RENDEZVOUS` | client → RP | fresh circuit | `preimage` (32 B), `counter` (u32) — §9.8 |
+| `RESUME_STATUS` | RP → client | same circuit | `status` (1 B): OK or REFUSED — one refusal code, so a prober learns nothing about which pairs exist |
 | `INTRO_TEARDOWN` | service → IP | intro circuit | reason — §9.9 |
 
 #### Sequence
@@ -816,6 +820,63 @@ circuit; ORPHANED retention 5 min at both ends, then `CLOSED`; idle timeout
 The hard cap exists because a long-lived session is a long-lived correlation
 handle. A 12-hour session is a persistently-online user, which §7 explicitly does
 not defend; the cap does not fix that, it declines to make it worse.
+
+#### As built (2026-09-30) — what OUTSTANDING 5.2 found, and what the code is
+
+**5.2's finding, now code.** A ratchet alone cannot meet T7.2: on migration a
+sender either re-sends what may have arrived (duplication) or skips it (loss).
+The session holds **acknowledged delivery state that outlives the circuit**: a
+send buffer of every reliable frame the peer has not acknowledged (replayed onto
+each new carrier, in order, at attach) and a cumulative receive cursor plus a
+reorder buffer (a frame that arrives on the dying carrier *and* its replacement
+is delivered once). `Session{ID, SendChain, RecvChain, Step, Streams[]}` as first
+drafted had nowhere to hold either; the as-built struct does.
+
+**The packet** (one per `SESSION` relay cell, `0x1C`, circuit-scoped):
+
+```text
+version(1) ‖ gen(2) ‖ epoch(2) ‖ pn(8) ‖ ChaCha20-Poly1305(K_dir(gen,epoch),
+    nonce = LE64(pn) ‖ 0⁴, AAD = the 13-byte header,
+    ack(8) ‖ seq(8) ‖ type(1) ‖ stream(4) ‖ len(2) ‖ data ‖ zero fill)
+```
+
+| Decision | Why |
+|---|---|
+| A packet number `pn`, separate from `seq` | A frame retransmitted after a migration carries a newer `ack`. With `seq` as the nonce that is a second plaintext under one key and nonce — the one thing ChaCha20-Poly1305 does not survive. Every transmission gets a fresh `pn`; `seq` is reliability and lives inside the AEAD. |
+| Every packet is exactly `RelayDataSize` (984 B) | `RLEN` is readable by whoever terminates the circuit, and the RP terminates two. A payload-sized packet would tell the RP every write size. |
+| Replays count as hostile | Circuits do not duplicate cells; a packet number seen twice was re-sent by someone on the path. Refused before any AEAD work. `HostileLimit` (8) such cells and the carrier is abandoned as `CARRIER_HOSTILE`. |
+| Key epoch advanced only after authentication | An injector must not be able to walk the receive key forward and strand the honest peer's packets. |
+| One probe per RTO, not the whole window | A live carrier is ordered and lossless — loss is carrier death, and attach already resends everything. Resending the window on a timeout queued a second copy behind the first on a slow path: measured over the M3 harness, **15 retransmissions per frame and 94 s for 2 MiB**; with one probe, 0.96 s. |
+| `PING` means "I attached a new carrier" | In case A the RP held the *service's* circuit and dropped what the service sent toward the dead client side, without the service's carrier ever dying. On `PING` the receiver resends everything unacknowledged at once instead of one frame per RTO. |
+| A carrier that delivers an authenticated packet while ORPHANED is re-attached | How a service learns a case-A resume happened: its own probe timer may have orphaned it while the RP held its circuit; the client's first packet on that same circuit is the signal. |
+| The service's case-B ratchet is PENDING until confirmed | If the service ratchets and the new rendezvous then fails before RENDEZVOUS2 reaches the client, the client retries with the old `resume_secret`; if it succeeds and the carrier dies before any packet arrives, the client retries with the new one. The service checks the proof against both, and commits the pending root on the first packet (or proof) under it. |
+| Per-session reorder, per-stream windows | Frames are delivered in session order, so streams need no reorder buffer of their own; flow control stays per stream (`SessionStreamWindow`) so one stalled reader cannot take the session's memory, and `SessionSendBuffer` bounds the unacknowledged total. |
+| Streams are `net.Conn`; `session.Listener` is a `net.Listener` | HTTP, the DHT's RPCs and the storage protocol run over a session unchanged; tested with `net/http` across a carrier death. |
+
+**T7.2's stated bound (5.2b).** `params.SessionMigrationBound` = detect
+(`SessionProbeTimeout`, 15 s, the silent case; an explicit DESTROY is 0) +
+replace (`TunnelBuildTimeout`, 10 s, one build) + resend (`SessionMaxRTO`, 8 s)
+= **33 s**. A migration needing more than one build has exhausted the pool's
+spare and is a T7.6 pool failure, reported as such rather than absorbed into a
+longer bound.
+
+**What is discharged, and where:**
+
+| Criterion | Test | Result |
+|---|---|---|
+| T7.2 explicit death | `session.TestT72ExplicitCarrierDeath` | 6 MiB each way, 3 deaths with in-flight cells lost: resumed in ~101 ms each (replacement 100 ms), 0 lost, 0 duplicated |
+| T7.2 silent death | `session.TestT72SilentCarrierDeath` | resumed in ~854 ms (probe 600 ms + replacement) against a 1.1 s bound at test timers |
+| E7.1 | `session.TestE71TenMinuteTransfer` (`AXON_SOAK=1`) | 10 minutes, 3 deaths (1 explicit, 2 silent), specified timers |
+| case A + case B over real circuits | `rendez.TestM3SessionSurvivesCaseAAndCaseB` | 2 MiB each way over real 3+3-hop circuits (ntor, wide-block layers, end-to-end authenticator) through two case-A resumes and one case-B ratchet to a new RP |
+| case-B post-compromise security | `rendez.TestCaseBRatchetLocksOutTheOldKeys` | an adversary holding every pre-ratchet key reads a pre-ratchet packet and NOT a post-ratchet one |
+| hostile RP | `session.TestHostileRPCannotInject`, `TestHostileCarrierIsAbandoned` | forged, bit-flipped, re-headered, foreign-key and replayed cells: none delivered; carrier abandoned at the limit |
+| RP resume state | `rendez.TestCaseA*` | burn on use, replay refused, counter cannot roll back, grace expiry frees the service circuit |
+
+**Not claimed.** All of this is in-process: the carrier is real circuit crypto
+but the links between relays are function calls. Nothing yet runs the relay
+loop over real sockets, so these are properties of the protocol and its code,
+not measurements of a network. `[NEEDS RESEARCH]` stands for whether migration
+*timing* leaks the session to the new guard (R9).
 
 ---
 

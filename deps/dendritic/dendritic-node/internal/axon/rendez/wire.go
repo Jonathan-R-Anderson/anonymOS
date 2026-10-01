@@ -243,3 +243,75 @@ func takeLV(b []byte) (val, rest []byte, err error) {
 	}
 	return append([]byte(nil), b[2:2+n]...), b[2+n:], nil
 }
+
+// -----------------------------------------------------------------------------
+// §9.8 case-A resumption bodies
+// -----------------------------------------------------------------------------
+
+// ResumeRegister is RESUME_REGISTER: commit(32) ‖ counter(4).
+type ResumeRegister struct {
+	Commit  [32]byte
+	Counter uint32
+}
+
+func (r *ResumeRegister) Encode() []byte {
+	b := make([]byte, 0, 36)
+	b = append(b, r.Commit[:]...)
+	return binary.BigEndian.AppendUint32(b, r.Counter)
+}
+
+func DecodeResumeRegister(b []byte) (*ResumeRegister, error) {
+	p, err := take(b, 36)
+	if err != nil {
+		return nil, err
+	}
+	r := &ResumeRegister{Counter: binary.BigEndian.Uint32(p[32:36])}
+	copy(r.Commit[:], p[:32])
+	return r, nil
+}
+
+// ResumeRendezvous is RESUME_RENDEZVOUS: preimage(32) ‖ counter(4).
+type ResumeRendezvous struct {
+	Preimage [32]byte
+	Counter  uint32
+}
+
+func (r *ResumeRendezvous) Encode() []byte {
+	b := make([]byte, 0, 36)
+	b = append(b, r.Preimage[:]...)
+	return binary.BigEndian.AppendUint32(b, r.Counter)
+}
+
+func DecodeResumeRendezvous(b []byte) (*ResumeRendezvous, error) {
+	p, err := take(b, 36)
+	if err != nil {
+		return nil, err
+	}
+	r := &ResumeRendezvous{Counter: binary.BigEndian.Uint32(p[32:36])}
+	copy(r.Preimage[:], p[:32])
+	return r, nil
+}
+
+// Resume status codes. Two, not one per cause: the client does the same thing
+// for every refusal (case B), and distinct codes would tell a prober which
+// pairs exist.
+const (
+	ResumeOK      uint8 = 0
+	ResumeRefused uint8 = 1
+)
+
+// ResumeStatus is RESUME_STATUS: status(1).
+type ResumeStatus struct{ Status uint8 }
+
+func (r *ResumeStatus) Encode() []byte { return []byte{r.Status} }
+
+func DecodeResumeStatus(b []byte) (*ResumeStatus, error) {
+	p, err := take(b, 1)
+	if err != nil {
+		return nil, err
+	}
+	if p[0] > ResumeRefused {
+		return nil, fmt.Errorf("%w: resume status %d", ErrMalformed, p[0])
+	}
+	return &ResumeStatus{Status: p[0]}, nil
+}

@@ -194,6 +194,10 @@ Scope: **S** = stream-scoped (`STREAMID ≠ 0`), **C** = circuit-scoped
 | `0x19` | `RENDEZVOUS_ESTABLISHED` | C | RP → client | L5 |
 | `0x1A` | `RENDEZVOUS1` | C | service → RP | L5 |
 | `0x1B` | `RENDEZVOUS2` | C | RP → client | L5 |
+| `0x1C` | `SESSION` | C | either | One sealed §9.8 session packet, always the full 984 B; the RP forwards it and can read none of it |
+| `0x1D` | `RESUME_REGISTER` | C | client → RP | §9.8 case A: `commit(32) ‖ counter(4)` |
+| `0x1E` | `RESUME_RENDEZVOUS` | C | client → RP | §9.8 case A: `preimage(32) ‖ counter(4)` |
+| `0x1F` | `RESUME_STATUS` | C | RP → client | §9.8 case A: OK or REFUSED |
 | `0x20`/`0x21` | `PADDING_NEGOTIATE(D)` | C | either | **Reserved, v2** (§8.10) |
 | `0x30`/`0x31` | `RECEIPT_REQUEST` / `RECEIPT` | C | either | Accounting plane, off the latency path (§8.7) |
 

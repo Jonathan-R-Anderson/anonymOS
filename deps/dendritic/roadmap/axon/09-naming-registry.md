@@ -1024,6 +1024,37 @@ registrar for the first namespace. It is `IMMUTABLE`. Nothing in §12.3 changes;
 it is simply no longer the only registrar, and its five-slot layout becomes the
 shape a resolver expects by default rather than the only shape it can read.
 
+#### As built (2026-09-30): `TLDRegistry.sol` — written and tested, not deployed
+
+`proof-of-facilitation/contracts/TLDRegistry.sol` is the root; the Go client that
+plans a registration (commit → wait `COMMIT_MIN_AGE` → approve → register, never
+signing anything) is `dendritic-node/internal/axon/registrar`. 20 Hardhat tests,
+including an exact allowlist of the 21 state-changing functions (adding one
+fails the build), a registrar that reverts on every call surviving a whole
+namespace lifecycle (the root never calls a registrar), and a Solidity↔Go test
+vector pinning every hash, commitment and calldata byte for `alice.lab.axon`.
+
+Where the code departs from the text above, and why:
+
+| Departure | Why |
+|---|---|
+| `Namespace` field ORDER is `activatedAt, recordSchema, status, registrarClass, registrar` (one word), then `frozenAt, retiresAt`, `steward`, `charter`, `bond` | In §12.0's order `recordSchema` lands in the fifth word and resolver step R3 needs two storage proofs. As built, an ACTIVE namespace and its registrar are ONE slot: `keccak256(labelHash ‖ uint256(0))`. §12.5's sketch packing `steward ‖ activatedAt ‖ retiresAt` into a word is 36 bytes and does not fit. |
+| `frozenAt` added | The root never calls the registrar and `AxonRegistry` never reads the root, so FREEZE cannot stop a registration on chain. **Resolver rule (add to §13): a name in a FROZEN namespace with `registeredAt >= frozenAt` does not resolve.** |
+| Timelocks are floors with a 730-day ceiling | A captured governor must not make itself irreplaceable by raising every delay. A changed delay applies only to actions queued after it. |
+| The 90-day retirement timelock IS the notice | `beginRetirement` sets RETIRING at once; RETIRED executes at `retiresAt` and is final by time alone (no cancel after `eta`). Retired labels are never re-created. |
+| Unfreeze exists (governor, 7 days) | Without it a guardian freeze would be permanent. |
+| One registrar serves one namespace, forever | `AxonRegistry`'s confusable-skeleton table is per contract; a shared registrar would let a name in one namespace block its look-alike in another. |
+| Governor = an address (multisig), two-step handover, 30-day lock | §12.0a's legitimate v1. `AxonGovernance`'s action set is fixed to prune/seize/restore, so it cannot be this root's governor; a DAO governor is a new contract. |
+
+Found in what is already deployed (OUTSTANDING 1.10c): mainnet `AxonRegistry`
+has `TLD_NODE = 0` (never read, so harmless for the one namespace it serves);
+it does not implement `IRegistrar`; and **`register()` trusts the caller's
+`labelLen` and `skeleton`** — a client can pay the long-name price for a short
+label, or dodge the confusable rule with a wrong skeleton. The contract is
+immutable, so the fix is a successor registrar for new namespaces (and resolvers
+recomputing the skeleton from the label), not a patch. Mainnet `AxonToken`
+supply is 0, so no name can be paid for until 1.12's `mintGenesis`.
+
 ### 12.0a Governance: what the vote may and may not do `[NEEDS RESEARCH]`
 
 **The invariant that matters most, stated before anything else:**

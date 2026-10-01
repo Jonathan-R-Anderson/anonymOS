@@ -220,6 +220,77 @@ const (
 )
 
 // ---------------------------------------------------------------------------
+// The session layer (section 9.8)
+// ---------------------------------------------------------------------------
+
+const (
+	// SessionCarrierGrace is how long the rendezvous point holds the
+	// service-side circuit after the client side drops (case-A resumption).
+	SessionCarrierGrace = 60 * time.Second
+	// SessionOrphanRetention is how long either end keeps an ORPHANED session's
+	// state -- keys, sequence numbers, the unacknowledged send buffer -- while
+	// waiting for a new carrier. After it the session is CLOSED.
+	SessionOrphanRetention = 5 * time.Minute
+	// SessionIdleTimeout closes a session that has carried no frame either way.
+	SessionIdleTimeout = 15 * time.Minute
+	// SessionHardLifetime forces a re-rendezvous under a new session_id. A
+	// long-lived session is a long-lived correlation handle; the cap does not
+	// fix that, it declines to make it worse.
+	SessionHardLifetime = 12 * time.Hour
+	// SessionRekeyPackets and SessionRekeyInterval bound how much one direction
+	// sends under one key (the symmetric rekey of section 9.8). Neither gives
+	// post-compromise security; only a case-B ratchet does.
+	SessionRekeyPackets  = 1 << 20
+	SessionRekeyInterval = 1 * time.Hour
+
+	// SessionMinRTO and SessionMaxRTO clamp the retransmission timer. Circuits
+	// are carried over ordered links, so a retransmission on a LIVE carrier is
+	// rare: it is the carrier's death, not loss on it, that the timer exists
+	// for, and the floor is set well above a 6-hop round trip so that a slow
+	// path is not mistaken for a lost frame.
+	SessionMinRTO = 1 * time.Second
+	SessionMaxRTO = 8 * time.Second
+	// SessionProbeTimeout declares a carrier dead when frames are outstanding
+	// and nothing at all has come back for this long. It is the detection time
+	// for a carrier that dies SILENTLY -- no DESTROY, no TRUNCATED, no link
+	// error -- which is the slow case; an explicit death is detected at once.
+	SessionProbeTimeout = 15 * time.Second
+	// SessionStreamWindow is the receive credit a stream grants: how many bytes
+	// the peer may have in flight on one stream before it must wait for the
+	// reader. It bounds one stream's share of the receiver's memory.
+	SessionStreamWindow = 256 << 10
+	// SessionSendBuffer bounds the unacknowledged bytes a session holds for
+	// retransmission across all its streams. It is what "acknowledged delivery
+	// state that outlives the circuit" (item 5.2) costs in memory, and writers
+	// block when it is full rather than letting it grow while orphaned.
+	SessionSendBuffer = 4 << 20
+	// SessionHostileLimit is how many cells failing session authentication one
+	// carrier may deliver before the session abandons it as CARRIER_HOSTILE.
+	// Above zero because a single corrupt cell is evidence of a fault, not yet
+	// of a hostile rendezvous point.
+	SessionHostileLimit = 8
+
+	// SessionMigrationBound is T7.2's STATED BOUND, which item 5.2b found was
+	// stated nowhere. It is the longest a live stream may stall across the
+	// death of its carrier, from the death to the first byte after it, before
+	// the migration counts as failed. It is not picked; it is the sum of the
+	// three things a migration has to do, each already bounded:
+	//
+	//	detect   SessionProbeTimeout  -- the silent case; an explicit DESTROY is 0
+	//	replace  TunnelBuildTimeout   -- one build of a replacement (case B's
+	//	                                 new rendezvous is one build; case A is
+	//	                                 cheaper, 6L on an existing pool tunnel)
+	//	resend   SessionMaxRTO        -- every unacknowledged frame goes out on
+	//	                                 the new carrier at attach, and one
+	//	                                 round trip later the stream has moved
+	//
+	// so 15 s + 10 s + 8 s = 33 s. A migration that needs MORE than one build
+	// attempt has exhausted the pool's spare and is a pool failure (T7.6),
+	// reported as such rather than hidden inside a longer bound.
+	SessionMigrationBound = SessionProbeTimeout + TunnelBuildTimeout + SessionMaxRTO
+)
+
+// ---------------------------------------------------------------------------
 // Epochs and time periods (sections 5.4, 7.2)
 // ---------------------------------------------------------------------------
 

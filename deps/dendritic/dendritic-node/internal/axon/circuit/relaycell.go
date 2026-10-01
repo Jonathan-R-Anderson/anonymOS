@@ -87,6 +87,17 @@ const (
 	RCmdRendezvousEstablished RCmd = 0x19
 	RCmdRendezvous1           RCmd = 0x1A
 	RCmdRendezvous2           RCmd = 0x1B
+
+	// §9.8's session layer. SESSION carries one sealed session packet; the
+	// circuit cannot read it, and neither can the rendezvous point that joins
+	// two circuits. The resume commands talk to the RP itself (case A).
+	// RESUME_STATUS is the RP's answer to RESUME_RENDEZVOUS, which §9.5's table
+	// left unnamed: the client has to learn whether case A worked, because the
+	// alternative is case B and waiting to find out costs the grace window.
+	RCmdSession          RCmd = 0x1C
+	RCmdResumeRegister   RCmd = 0x1D
+	RCmdResumeRendezvous RCmd = 0x1E
+	RCmdResumeStatus     RCmd = 0x1F
 )
 
 var rcmdNames = map[RCmd]string{
@@ -101,6 +112,8 @@ var rcmdNames = map[RCmd]string{
 	RCmdEstablishRendezvous:   "ESTABLISH_RENDEZVOUS",
 	RCmdRendezvousEstablished: "RENDEZVOUS_ESTABLISHED",
 	RCmdRendezvous1:           "RENDEZVOUS1", RCmdRendezvous2: "RENDEZVOUS2",
+	RCmdSession: "SESSION", RCmdResumeRegister: "RESUME_REGISTER",
+	RCmdResumeRendezvous: "RESUME_RENDEZVOUS", RCmdResumeStatus: "RESUME_STATUS",
 }
 
 func (r RCmd) String() string {
@@ -125,7 +138,10 @@ func (r RCmd) CircuitScoped() bool {
 		// is a property of the circuit, not of a stream on it, and §8.1 says so.
 		RCmdEstablishIntro, RCmdIntroEstablished, RCmdIntroduce1, RCmdIntroduce2,
 		RCmdIntroduceAck, RCmdEstablishRendezvous, RCmdRendezvousEstablished,
-		RCmdRendezvous1, RCmdRendezvous2:
+		RCmdRendezvous1, RCmdRendezvous2,
+		// A session multiplexes its own streams inside its AEAD; the circuit's
+		// stream ids are not used, so the session's cells are circuit-scoped.
+		RCmdSession, RCmdResumeRegister, RCmdResumeRendezvous, RCmdResumeStatus:
 		return true
 	default:
 		return false

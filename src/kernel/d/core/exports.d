@@ -1279,9 +1279,14 @@ ulong linux_seed_initial_stack(
     // user namespaces, which this kernel does not provide, so a sandboxed content process dies at
     // start.  The isolation it would give comes from the domain the browser is confined to.
     {
-        static immutable string[6] MOZ = [
+        // MOZ_GTK_TITLEBAR_DECORATION=none: no tabs-in-titlebar and no window buttons of its own --
+        // the compositor draws every window's titlebar, in the colour of the window's domain.
+        // ("system" is not enough: Firefox still counts that as able to draw in the titlebar and
+        // keeps its own minimize/maximize/close at the end of the tab strip.)
+        static immutable string[7] MOZ = [
             "MOZ_ENABLE_WAYLAND=1\0", "MOZ_DISABLE_CONTENT_SANDBOX=1\0", "MOZ_DISABLE_RDD_SANDBOX=1\0",
-            "MOZ_DISABLE_SOCKET_PROCESS_SANDBOX=1\0", "MOZ_DISABLE_GMP_SANDBOX=1\0", "MOZ_DISABLE_UTILITY_SANDBOX=1\0" ];
+            "MOZ_DISABLE_SOCKET_PROCESS_SANDBOX=1\0", "MOZ_DISABLE_GMP_SANDBOX=1\0", "MOZ_DISABLE_UTILITY_SANDBOX=1\0",
+            "MOZ_GTK_TITLEBAR_DECORATION=none\0" ];
         foreach (m; MOZ) {
             envVirt = _copyKernelStrToStack(stackPhysVirt, stackVirtBase, strCursor, m.ptr);
             if (envVirt != 0) envVirts[envc++] = envVirt;

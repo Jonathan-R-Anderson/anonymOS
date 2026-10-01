@@ -1,8 +1,8 @@
 /*
  * wl-screenshot.c -- a native Wayland screenshot tool for EpinAnonymOS.
  *
- * A small self-contained client: draws its own titlebar chrome (Weston has no server-side decorations),
- * a "Capture Whole Screen" button and a "Save to:" path.  On capture it reads the Linux framebuffer
+ * A small self-contained client (the compositor draws the window's titlebar): a "Capture Whole Screen"
+ * button and a "Save to:" path.  On capture it reads the Linux framebuffer
  * device /dev/fb0 (EpinAnonymOS provides it), grabs the current screen contents and encodes them to a PNG
  * with libpng's simplified write API, then shows the result ("Saved: <path> (WxH)") plus a small preview
  * thumbnail scaled into the card.  A capture that fails (e.g. /dev/fb0 missing) degrades gracefully and
@@ -42,7 +42,7 @@
 #define FBIOGET_VSCREENINFO 0x4600
 #endif
 
-enum { WIN_W = 420, WIN_H = 220, TITLE_H = 30,
+enum { WIN_W = 420, WIN_H = 190, TITLE_H = 0,
        THUMB_W = 148, THUMB_H = 84 };
 
 struct app {
@@ -74,7 +74,7 @@ struct app {
     char savepath[128];            // where the PNG is written (default /run/screenshot.png)
     char status[256];              // status line shown in the card
     int  status_state;             // 0 neutral, 1 ok, 2 error
-    int  hover_capture, hover_close;
+    int  hover_capture;
     int  have_thumb;               // a preview thumbnail is ready
     uint32_t thumb[THUMB_W*THUMB_H];
 };
@@ -150,8 +150,7 @@ static void draw_frame(struct app *app, int x, int y, int w, int h, uint32_t c){
  * the wl_keyboard listener below only handles Esc / Enter / Space by raw keycode.) */
 
 /* --- capture geometry (kept in one place so draw + hit-test agree) --- */
-static void capture_button_rect(int *x, int *y, int *w, int *h){ *x=16; *y=62; *w=WIN_W-32; *h=46; }
-static void close_box_rect(int *x, int *y, int *w, int *h){ *w=TITLE_H; *h=TITLE_H; *x=WIN_W-TITLE_H; *y=0; }
+static void capture_button_rect(int *x, int *y, int *w, int *h){ *x=16; *y=32; *w=WIN_W-32; *h=46; }
 static int point_in(double px, double py, int x, int y, int w, int h){
     return px>=x && px<x+w && py>=y && py<y+h;
 }
@@ -223,19 +222,10 @@ static void draw_thumb_block(struct app *app, int bx, int by){
             app->pixels[y*app->width+x] = app->thumb[j*THUMB_W+i]; } }
 }
 static void draw(struct app *app){
-    const uint32_t BG=0xff1b1f27u, TITLE=0xff11141bu, TXT=0xfff2f5fau, DIM=0xff8b94a3u, ACC=0xff4da3ffu,
+    const uint32_t BG=0xff1b1f27u, TXT=0xfff2f5fau, DIM=0xff8b94a3u, ACC=0xff4da3ffu,
                    BTN=0xff2d3444u, BTNH=0xff3a4a66u, BORDER=0xff3a4150u,
-                   OK=0xff4ad07au, ERR=0xffff6b6bu, CLOSEH=0xffb3384au;
+                   OK=0xff4ad07au, ERR=0xffff6b6bu;
     fill_rect(app, 0, 0, app->width, app->height, BG);
-
-    /* --- our own titlebar chrome (no server-side decorations) --- */
-    fill_rect(app, 0, 0, app->width, TITLE_H, TITLE);
-    draw_text(app, "Screenshot", 14, 8, app->width-60, 16, TXT);
-    int cx,cy,cw,ch; close_box_rect(&cx,&cy,&cw,&ch);
-    if (app->hover_close) fill_rect(app, cx, cy, cw, ch, CLOSEH);
-    /* an X glyph, centered in the close box */
-    { int xw = text_width(app, "x", 15); draw_text(app, "x", cx + (cw-xw)/2, cy + 6, cw, 15, app->hover_close?TXT:DIM); }
-    fill_rect(app, 0, TITLE_H, app->width, 1, BORDER);
 
     /* instruction */
     draw_text(app, "Capture the whole screen to a PNG file.", 16, TITLE_H+8, app->width-32, 13, DIM);
@@ -248,16 +238,16 @@ static void draw(struct app *app){
       draw_text(app, lbl, bx + (bw-lw)/2, by + (bh-17)/2, bw, 17, TXT); }
 
     /* save path */
-    draw_text(app, "Save to:", 16, 120, 80, 12, DIM);
-    draw_text(app, app->savepath, 74, 120, app->width-90, 12, ACC);
+    draw_text(app, "Save to:", 16, 90, 80, 12, DIM);
+    draw_text(app, app->savepath, 74, 90, app->width-90, 12, ACC);
 
     /* status line (color-coded) */
     uint32_t sc = app->status_state==1 ? OK : app->status_state==2 ? ERR : DIM;
-    draw_text(app, app->status, 16, 144, app->width-32, 12, sc);
+    draw_text(app, app->status, 16, 114, app->width-32, 12, sc);
 
     /* preview thumbnail (after a successful capture), bottom-right with a frame */
     if (app->have_thumb){
-        int tx = app->width - THUMB_W - 16, ty = 130;
+        int tx = app->width - THUMB_W - 16, ty = 100;
         draw_thumb_block(app, tx, ty);
         draw_frame(app, tx-1, ty-1, THUMB_W+2, THUMB_H+2, BORDER);
     }
@@ -323,18 +313,14 @@ static void redraw_commit(struct app *app){
 
 /* --- input --- */
 static void pointer_enter(void *d, struct wl_pointer *p, uint32_t s, struct wl_surface *sf, wl_fixed_t x, wl_fixed_t y){ (void)p;(void)s;(void)sf; struct app*a=d; a->pointer_x=wl_fixed_to_double(x); a->pointer_y=wl_fixed_to_double(y); }
-static void pointer_leave(void *d, struct wl_pointer *p, uint32_t s, struct wl_surface *sf){ (void)p;(void)s;(void)sf; struct app*a=d; if (a->hover_capture||a->hover_close){ a->hover_capture=a->hover_close=0; redraw_commit(a);} }
+static void pointer_leave(void *d, struct wl_pointer *p, uint32_t s, struct wl_surface *sf){ (void)p;(void)s;(void)sf; struct app*a=d; if (a->hover_capture){ a->hover_capture=0; redraw_commit(a);} }
 static void pointer_motion(void *d, struct wl_pointer *p, uint32_t t, wl_fixed_t x, wl_fixed_t y){ (void)p;(void)t; struct app*a=d;
     a->pointer_x=wl_fixed_to_double(x); a->pointer_y=wl_fixed_to_double(y);
     int bx,by,bw,bh; capture_button_rect(&bx,&by,&bw,&bh);
-    int cx,cy,cw,ch; close_box_rect(&cx,&cy,&cw,&ch);
     int hc = point_in(a->pointer_x,a->pointer_y,bx,by,bw,bh);
-    int hx = point_in(a->pointer_x,a->pointer_y,cx,cy,cw,ch);
-    if (hc!=a->hover_capture || hx!=a->hover_close){ a->hover_capture=hc; a->hover_close=hx; redraw_commit(a); } }
+    if (hc!=a->hover_capture){ a->hover_capture=hc; redraw_commit(a); } }
 static void pointer_button(void *d, struct wl_pointer *p, uint32_t se, uint32_t t, uint32_t button, uint32_t state){ (void)p;(void)se;(void)t; struct app*a=d;
     if (button != 0x110 /*BTN_LEFT*/ || state != 1) return;
-    int cx,cy,cw,ch; close_box_rect(&cx,&cy,&cw,&ch);
-    if (point_in(a->pointer_x,a->pointer_y,cx,cy,cw,ch)){ a->running=0; return; }
     int bx,by,bw,bh; capture_button_rect(&bx,&by,&bw,&bh);
     if (point_in(a->pointer_x,a->pointer_y,bx,by,bw,bh)){ do_capture(a); redraw_commit(a); } }
 static void pointer_axis(void *d, struct wl_pointer *p, uint32_t t, uint32_t ax, wl_fixed_t v){ (void)d;(void)p;(void)t;(void)ax;(void)v; }

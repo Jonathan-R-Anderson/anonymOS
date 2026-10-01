@@ -6,9 +6,8 @@
  * v5 wl_pointer listener, the wl_keyboard listener, init_freetype(), draw_text(), fill_rect(),
  * and the poll() main loop.  Only the drawn CONTENT and the input handling are new.
  *
- * Draws its own CSD chrome (Weston has no server-side decorations): a titlebar strip with the
- * app name + a red close box top-right (click -> exit).  A right-aligned display, a 4-column
- * button grid, and a correct precedence-aware evaluator (* and / bind tighter than + and -).
+ * The compositor draws the window's titlebar (title + close/min/max).  A right-aligned display,
+ * a 4-column button grid, and a correct precedence-aware evaluator (* and / bind tighter than + and -).
  */
 #include <errno.h>
 #include "epin-appid.h"
@@ -33,8 +32,8 @@
 #define MFD_CLOEXEC 0x0001U
 #endif
 
-enum { WIN_W = 260, WIN_H = 360,
-       TITLE_H = 26, DISP_Y = 26, DISP_H = 64, GRID_Y = 96,
+enum { WIN_W = 260, WIN_H = 334,
+       TITLE_H = 0, DISP_Y = 0, DISP_H = 64, GRID_Y = 70,
        PAD = 9, GAP = 6, BW = 56, BH = 44 };
 
 /* button kinds -> tint */
@@ -179,12 +178,6 @@ static int button_at(struct app *app, double px, double py){
     return -1;
 }
 
-/* close box geometry (top-right of the titlebar) */
-static int in_close_box(struct app *a, double x, double y){
-    int cx = a->width-22, cy = 5, cw = 16, ch = 16;
-    return (x>=cx && x<cx+cw && y>=cy && y<cy+ch);
-}
-
 /* --- evaluator: tokenize, then collapse * and / before + and - --- */
 static int evaluate(const char *s, double *out){
     double nums[128]; char ops[128]; int nn=0, no=0; int expect_num=1;
@@ -241,18 +234,11 @@ static void do_eval(struct app *a){
 
 /* --- rendering --- */
 static void draw_calc(struct app *app){
-    const uint32_t BG=0xff1b1f27u, TITLE=0xff11141bu, DISP=0xff0d0f14u,
+    const uint32_t BG=0xff1b1f27u, DISP=0xff0d0f14u,
                    TXT=0xfff2f5fau, ACC=0xff4da3ffu,
                    BNUM=0xff2b313du, BNUMH=0xff353d4du, BOP=0xff394252u, BOPH=0xff455064u,
-                   BEQ=0xff2f6d3au, BEQH=0xff3a8a49u, BCLR=0xff4a2b2bu, BCLRH=0xff5e3535u,
-                   CLOSE=0xffd05050u;
+                   BEQ=0xff2f6d3au, BEQH=0xff3a8a49u, BCLR=0xff4a2b2bu, BCLRH=0xff5e3535u;
     fill_rect(app, 0, 0, app->width, app->height, BG);
-
-    /* titlebar + close box (our own chrome; Weston has no SSD) */
-    fill_rect(app, 0, 0, app->width, TITLE_H, TITLE);
-    draw_text(app, "Calculator", 10, 5, app->width-40, 15, TXT);
-    fill_rect(app, app->width-22, 5, 16, 16, CLOSE);
-    draw_text(app, "x", app->width-18, 4, 14, 14, 0xffffffffu);
 
     /* display strip, right-aligned */
     fill_rect(app, PAD, DISP_Y+6, app->width-2*PAD, DISP_H-12, DISP);
@@ -366,7 +352,6 @@ static void pointer_motion(void *d, struct wl_pointer *p, uint32_t t, wl_fixed_t
     if (nh != a->hover){ a->hover = nh; redraw_commit(a); } }
 static void pointer_button(void *d, struct wl_pointer *p, uint32_t se, uint32_t t, uint32_t button, uint32_t state){ (void)p;(void)se;(void)t; struct app*a=d;
     if (button != 0x110 /*BTN_LEFT*/ || state != 1) return;
-    if (in_close_box(a, a->pointer_x, a->pointer_y)){ log_line("CALC: close"); exit(0); }
     int i = button_at(a, a->pointer_x, a->pointer_y);
     if (i >= 0) press_button(a, i); }
 static void pointer_axis(void *d, struct wl_pointer *p, uint32_t t, uint32_t ax, wl_fixed_t v){ (void)d;(void)p;(void)t;(void)ax;(void)v; }

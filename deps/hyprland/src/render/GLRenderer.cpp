@@ -1409,10 +1409,10 @@ void CHyprGLRenderer::endRender(const std::function<void()>& renderingDoneCallba
     // allocator never frees, so the heavier scene render exhausts RAM before a
     // frame completes.  Opt in with HOS_SCENE_RENDER=1 once that memory issue is
     // fixed (free list / single-compositor).
-    // EpinAnonymOS GUI roadmap G5: report mapped window rectangles (+ owning pid)
-    // to the kernel so the trusted present blit can draw identity-coloured borders.
-    // The compositor only reports geometry; the kernel paints the border, so apps
-    // cannot spoof it.
+    // EpinAnonymOS GUI roadmap G5: report mapped window rectangles (+ owning pid) to the
+    // kernel, which logs the window set ([g5]).  It no longer paints identity borders: each
+    // window's domain is shown by its titlebar (CHosTitleBarDecoration), coloured from the
+    // kernel's answer for the pid.
     if (PMONITOR) {
         struct SHosWinRect {
             int32_t  x, y, w, h;

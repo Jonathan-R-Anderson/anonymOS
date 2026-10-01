@@ -37,11 +37,11 @@ extern char **environ;
 #define MFD_CLOEXEC 0x0001U
 #endif
 
-enum { WIN_W = 920, WIN_H = 620,
-       TITLEBAR_H = 28, CLOSE_W = 28,
-       SEARCH_Y = 46, SEARCH_H = 40, SEARCH_MARGIN = 220,
+enum { WIN_W = 920, WIN_H = 592,
+       TITLEBAR_H = 0,             /* the compositor draws the titlebar */
+       SEARCH_Y = 18, SEARCH_H = 40, SEARCH_MARGIN = 220,
        GRID_COLS = 5, CELL_PITCH_X = 160, CELL_PITCH_Y = 150,
-       ICON = 96, GRID_Y = 116 };
+       ICON = 96, GRID_Y = 88 };
 
 /* app list: LABEL -> EXEC path (each tile gets a cycled accent colour)
  *
@@ -384,15 +384,9 @@ static int tile_hit(struct app *app, int px, int py){
 
 /* --- rendering --- */
 static void draw_overview(struct app *app){
-    const uint32_t BG=0xff14171fu, TITLE=0xff0d0f14u, TXT=0xfff2f5fau, DIM=0xff8b94a3u,
-                   ACC=0xff4da3ffu, FIELD=0xff232834u, CLOSE=0xffcc3b3bu;
+    const uint32_t BG=0xff14171fu, TXT=0xfff2f5fau, DIM=0xff8b94a3u,
+                   ACC=0xff4da3ffu, FIELD=0xff232834u;
     fill_rect(app, 0, 0, app->width, app->height, BG);
-
-    /* --- own chrome: titlebar + close box (no server-side decorations) --- */
-    fill_rect(app, 0, 0, app->width, TITLEBAR_H, TITLE);
-    draw_text(app, "Activities", 12, 6, 300, 15, TXT);
-    fill_rect(app, app->width-CLOSE_W, 0, CLOSE_W, TITLEBAR_H, CLOSE);
-    draw_text(app, "x", app->width-CLOSE_W+9, 5, CLOSE_W, 15, 0xffffffffu);
 
     /* --- search field --- */
     int sx = SEARCH_MARGIN, sw = app->width - 2*SEARCH_MARGIN;
@@ -524,8 +518,6 @@ static void pointer_motion(void *d, struct wl_pointer *p, uint32_t t, wl_fixed_t
 static void pointer_button(void *d, struct wl_pointer *p, uint32_t se, uint32_t t, uint32_t button, uint32_t state){ (void)p;(void)se;(void)t; struct app*a=d;
     if (button != 0x110 /*BTN_LEFT*/ || state != 1) return;
     int px = (int)a->pointer_x, py = (int)a->pointer_y;
-    /* close box */
-    if (py < TITLEBAR_H && px >= a->width-CLOSE_W){ exit(0); }
     int pos = tile_hit(a, px, py);
     if (pos >= 0 && pos < a->n_filt) launch_and_exit(a, APPS[a->filt[pos]].exec); }
 static void pointer_axis(void *d, struct wl_pointer *p, uint32_t t, uint32_t ax, wl_fixed_t v){ (void)d;(void)p;(void)t;(void)ax;(void)v; }

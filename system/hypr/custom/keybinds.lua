@@ -78,3 +78,10 @@ hl.bind("SUPER + SPACE",         hl.dsp.workspace.toggle_special("overlay"),
         { description = "Overlay: Show or hide the overlay plane" })
 hl.bind("SUPER + SHIFT + SPACE", hl.dsp.window.move({ workspace = "special:overlay" }),
         { description = "Overlay: Send the focused window to the overlay plane" })
+
+-- Minimized windows.  A window's titlebar minimize control sends it to "special:minimized"
+-- (deps/hyprland CHosTitleBarDecoration); this shows them, and a click on one's titlebar brings
+-- it back to the desktop you are on.  (The host binds SUPER+M to a quickshell panel this OS does
+-- not run.)
+hl.bind("SUPER + M",             hl.dsp.workspace.toggle_special("minimized"),
+        { description = "Window: Show minimized windows (click one's titlebar to bring it back)" })

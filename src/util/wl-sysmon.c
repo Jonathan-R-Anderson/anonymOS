@@ -8,7 +8,7 @@
  *   - /proc/meminfo MemTotal + MemAvailable          -> memory used%
  *   - /proc/<pid>/comm + /proc/<pid>/statm           -> per-process name + RSS
  * and paints a CPU% bar, a Memory% bar, and a scrollable "PID  NAME  RSS" process list.
- * There is no cairo here -- everything is fill_rect() + draw_text().  Own CSD titlebar + close box.
+ * There is no cairo here -- everything is fill_rect() + draw_text().  The compositor draws the titlebar.
  */
 #include <errno.h>
 #include "epin-appid.h"
@@ -35,7 +35,7 @@
 #define MFD_CLOEXEC 0x0001U
 #endif
 
-enum { WIN_W = 580, WIN_H = 540, TITLE_H = 26, MAX_PROCS = 512, ROW_H = 18 };
+enum { WIN_W = 580, WIN_H = 514, TITLE_H = 0, MAX_PROCS = 512, ROW_H = 18 };
 
 struct proc { int pid; char name[64]; long rss_kb; };
 
@@ -73,7 +73,6 @@ struct app {
     int n_procs;
     int scroll;          /* first visible row index in the process list */
     int view;            /* enum view -- which tab is showing (see VIEW_TAB) */
-    int close_hover;
 };
 
 static void log_line(const char *s){ fputs(s, stdout); fputc('\n', stdout); fflush(stdout); }
@@ -391,17 +390,10 @@ static void draw_proclist(struct app *app, int list_top)
 }
 
 static void draw_ui(struct app *app){
-    const uint32_t BG=0xff1b1f27u, TITLE=0xff11141bu, TXT=0xfff2f5fau, DIM=0xff8b94a3u,
-                   ACC=0xff4da3ffu, CLOSE=0xffc0392bu, CLOSEH=0xffe74c3cu,
+    const uint32_t BG=0xff1b1f27u, TXT=0xfff2f5fau, DIM=0xff8b94a3u,
+                   ACC=0xff4da3ffu,
                    CPUCOL=0xff4da3ffu, MEMCOL=0xff5ec27eu;
     fill_rect(app, 0, 0, app->width, app->height, BG);
-
-    /* --- CSD titlebar --- */
-    fill_rect(app, 0, 0, app->width, TITLE_H, TITLE);
-    draw_text(app, VIEW_TITLE[app->view], 12, 5, app->width-120, 15, TXT);
-    int cbx = app->width - 22, cby = 4, cbs = 18;
-    fill_rect(app, cbx, cby, cbs, cbs, app->close_hover ? CLOSEH : CLOSE);
-    draw_text(app, "x", cbx+5, cby+1, 14, 14, 0xffffffffu);
 
     draw_tabs(app);
     int y = TITLE_H + TAB_H + 12;
@@ -560,18 +552,11 @@ static void scroll_by(struct app *app, int delta){
 }
 
 static void pointer_enter(void *d, struct wl_pointer *p, uint32_t s, struct wl_surface *sf, wl_fixed_t x, wl_fixed_t y){ (void)p;(void)s;(void)sf; struct app*a=d; a->pointer_x=wl_fixed_to_double(x); a->pointer_y=wl_fixed_to_double(y); }
-static void pointer_leave(void *d, struct wl_pointer *p, uint32_t s, struct wl_surface *sf){ (void)p;(void)s;(void)sf; struct app*a=d; if (a->close_hover){ a->close_hover=0; redraw_commit(a); } }
+static void pointer_leave(void *d, struct wl_pointer *p, uint32_t s, struct wl_surface *sf){ (void)d;(void)p;(void)s;(void)sf; }
 static void pointer_motion(void *d, struct wl_pointer *p, uint32_t t, wl_fixed_t x, wl_fixed_t y){ (void)p;(void)t; struct app*a=d;
-    a->pointer_x=wl_fixed_to_double(x); a->pointer_y=wl_fixed_to_double(y);
-    int cbx = a->width - 22, cby = 4, cbs = 18;
-    int nh = (a->pointer_x>=cbx && a->pointer_x<cbx+cbs && a->pointer_y>=cby && a->pointer_y<cby+cbs);
-    if (nh != a->close_hover){ a->close_hover = nh; redraw_commit(a); } }
+    a->pointer_x=wl_fixed_to_double(x); a->pointer_y=wl_fixed_to_double(y); }
 static void pointer_button(void *d, struct wl_pointer *p, uint32_t se, uint32_t t, uint32_t button, uint32_t state){ (void)p;(void)se;(void)t; struct app*a=d;
     if (button != 0x110 /*BTN_LEFT*/ || state != 1) return;
-    int cbx = a->width - 22, cby = 4, cbs = 18;
-    if (a->pointer_x>=cbx && a->pointer_x<cbx+cbs && a->pointer_y>=cby && a->pointer_y<cby+cbs){
-        log_line("SYSMON: close"); exit(0);
-    }
     /* tab strip: switch view, and reset scroll since each view has its own list length */
     if (a->pointer_y >= TITLE_H && a->pointer_y < TITLE_H + TAB_H){
         int tw = tab_width(a);

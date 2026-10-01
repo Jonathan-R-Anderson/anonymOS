@@ -103,6 +103,12 @@ if softpipe then
     })
 end
 
+-- Window borders: none.  Every window carries a titlebar in its domain's colour instead, drawn by
+-- the compositor (deps/hyprland CHosTitleBarDecoration) -- that bar, not an outline, is what says
+-- which domain a window belongs to.  The kernel no longer paints its identity border either.
+-- resize_on_border still works: the grab area extends past the edge (extend_border_grab_area).
+hl.config({ general = { border_size = 0 } })
+
 -- REVERTED (2026-09-26): the kernel "cursor plane" experiment is withdrawn.  Setting
 -- no_hardware_cursors = 0 made Hyprland upload a cursor BO and STOP compositing its own pointer,
 -- and the kernel then drew that BO straight into the live scanout post-handover.  On the first

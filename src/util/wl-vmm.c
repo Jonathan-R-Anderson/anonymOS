@@ -75,7 +75,7 @@ static const char *OPNSENSE_FETCH_STATUS = "/vmstore/opnsense.status";
 static const char *OPNSENSE_TEST_DISK = "/vm-opnsense.qcow2";
 
 enum { DEFAULT_WIDTH = 1120, DEFAULT_HEIGHT = 720, MIN_WIDTH = 900, MIN_HEIGHT = 600 };
-enum { TOOLBAR_Y = DECO_BTN_H, TOOLBAR_H = 64, SIDEBAR_W = 270, STATUS_H = 26, TAB_H = 34, VMROW_H = 58 };
+enum { TOOLBAR_Y = 0, TOOLBAR_H = 64, SIDEBAR_W = 270, STATUS_H = 26, TAB_H = 34, VMROW_H = 58 };
 
 /* ── colours ───────────────────────────────────────────────────────────────────────────── */
 #define C_BG      0x0f1418u
@@ -2161,8 +2161,6 @@ static void draw(struct app *a)
 {
     a->nhits = 0;
     fill(a, 0, 0, a->width, a->height, C_BG);
-    fill(a, 0, 0, a->width, DECO_BTN_H, C_BAR);
-    text(a, F_REG, 11, 12, 4, 400, C_DIM, "Virtual Machines");
     draw_toolbar(a);
     draw_sidebar(a);
     int x = SIDEBAR_W + 22, y = TOOLBAR_Y + TOOLBAR_H + 14, w = a->width - SIDEBAR_W - 44;
@@ -2512,7 +2510,6 @@ static void ptr_button(void *data, struct wl_pointer *p, uint32_t serial, uint32
             return;
     default: break;
     }
-    if (y < DECO_BTN_H) { xdg_toplevel_move(a->toplevel, a->seat, serial); return; }
     for (int i = a->nhits - 1; i >= 0; i--) {
         struct hit *h = &a->hits[i];
         if (x >= h->x && x < h->x + h->w && y >= h->y && y < h->y + h->h) {

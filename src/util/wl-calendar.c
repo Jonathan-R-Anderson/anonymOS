@@ -32,18 +32,17 @@
 #define MFD_CLOEXEC 0x0001U
 #endif
 
-enum { WIN_W = 300, WIN_H = 360, TITLE_H = 26 };
+enum { WIN_W = 300, WIN_H = 334, TITLE_H = 0 };
 
 /* calendar layout */
 enum {
-    CLOCK_Y   = 34,   CLOCK_PX = 42,
-    DATE_Y    = 88,   DATE_PX  = 13,
-    NAV_Y     = 110,  NAV_PX   = 15,
-    WDAY_Y    = 140,  WDAY_PX  = 12,
-    GRID_X0   = 6,    GRID_Y0  = 160,
+    CLOCK_Y   = 8,    CLOCK_PX = 42,
+    DATE_Y    = 62,   DATE_PX  = 13,
+    NAV_Y     = 84,   NAV_PX   = 15,
+    WDAY_Y    = 114,  WDAY_PX  = 12,
+    GRID_X0   = 6,    GRID_Y0  = 134,
     CELL_W    = 41,   CELL_H   = 30,
     ARROW_W   = 26,   ARROW_H  = 24,
-    CLOSE_W   = 26,
 };
 
 struct app {
@@ -77,7 +76,7 @@ struct app {
 
     int disp_year;                 // displayed month/year (paged by < >)
     int disp_month;                // 0-11
-    int hover_prev, hover_next, hover_close;
+    int hover_prev, hover_next;
 };
 
 static void log_line(const char *s){ fputs(s, stdout); fputc('\n', stdout); fflush(stdout); }
@@ -168,8 +167,8 @@ static int first_wday(int year, int mon){
 
 /* --- rendering --- */
 static void draw_calendar(struct app *app){
-    const uint32_t BG=0xff1b1f27u, TITLE=0xff11141bu, TXT=0xfff2f5fau, DIM=0xff8b94a3u,
-                   ACC=0xff4da3ffu, CLOSE=0xffb03a3au, CLOSEH=0xffe05555u,
+    const uint32_t BG=0xff1b1f27u, TXT=0xfff2f5fau, DIM=0xff8b94a3u,
+                   ACC=0xff4da3ffu,
                    ARR=0xff232834u, ARRH=0xff2d3444u, TODAYTX=0xff11141bu;
 
     /* ROADMAP 3.2: derive the grid from the ACTUAL window size rather than the compiled default.
@@ -182,13 +181,6 @@ static void draw_calendar(struct app *app){
     int cell_h = (app->height - GRID_Y0 - GRID_X0) / 6;  if (cell_h < 1) cell_h = 1;
 
     fill_rect(app, 0, 0, app->width, app->height, BG);
-
-    /* --- CSD titlebar --- */
-    fill_rect(app, 0, 0, app->width, TITLE_H, TITLE);
-    draw_text(app, "Calendar", 12, 5, 200, 15, TXT);
-    /* close box top-right */
-    fill_rect(app, app->width-CLOSE_W, 0, CLOSE_W, TITLE_H, app->hover_close?CLOSEH:CLOSE);
-    draw_text(app, "x", app->width-CLOSE_W+9, 4, 20, 15, 0xffffffffu);
 
     /* current time (from the real clock) */
     time_t now = time(NULL);
@@ -330,19 +322,17 @@ static int in_box(struct app *a, int x, int y, int w, int h){
 static void update_hover(struct app *a){
     int hp = in_box(a, GRID_X0, NAV_Y, ARROW_W, ARROW_H);
     int hn = in_box(a, a->width-GRID_X0-ARROW_W, NAV_Y, ARROW_W, ARROW_H);
-    int hc = in_box(a, a->width-CLOSE_W, 0, CLOSE_W, TITLE_H);
-    if (hp!=a->hover_prev || hn!=a->hover_next || hc!=a->hover_close){
-        a->hover_prev=hp; a->hover_next=hn; a->hover_close=hc; redraw_commit(a);
+    if (hp!=a->hover_prev || hn!=a->hover_next){
+        a->hover_prev=hp; a->hover_next=hn; redraw_commit(a);
     }
 }
 
 static void pointer_enter(void *d, struct wl_pointer *p, uint32_t s, struct wl_surface *sf, wl_fixed_t x, wl_fixed_t y){ (void)p;(void)s;(void)sf; struct app*a=d; a->pointer_x=wl_fixed_to_double(x); a->pointer_y=wl_fixed_to_double(y); update_hover(a); }
-static void pointer_leave(void *d, struct wl_pointer *p, uint32_t s, struct wl_surface *sf){ (void)p;(void)s;(void)sf; struct app*a=d; a->hover_prev=a->hover_next=a->hover_close=0; redraw_commit(a); }
+static void pointer_leave(void *d, struct wl_pointer *p, uint32_t s, struct wl_surface *sf){ (void)p;(void)s;(void)sf; struct app*a=d; a->hover_prev=a->hover_next=0; redraw_commit(a); }
 static void pointer_motion(void *d, struct wl_pointer *p, uint32_t t, wl_fixed_t x, wl_fixed_t y){ (void)p;(void)t; struct app*a=d;
     a->pointer_x=wl_fixed_to_double(x); a->pointer_y=wl_fixed_to_double(y); update_hover(a); }
 static void pointer_button(void *d, struct wl_pointer *p, uint32_t se, uint32_t t, uint32_t button, uint32_t state){ (void)p;(void)se;(void)t; struct app*a=d;
     if (button != 0x110 /*BTN_LEFT*/ || state != 1) return;
-    if (in_box(a, a->width-CLOSE_W, 0, CLOSE_W, TITLE_H)) exit(0);
     if (in_box(a, GRID_X0, NAV_Y, ARROW_W, ARROW_H)){ page_month(a, -1); return; }
     if (in_box(a, a->width-GRID_X0-ARROW_W, NAV_Y, ARROW_W, ARROW_H)){ page_month(a, +1); return; }
 }

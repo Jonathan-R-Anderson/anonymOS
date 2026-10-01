@@ -3,13 +3,13 @@
  *
  * There is no terminal-hosted editor on the desktop that's convenient for quick edits, so this is a
  * self-contained GUI editor: a growable array of lines, a monospaced glyph grid, a solid/blinking
- * caret, vertical + horizontal scroll, a client-drawn titlebar with a red close box, and a status
- * line (Ln/Col, filename, modified marker).
+ * caret, vertical + horizontal scroll, and a status line (Ln/Col, filename, modified marker, save
+ * result).  The compositor draws the window's titlebar (title + close/min/max).
  *
  *   argv[1]  optional file to OPEN (absent -> empty buffer, saves to /run/untitled.txt)
  *   typing   inserts; Enter splits; Backspace/Delete; arrows/Home/End move; PageUp/PageDown scroll
  *   Ctrl+S   save (writes the whole buffer via open(O_CREAT|O_WRONLY|O_TRUNC)+write+close)
- *   Ctrl+Q   quit (also the red close box)
+ *   Ctrl+Q   quit
  *
  * The Wayland scaffolding (registry / seat / xdg / persistent double-buffered wl_shm / FreeType text /
  * evdev keymap / the COMPLETE v5 wl_pointer_listener) is the proven wl-wifi-menu / wl-logview pattern,
@@ -19,7 +19,6 @@
 #include <errno.h>
 #include "epin-appid.h"
 #include <fcntl.h>
-#include <libgen.h>
 #include <signal.h>
 #include <stdint.h>
 #include <stdio.h>
@@ -41,18 +40,15 @@
 #endif
 
 enum {
-    WIN_W = 720, WIN_H = 560,
-    TITLE_H = 28,                 /* client-drawn titlebar */
+    WIN_W = 720, WIN_H = 532,
+    TITLE_H = 0,                  /* none: the compositor draws the titlebar */
     STATUS_H = 22,                /* bottom status line */
     TEXT_X = 8,                   /* left text margin */
     PX = 15, LINEH = 19,          /* glyph size + line pitch */
-    CLOSE_W = 20, CLOSE_H = 20,
 };
 /* Size-dependent layout reads the LIVE window size (a->width/a->height) so the client reflows
  * when the tiling WM resizes it.  These macros therefore assume a `struct app *a` is in scope
  * wherever they are used -- true in every function below; main() spells out app.width/app.height. */
-#define CLOSE_X (a->width - CLOSE_W - 6)
-#define CLOSE_Y ((TITLE_H - CLOSE_H) / 2)
 #define TEXT_TOP (TITLE_H + 2)
 #define TEXT_BOT (a->height - STATUS_H)
 #define TEXT_W  (a->width - TEXT_X - 4)
@@ -93,7 +89,6 @@ struct app {
     int modified;
     int caret_on;                  // blink state
     char path[512];                // save target
-    char fname[256];               // basename for the titlebar
     char status[128];              // transient message ("Saved" / "Save failed: N")
 };
 
@@ -246,25 +241,10 @@ static void do_save(struct app *a){
 
 /* --- rendering ----------------------------------------------------------- */
 static void draw(struct app *a){
-    const uint32_t BG=0xff1b1f27u, HDR=0xff11141bu, TXT=0xfff2f5fau, DIM=0xff8b94a3u,
-                   CARET=0xff4da3ffu, OK=0xff5fd08au, CLOSE=0xffd05f5fu,
+    const uint32_t BG=0xff1b1f27u, TXT=0xfff2f5fau, DIM=0xff8b94a3u,
+                   CARET=0xff4da3ffu, OK=0xff5fd08au, ERR=0xffd05f5fu,
                    STATUSBG=0xff11141bu, LN=0xff2d3444u;
     fill_rect(a, 0, 0, a->width, a->height, BG);
-
-    /* titlebar */
-    fill_rect(a, 0, 0, a->width, TITLE_H, HDR);
-    char title[320];
-    snprintf(title, sizeof title, "Text Editor - %s%s", a->fname, a->modified ? " *" : "");
-    draw_text(a, title, 12, 6, a->width - 220, 16, TXT);
-    if (a->status[0]){
-        int sw = 160;
-        uint32_t col = (strncmp(a->status, "Saved", 5) == 0) ? OK : CLOSE;
-        draw_text(a, a->status, CLOSE_X - sw - 8, 7, sw, 13, col);
-    }
-    /* red close box */
-    fill_rect(a, CLOSE_X, CLOSE_Y, CLOSE_W, CLOSE_H, CLOSE);
-    draw_text(a, "x", CLOSE_X + 6, CLOSE_Y + 2, CLOSE_W, 15, 0xff11141bu);
-    fill_rect(a, 0, TITLE_H, a->width, 1, LN);
 
     /* text grid */
     a->rows = (TEXT_BOT - TEXT_TOP) / LINEH;
@@ -290,7 +270,12 @@ static void draw(struct app *a){
     char st[400];
     snprintf(st, sizeof st, "Ln %d, Col %d   %s%s",
              a->cur_line + 1, a->cur_col + 1, a->path, a->modified ? "   [modified]" : "");
-    draw_text(a, st, 10, TEXT_BOT + 4, a->width - 20, 12, DIM);
+    int sw = a->status[0] ? 160 : 0;   /* transient "Saved" / "Save failed" message, right side */
+    draw_text(a, st, 10, TEXT_BOT + 4, a->width - 20 - sw, 12, DIM);
+    if (sw){
+        uint32_t col = (strncmp(a->status, "Saved", 5) == 0) ? OK : ERR;
+        draw_text(a, a->status, a->width - sw - 10, TEXT_BOT + 4, sw, 12, col);
+    }
 }
 
 /* --- double-buffered wl_shm (one memfd, two slices) ---------------------- */
@@ -429,7 +414,6 @@ static void pointer_motion(void *d, struct wl_pointer *p, uint32_t t, wl_fixed_t
 static void pointer_button(void *d, struct wl_pointer *p, uint32_t se, uint32_t t, uint32_t button, uint32_t state){ (void)p;(void)se;(void)t; struct app*a=d;
     if (button != 0x110 /*BTN_LEFT*/ || state != 1) return;
     double x = a->pointer_x, y = a->pointer_y;
-    if (x >= CLOSE_X && x < CLOSE_X + CLOSE_W && y >= CLOSE_Y && y < CLOSE_Y + CLOSE_H){ a->running = 0; return; }
     if (y >= TEXT_TOP && y < TEXT_BOT && x >= TEXT_X && a->cell_w > 0){    /* click-to-place caret */
         int r = ((int)y - TEXT_TOP) / LINEH; int ln = a->scroll_row + r;
         if (ln >= a->nlines) ln = a->nlines - 1; if (ln < 0) ln = 0;
@@ -566,8 +550,6 @@ int main(int argc, char **argv){
 
     const char *open_path = (argc > 1) ? argv[1] : NULL;
     strncpy(app.path, open_path ? open_path : "/run/untitled.txt", sizeof(app.path)-1);
-    { char tmp[512]; strncpy(tmp, app.path, sizeof tmp - 1); tmp[sizeof tmp -1]=0;
-      char *bn = basename(tmp); strncpy(app.fname, bn, sizeof(app.fname)-1); }
 
     init_freetype(&app);
     measure_cell(&app);

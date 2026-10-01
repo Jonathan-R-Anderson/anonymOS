@@ -41,27 +41,26 @@ extern char **environ;
 #define MFD_CLOEXEC 0x0001U
 #endif
 
-enum { WIN_W = 320, WIN_H = 536 };
+enum { WIN_W = 320, WIN_H = 506 };
 
 /* --- layout geometry (shared by the renderer and the hit-tester) --- */
 enum {
-    TITLE_H  = 30,
-    CLOSE_Y = 4,  CLOSE_W = 22, CLOSE_H = 22,
+    TITLE_H  = 0,                   /* the compositor draws the titlebar */
     CARD_X   = 12,
 
-    HEADER_Y = 32,  HEADER_H = 76,   /* Q0.2: avatar + user + current domain + identity */
+    HEADER_Y = 2,   HEADER_H = 76,   /* Q0.2: avatar + user + current domain + identity */
 
-    WIFI_Y   = 112, WIFI_H = 60,
-    CLOCK_Y  = 184, CLOCK_H = 64,   /* was the volume slider -- see the note at draw time */
-    BAT_Y    = 260, BAT_H  = 52,
-    TOPBAR_Y = 320, TOPBAR_H = 44,   /* Hyprland top-bar hide/show toggle */
+    WIFI_Y   = 82,  WIFI_H = 60,
+    CLOCK_Y  = 154, CLOCK_H = 64,   /* was the volume slider -- see the note at draw time */
+    BAT_Y    = 230, BAT_H  = 52,
+    TOPBAR_Y = 290, TOPBAR_H = 44,   /* Hyprland top-bar hide/show toggle */
 
-    ACT_Y    = 376, ACT_H  = 64,   /* four square buttons */
-    LOGOUT_Y = 452, LOGOUT_H = 48,
+    ACT_Y    = 346, ACT_H  = 64,   /* four square buttons */
+    LOGOUT_Y = 422, LOGOUT_H = 48,
 
 };
 
-/* ROADMAP 3.2: the two horizontal metrics derive from the CURRENT width.
+/* ROADMAP 3.2: the horizontal metrics derive from the CURRENT width.
  *
  * They were enum constants baked from WIN_W -- CLOSE_X = WIN_W - 26, CARD_W = WIN_W - 24 -- so at
  * any other width the close button sat away from the corner and every card stopped short of, or
@@ -72,13 +71,12 @@ enum {
  * renderer and hit-tester cannot drift apart.  The VERTICAL stack stays fixed: these are
  * fixed-height rows, and min_size keeps the window tall enough for all of them.
  */
-#define CLOSE_X_OF(a) ((a)->width - 26)
 #define CARD_W_OF(a)  ((a)->width - 24)
 
 /* clickable regions returned by hit_region() */
-enum { R_NONE=0, R_CLOSE, R_WIFI, R_SYSTEM, R_SETTINGS, R_LOCK, R_RESTART, R_POWER, R_LOGOUT,
-       R_GEAR,      /* titlebar: main view -> settings view */
-       R_BACK };   /* titlebar: settings view -> main view */
+enum { R_NONE=0, R_WIFI, R_SYSTEM, R_SETTINGS, R_LOCK, R_RESTART, R_POWER, R_LOGOUT,
+       R_GEAR,      /* header card: main view -> settings view */
+       R_BACK };   /* same spot: settings view -> main view */
 
 /* ROADMAP 3.0b: the settings view's own regions, numbered above every R_* above so the two
  * views' codes cannot collide.  Row i contributes two: the decrement/toggle and the increment. */
@@ -637,11 +635,11 @@ static int in_rect(double px, double py, int x, int y, int w, int h){
 }
 
 /* ROADMAP 3.0b: settings-view geometry.  Defined once and shared by the renderer and the
- * hit-tester, for the reason the 3.2 CARD_W_OF()/CLOSE_X_OF() macros exist: when the two
- * compute their rectangles separately they drift, and the clickable area stops matching what
- * is drawn. */
-#define GEAR_X_OF(a) ((a)->width - 52)
-enum { GEAR_Y = CLOSE_Y, GEAR_W = CLOSE_W, GEAR_H = CLOSE_H };
+ * hit-tester, for the reason the 3.2 CARD_W_OF() macro exists: when the two compute their
+ * rectangles separately they drift, and the clickable area stops matching what is drawn.
+ * The gear / back button sits in the top-right corner of the first card. */
+#define GEAR_X_OF(a) (CARD_X + CARD_W_OF(a) - GEAR_W - 6)
+enum { GEAR_Y = HEADER_Y + 6, GEAR_W = 22, GEAR_H = 22 };
 
 /* Top of row `idx`, counting the section headers above it. */
 static int setting_row_y(int idx){
@@ -667,7 +665,6 @@ static void setting_ctl_rect(struct app *app, int idx, int which, int *x, int *y
     }
 }
 static int hit_settings_region(struct app *app, double px, double py){
-    if (in_rect(px,py,CLOSE_X_OF(app),CLOSE_Y,CLOSE_W,CLOSE_H)) return R_CLOSE;
     if (in_rect(px,py,GEAR_X_OF(app),GEAR_Y,GEAR_W,GEAR_H))     return R_BACK;
     for (int i=0;i<S_COUNT;i++){
         if (SETTINGS[i].kind == ST_NOTE) continue;
@@ -683,7 +680,6 @@ static int hit_settings_region(struct app *app, double px, double py){
 }
 static int hit_region(struct app *app, double px, double py){
     if (app->view == V_SETTINGS) return hit_settings_region(app, px, py);
-    if (in_rect(px,py,CLOSE_X_OF(app),CLOSE_Y,CLOSE_W,CLOSE_H)) return R_CLOSE;
     if (in_rect(px,py,GEAR_X_OF(app),GEAR_Y,GEAR_W,GEAR_H))     return R_GEAR;
     if (in_rect(px,py,CARD_X,WIFI_Y,CARD_W_OF(app),WIFI_H))     return R_WIFI;
     if (in_rect(px,py,CARD_X,TOPBAR_Y,CARD_W_OF(app),TOPBAR_H)) return R_SYSTEM;
@@ -714,18 +710,15 @@ static void draw_battery_glyph(struct app *app, int x, int y, uint32_t on, uint3
  * bottom edge is skipped rather than clipped: min_size keeps the window tall enough for the
  * whole stack, so this only fires if a compositor ignores that. */
 static void draw_settings(struct app *app){
-    const uint32_t BG=0xff1b1f27u, TITLE=0xff11141bu, ROW=0xff232834u, ROWH=0xff2d3444u,
+    const uint32_t BG=0xff1b1f27u, ROW=0xff232834u, ROWH=0xff2d3444u,
                    TXT=0xfff2f5fau, DIM=0xff8b94a3u, ACC=0xff4da3ffu,
-                   BTN=0xff2a3140u, OFF=0xff3a4250u, CLOSEC=0xffe0564au;
+                   BTN=0xff2a3140u, OFF=0xff3a4250u;
     fill_rect(app, 0, 0, app->width, app->height, BG);
 
-    fill_rect(app, 0, 0, app->width, TITLE_H, TITLE);
-    draw_text(app, "Settings", 14, 7, 200, 15, TXT);
-    draw_text(app, "arrows move  -/+ change  Esc back", 96, 10, 240, 10, DIM);
+    /* key hint + back button, on the first section header's line */
+    draw_text(app, "arrows move  -/+ change  Esc back", 96, SET_TOP+6, GEAR_X_OF(app)-96-6, 10, DIM);
     fill_rect(app, GEAR_X_OF(app), GEAR_Y, GEAR_W, GEAR_H, (app->hover==R_BACK)?ROWH:BTN);
     draw_text(app, "<", GEAR_X_OF(app)+8, GEAR_Y+3, 16, 14, TXT);
-    fill_rect(app, CLOSE_X_OF(app), CLOSE_Y, CLOSE_W, CLOSE_H, (app->hover==R_CLOSE)?CLOSEC:ROWH);
-    draw_text(app, "x", CLOSE_X_OF(app)+7, CLOSE_Y+3, 16, 14, TXT);
 
     for (int i=0;i<S_COUNT;i++){
         const struct setting_def *s = &SETTINGS[i];
@@ -789,23 +782,8 @@ static void draw_menu(struct app *app){
     if (app->view == V_SETTINGS){ draw_settings(app); return; }
     const uint32_t BG=0xff1b1f27u, TITLE=0xff11141bu, ROW=0xff232834u, ROWH=0xff2d3444u,
                    TXT=0xfff2f5fau, DIM=0xff8b94a3u, ACC=0xff4da3ffu,
-                   OK=0xff57d977u, DANGER=0xffe0564au, CLOSEC=0xffe0564au;
+                   OK=0xff57d977u, DANGER=0xffe0564au;
     fill_rect(app, 0, 0, app->width, app->height, BG);
-
-    /* --- CSD titlebar --- */
-    fill_rect(app, 0, 0, app->width, TITLE_H, TITLE);
-    draw_text(app, "System", 14, 7, 200, 15, TXT);
-    fill_rect(app, CLOSE_X_OF(app), CLOSE_Y, CLOSE_W, CLOSE_H, (app->hover==R_CLOSE)?CLOSEC:ROWH);
-    draw_text(app, "x", CLOSE_X_OF(app)+7, CLOSE_Y+3, 16, 14, TXT);
-    /* ROADMAP 3.0b: the gear, left of the close button -- opens the settings view.  It is in
-     * the titlebar rather than the button row because the four buttons there are session
-     * actions (Domains/Lock/Restart/Power) and none of them could be given up. */
-    fill_rect(app, GEAR_X_OF(app), GEAR_Y, GEAR_W, GEAR_H, (app->hover==R_GEAR)?ROWH:0xff2a3140u);
-    for (int r=0;r<3;r++){                       /* three sliders, drawn with fill_rect like every icon here */
-        int gy = GEAR_Y + 6 + r*5;
-        fill_rect(app, GEAR_X_OF(app)+4, gy, 14, 2, TXT);
-        fill_rect(app, GEAR_X_OF(app)+4 + (r==1?9:4), gy-1, 3, 4, ACC);
-    }
 
     /* --- Q0.2 identity header: avatar + username + current domain + current identity --- */
     {
@@ -815,11 +793,20 @@ static void draw_menu(struct app *app){
         char initial[2]; initial[0] = app->user[0] ? (char)(app->user[0] & ~0x20) : 'U'; initial[1] = 0;
         draw_text(app, initial, ax+asz/2-8, ay+asz/2-14, asz, 26, TITLE);
         int tx = ax + asz + 14, tw = CARD_X+CARD_W_OF(app) - (ax+asz+14) - 10;
-        draw_text(app, app->user[0] ? app->user : "user", tx, HEADER_Y+12, tw, 16, TXT);
+        draw_text(app, app->user[0] ? app->user : "user", tx, HEADER_Y+12, tw-GEAR_W-6, 16, TXT);
         char dl[80]; snprintf(dl, sizeof dl, "Domain:   %s", app->domain[0]   ? app->domain   : "Personal");
         draw_text(app, dl, tx, HEADER_Y+36, tw, 12, DIM);
         char il[80]; snprintf(il, sizeof il, "Identity: %s", app->identity[0] ? app->identity : "Default");
         draw_text(app, il, tx, HEADER_Y+54, tw, 12, DIM);
+    }
+    /* ROADMAP 3.0b: the gear, top-right of the header card -- opens the settings view.  It is
+     * here rather than in the button row because the four buttons there are session actions
+     * (Domains/Lock/Restart/Power) and none of them could be given up. */
+    fill_rect(app, GEAR_X_OF(app), GEAR_Y, GEAR_W, GEAR_H, (app->hover==R_GEAR)?ROWH:0xff2a3140u);
+    for (int r=0;r<3;r++){                       /* three sliders, drawn with fill_rect like every icon here */
+        int gy = GEAR_Y + 6 + r*5;
+        fill_rect(app, GEAR_X_OF(app)+4, gy, 14, 2, TXT);
+        fill_rect(app, GEAR_X_OF(app)+4 + (r==1?9:4), gy-1, 3, 4, ACC);
     }
 
     /* --- Wi-Fi row --- */
@@ -970,7 +957,6 @@ static void pointer_button(void *d, struct wl_pointer *p, uint32_t se, uint32_t 
 
     int r = hit_region(a, a->pointer_x, a->pointer_y);
     switch (r){
-        case R_CLOSE:    exit(0);
         case R_GEAR:     a->view = V_SETTINGS; redraw_commit(a); break;
         case R_BACK:     a->view = V_MAIN;     redraw_commit(a); break;
         case R_WIFI:     launch("/wl-wifi-menu"); break;
@@ -1062,7 +1048,7 @@ static const struct xdg_toplevel_listener toplevel_listener = {
     .configure=toplevel_configure,.close=toplevel_close,.configure_bounds=toplevel_bounds,.wm_capabilities=toplevel_wmcap };
 
 /* ROADMAP 3.2: rebuild both buffers at a new size.  The horizontal metrics reflow through
- * CLOSE_X_OF()/CARD_W_OF(); the vertical stack is fixed-height rows and min_size keeps the window
+ * CARD_W_OF(); the vertical stack is fixed-height rows and min_size keeps the window
  * tall enough for all of them. */
 static int resize_buffers(struct app *app, int w, int h){
     if (w <= 0 || h <= 0) return 0;

@@ -1964,7 +1964,7 @@ static void tab_appearance(struct app *app, cairo_t *cr) {
         int x,y,w,h; export_btn_rect(&x,&y,&w,&h);                       // DM12 Export
         cairo_set_source_rgb(cr,0.22,0.34,0.30); rounded_rect(cr,x,y,w,h,6); cairo_fill(cr);
     } else {
-        draw_text(app,"Border color",LABEL_X,TAB_Y+18,200,14,0xffb7c1d0u);
+        draw_text(app,"Titlebar color",LABEL_X,TAB_Y+18,200,14,0xffb7c1d0u);
         char c[16]; snprintf(c,sizeof(c),"#%06X",sd->color & 0xffffff);
         draw_text(app,c,LABEL_X+300,TAB_Y+18,120,14,0xfff2f5fau);
         draw_text(app,"Wallpaper",LABEL_X,TAB_Y+58,200,14,0xffb7c1d0u);

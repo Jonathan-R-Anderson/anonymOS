@@ -24,6 +24,7 @@
 #include "../../render/decorations/CHyprInnerGlowDecoration.hpp"
 #include "../../render/decorations/CHyprGroupBarDecoration.hpp"
 #include "../../render/decorations/CHyprBorderDecoration.hpp"
+#include "../../render/decorations/CHosTitleBarDecoration.hpp"
 #include "../../config/ConfigValue.hpp"
 #include "../../config/shared/actions/ConfigActions.hpp"
 #include "../../config/ConfigManager.hpp"
@@ -101,6 +102,7 @@ PHLWINDOW CWindow::create(SP<CXWaylandSurface> surface) {
     pWindow->addWindowDeco(makeUnique<CHyprDropShadowDecoration>(pWindow));
     pWindow->addWindowDeco(makeUnique<CHyprBorderDecoration>(pWindow));
     pWindow->addWindowDeco(makeUnique<CHyprInnerGlowDecoration>(pWindow));
+    pWindow->addWindowDeco(makeUnique<CHosTitleBarDecoration>(pWindow)); // EpinAnonymOS: domain-coloured titlebar
 
     pWindow->m_target = Layout::CWindowTarget::create(pWindow);
 
@@ -135,6 +137,7 @@ PHLWINDOW CWindow::create(SP<CXDGSurfaceResource> resource) {
     pWindow->addWindowDeco(makeUnique<CHyprDropShadowDecoration>(pWindow));
     pWindow->addWindowDeco(makeUnique<CHyprBorderDecoration>(pWindow));
     pWindow->addWindowDeco(makeUnique<CHyprInnerGlowDecoration>(pWindow));
+    pWindow->addWindowDeco(makeUnique<CHosTitleBarDecoration>(pWindow)); // EpinAnonymOS: domain-coloured titlebar
 
     pWindow->m_target = Layout::CWindowTarget::create(pWindow);
 

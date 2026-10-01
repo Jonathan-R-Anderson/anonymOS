@@ -3,8 +3,8 @@
  *
  * Top: the current local time LARGE (HH:MM:SS) + the date, refreshed every second from the poll()
  * timeout (time()/localtime()).  Below: a stopwatch (mm:ss.cs) driven by CLOCK_MONOTONIC with three
- * labeled buttons Start / Stop / Reset, hit-tested against wl_pointer.  There are no server-side
- * decorations, so we draw our own CSD titlebar "Clocks" + a close box (clicking it exits).
+ * labeled buttons Start / Stop / Reset, hit-tested against wl_pointer.  The compositor draws the
+ * window's titlebar (title + close/min/max), so the content starts at the top of the surface.
  *
  * All Wayland scaffolding (registry / seat / xdg / double-buffered wl_shm / FreeType text / v5 pointer
  * listener) is copied VERBATIM from the proven wl-wifi-menu client -- only the drawn content differs.
@@ -33,7 +33,7 @@
 #define MFD_CLOEXEC 0x0001U
 #endif
 
-enum { WIN_W = 340, WIN_H = 300, TITLE_H = 28 };
+enum { WIN_W = 340, WIN_H = 272, TITLE_H = 0 };
 
 /* stopwatch button geometry */
 enum { BTN_Y = 232, BTN_H = 42, BTN_MARGIN = 16, BTN_GAP = 8 };
@@ -67,7 +67,7 @@ struct app {
     int    sw_running;
     double sw_accum;               // accumulated seconds while stopped
     double sw_start;               // CLOCK_MONOTONIC seconds at last Start
-    int    hover_btn;              // 0=Start 1=Stop 2=Reset 3=close, -1=none
+    int    hover_btn;              // 0=Start 1=Stop 2=Reset, -1=none
 };
 
 static void log_line(const char *s){ fputs(s, stdout); fputc('\n', stdout); fflush(stdout); }
@@ -150,22 +150,13 @@ static void btn_rect(struct app *app, int idx, int *x, int *y, int *w, int *h){
 static int point_in(double px, double py, int x, int y, int w, int h){
     return px >= x && px < x+w && py >= y && py < y+h;
 }
-/* close box: top-right of the titlebar */
-static void close_rect(struct app *app, int *x, int *y, int *w, int *h){ *x = app->width - 24; *y = 6; *w = 16; *h = 16; }
 
 /* --- rendering --- */
 static void draw(struct app *app){
-    const uint32_t BG=0xff1b1f27u, HDR=0xff11141bu, TXT=0xfff2f5fau, DIM=0xff8b94a3u,
+    const uint32_t BG=0xff1b1f27u, TXT=0xfff2f5fau, DIM=0xff8b94a3u,
                    PANEL=0xff232834u, BTN=0xff2d3444u, BTNH=0xff3a4a63u,
-                   GRN=0xff43c46eu, RED=0xffd45252u, AMBER=0xffe0a94du, CLOSE=0xffd45252u;
+                   GRN=0xff43c46eu, RED=0xffd45252u, AMBER=0xffe0a94du;
     fill_rect(app, 0, 0, app->width, app->height, BG);
-
-    /* --- CSD titlebar --- */
-    fill_rect(app, 0, 0, app->width, TITLE_H, HDR);
-    draw_text(app, "Clocks", 12, 6, 200, 15, TXT);
-    { int cx,cy,cw,ch; close_rect(app,&cx,&cy,&cw,&ch);
-      fill_rect(app, cx, cy, cw, ch, app->hover_btn==3 ? CLOSE : BTN);
-      draw_text(app, "x", cx+5, cy+1, 12, 13, TXT); }
 
     /* --- clock: large local time + date --- */
     time_t t = time(NULL); struct tm lt; localtime_r(&t, &lt);
@@ -176,10 +167,10 @@ static void draw(struct app *app){
     draw_text_centered(app, dbuf, app->width/2, TITLE_H + 74, 13, DIM);
 
     /* divider */
-    fill_rect(app, 12, 128, app->width-24, 1, 0xff2d3444u);
+    fill_rect(app, 12, 100, app->width-24, 1, 0xff2d3444u);
 
     /* --- stopwatch --- */
-    draw_text(app, "STOPWATCH", 16, 138, 200, 11, DIM);
+    draw_text(app, "STOPWATCH", 16, 110, 200, 11, DIM);
     double el = app->sw_accum; if (app->sw_running) el += now_mono() - app->sw_start;
     if (el < 0) el = 0;
     long tcs = (long)(el * 100.0);
@@ -188,9 +179,9 @@ static void draw(struct app *app){
     int mins = (int)(tcs / 6000);
     char sbuf[16]; snprintf(sbuf, sizeof sbuf, "%02d:%02d.%02d", mins, secs, cs);
     /* elapsed panel */
-    fill_rect(app, 16, 158, app->width-32, 60, PANEL);
-    fill_rect(app, 16, 158, 3, 60, app->sw_running ? GRN : AMBER);
-    draw_text_centered(app, sbuf, app->width/2, 168, 36, app->sw_running ? TXT : DIM);
+    fill_rect(app, 16, 130, app->width-32, 60, PANEL);
+    fill_rect(app, 16, 130, 3, 60, app->sw_running ? GRN : AMBER);
+    draw_text_centered(app, sbuf, app->width/2, 140, 36, app->sw_running ? TXT : DIM);
 
     /* buttons */
     const char *labels[3] = { "Start", "Stop", "Reset" };
@@ -259,9 +250,6 @@ static void redraw_commit(struct app *app){
 
 /* --- input --- */
 static void handle_click(struct app *app){
-    /* close box */
-    { int cx,cy,cw,ch; close_rect(app,&cx,&cy,&cw,&ch);
-      if (point_in(app->pointer_x, app->pointer_y, cx, cy, cw, ch)){ log_line("CLOCKS: close"); exit(0); } }
     /* stopwatch buttons */
     for (int i=0;i<3;i++){
         int bx,by,bw,bh; btn_rect(app,i,&bx,&by,&bw,&bh);
@@ -275,8 +263,6 @@ static void handle_click(struct app *app){
 }
 
 static int hit_test_btn(struct app *app){
-    int cx,cy,cw,ch; close_rect(app,&cx,&cy,&cw,&ch);
-    if (point_in(app->pointer_x, app->pointer_y, cx, cy, cw, ch)) return 3;
     for (int i=0;i<3;i++){ int bx,by,bw,bh; btn_rect(app,i,&bx,&by,&bw,&bh);
         if (point_in(app->pointer_x, app->pointer_y, bx, by, bw, bh)) return i; }
     return -1;

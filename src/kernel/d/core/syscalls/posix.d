@@ -4053,8 +4053,8 @@ private size_t procSynth(int pid, const(char)* sub, size_t subLen) {
         pbStr(pos, "\nPid:\t".ptr); pbNum(pos, pid);
         pbStr(pos, "\nPPid:\t".ptr); pbNum(pos, ppid);
         pbStr(pos, "\nVmRSS:\t1024 kB\nThreads:\t1\n".ptr);
-        // The owning domain and its identity colour -- the same colour the kernel draws as the
-        // window's border -- so the top bar's desktop miniatures can colour each window by domain.
+        // The owning domain and its identity colour -- the colour the compositor paints the
+        // window's titlebar -- so the top bar's desktop miniatures can colour each window by domain.
         // /proc is not bound into any domain namespace, so only unconfined chrome can read this.
         {
             import core.domain : domainById;
@@ -7906,7 +7906,7 @@ zstyle ':completion:*' group-name ''
 # Oh-My-Zsh-style themes live in $ZSH_THEMES_DIR.  The default 'anonymos' theme paints a colored
 # multi-line prompt (identity/namespace/capabilities/path/git + an exit-status-tinted prompt char)
 # using the truecolor SGR wl-term understands (Z7.1); the namespace is drawn in the domain color
-# (EPIN_DOMAIN_COLOR) — the same unspoofable color on the window border.  A user theme in
+# (EPIN_DOMAIN_COLOR) — the same unspoofable color as the window's titlebar.  A user theme in
 # ~/.zsh/themes/ overrides the system one; set ZSH_THEME=none to keep the plain prompt.
 ZSH_THEMES_DIR=${ZSH_THEMES_DIR:-/etc/zsh/themes}
 : ${ZSH_THEME:=anonymos}
@@ -7990,7 +7990,7 @@ omz-setup() {
     // layout (identity/namespace/capabilities/object-path/git + exit-status-tinted prompt char,
     // exec-time on the right).  Works in both flavors — native surfaces the kernel identity's
     // exec/admin rights via $__hos_id (Z6.1), Linux reads EPIN_*.  The namespace is painted in the
-    // domain's 24-bit color (EPIN_DOMAIN_COLOR), matching wl-term's unspoofable window border.
+    // domain's 24-bit color (EPIN_DOMAIN_COLOR), matching the window's unspoofable titlebar.
     // A Nerd-Font glyph set is selected when EPIN_NERDFONT is advertised, ASCII otherwise (the
     // terminal grid is single-byte today, so ASCII is the live path; the branch is ready for
     // terminal UTF-8 + a Nerd font).  No command substitution in the hot path except git (which
@@ -8009,7 +8009,7 @@ fi
 __a_rst=$'\e[0m'
 
 # --- namespace color: EPIN_DOMAIN_COLOR is 0xAARRGGBB (Domain Manager); convert to a 24-bit SGR
-# --- (wl-term groks 38;2;R;G;B since Z7.1) so the prompt's domain matches the window border. ----
+# --- (wl-term groks 38;2;R;G;B since Z7.1) so the prompt's domain matches the titlebar. ----
 __a_dom_sgr() {
   local dc=${EPIN_DOMAIN_COLOR:-0xff3b82f6}
   dc=${dc#0x}; dc=${dc#0X}
@@ -17677,7 +17677,7 @@ private enum uint DRM_NR_MODE_OBJ_GETPROPERTIES  = 0xb9;
 private enum uint DRM_NR_MODE_CURSOR2            = 0xbb;
 private enum uint DRM_NR_MODE_ATOMIC            = 0xbc;
 private enum uint DRM_NR_HOS_PRESENT            = 0xf0;
-private enum uint DRM_NR_HOS_WINDOWS            = 0xf1; // GUI roadmap G5: window rects for identity borders
+private enum uint DRM_NR_HOS_WINDOWS            = 0xf1; // GUI roadmap G5: the compositor's window rects (logged)
 
 // DRM object types (struct drm_mode_obj_get_properties.obj_type).
 private enum uint DRM_MODE_OBJECT_CRTC      = 0xcccccccc;
@@ -17895,7 +17895,7 @@ private void cursorLoadBo(uint handle, uint w, uint h, int hotX, int hotY) @nogc
 }
 
 // Post-handover cursor ERASE: rebuild the pixels under the old sprite rect from the STABLE present
-// shadow (compositor content) + kernel border geometry — byte-identical to what the last present
+// shadow (compositor content) — byte-identical to what the last present
 // wrote there — instead of replaying a saved copy of the LIVE scanout, which the compositor may have
 // overwritten since (the 2026-09-26 stale-save-under flicker).  Shares g_presentLine with the
 // present; safe because SYSCALLs run IF-masked so present and this mouse-IRQ path never overlap.
@@ -17909,7 +17909,7 @@ private void cursorRecomposite(int rx, int ry, int rw, int rh) @nogc nothrow {
     foreach (i; 0 .. rh) {
         const int sy = ry + i;
         if (sy < 0 || sy >= fbh || sy >= g_presentShadowH) continue;
-        bgComposeRow(g_presentLine, lineW, sy);         // background for this row = shadow + borders
+        bgComposeRow(g_presentLine, lineW, sy);         // background for this row = the shadow
         foreach (j; 0 .. rw) {
             const int sx = rx + j;
             if (sx < 0 || sx >= fbw || sx >= lineW) continue;
@@ -17978,7 +17978,7 @@ private void cursorPaint() @nogc nothrow {
     import core.console : g_desktopClaimedFb;
     // Pre-handover the kernel owns the fb, so capture the pixels under the sprite for cursorErase's
     // direct save-under replay.  Post-handover cursorErase recomposites the background from the
-    // shadow+borders instead, so the save-under is unused there — skip capturing it (which would be a
+    // shadow instead, so the save-under is unused there — skip capturing it (which would be a
     // per-move read of write-combining scanout MMIO).
     if (!g_desktopClaimedFb) {
         foreach (ry; 0 .. ch) {
@@ -18638,8 +18638,8 @@ public __gshared ulong g_presentStoreCycles = 0;   // the framebuffer writes alo
 // borders (and, in a reverted attempt, the cursor) into the LIVE scanout in a SEPARATE pass AFTER
 // the content blit, so the continuously-scanning display could sample a borderless/cursorless
 // intermediate → the colour border flickered.  Now every scanout row is composed in a kernel RAM
-// line (compositor content + borders) and written with ONE store, so no intermediate is ever
-// visible; and the cursor's erase rebuilds its background from the SAME stable shadow+borders (never
+// line and written with ONE store, so no intermediate is ever visible; and the cursor's erase
+// rebuilds its background from the SAME stable shadow (never
 // a live-scanout capture, which was the old stale-save-under flicker).  Present and cursorSetPos
 // never run concurrently — SYSCALLs run IF-masked (SFMASK 0x47700), the mouse IRQ only fires between
 // presents — so this shares one shadow + one scratch line with no locking.
@@ -18830,12 +18830,8 @@ private long drmPresentFb(uint fbId) @nogc nothrow {
     presentLineEnsure(rowBytes);
     g_presentShadowW = cast(int)copyW;   // shadow content dims, for bgComposeRow / cursor recomposite
     g_presentShadowH = cast(int)copyH;
-    // Each written row is composed (content + identity borders) into g_presentLine and stored ONCE,
-    // so the continuously-scanning display never samples a row mid-way between content and border.
-    // Fall back to a content-only copy + a post-blit border stamp only if the scratch line is absent.
-    const bool composeBorders = (g_presentLine !is null);
-    // g_presentForceFull: a window's border moved/resized/recoloured — its rows' CONTENT may be
-    // unchanged (row-diff would skip them), so force a full pass to (re)paint the border there.
+    // g_presentForceFull: something drawn over the content (the cursor path asks for it) needs every
+    // row rewritten, not just the rows whose content changed.
     const bool fullRefresh = !shadowReady || (g_presentFrameNo % PRESENT_FULL_EVERY) == 0
                              || g_presentForceFull;
     g_presentForceFull = false;
@@ -18865,14 +18861,7 @@ private long drmPresentFb(uint fbId) @nogc nothrow {
             memcpy(g_presentShadow + cast(size_t)row * rowBytes, srow, rowBytes);
         ++rowsCopied;
         const ulong _tRow = rdtsc();
-        if (composeBorders) {
-            memcpy(g_presentLine, srow, rowBytes);                       // content into the RAM line
-            hosStampBordersRow(g_presentLine, cast(int)copyW, cast(int)row);  // overlay borders in RAM
-            copyRowNT(dst + cast(size_t)row * cast(size_t)g_fb.pitch,
-                      cast(const(ubyte)*)g_presentLine, rowBytes);       // ONE store: content-or-border
-        } else {
-            copyRowNT(dst + cast(size_t)row * cast(size_t)g_fb.pitch, srow, rowBytes);
-        }
+        copyRowNT(dst + cast(size_t)row * cast(size_t)g_fb.pitch, srow, rowBytes);
         g_presentStoreCycles += rdtsc() - _tRow;
     }
 
@@ -18897,14 +18886,10 @@ private long drmPresentFb(uint fbId) @nogc nothrow {
         console_framebuffer_write(" -> display CLAIMED\n");
         g_dispLogPresent = true;
     }
-    // GUI roadmap G5: identity borders are now composed INTO each row above (border-aware present,
-    // so the async scanout never sees a borderless intermediate).  Fall back to the old post-blit
-    // stamp only if the compose scratch line could not be allocated.
-    if (!composeBorders) hosDrawIdentityBorders();
     g_fbConsoleEnabled = false;
     g_desktopClaimedFb = true;   // the compositor now presents — no more kernel fb drawing
     // The compositor just overwrote the framebuffer; re-stamp the kernel cursor on top of the fresh
-    // frame (its background is now the just-written shadow+borders, so the next erase is never stale).
+    // frame (its background is now the just-written shadow, so the next erase is never stale).
     cursorRepaintAfterPresent();
     // Log-egress status.  NO LONGER ALWAYS ON (2026-09-05).
     //
@@ -19494,34 +19479,20 @@ private void userCopyString(ulong dst, const(char)* src, size_t n) @nogc nothrow
     foreach (i; 0 .. n) d[i] = src[i];
 }
 
-// ── GUI roadmap G5: trusted identity-colored window borders ──────────────────
-// Hyprland's CPU-readback present path clears the frame instead of compositing
-// the scene, so the kernel — the trusted layer that owns the final blit to g_fb
-// — draws each client window's border itself, in a colour derived from the
-// owning process (its pid; a stand-in identity until per-client IdentityRec
-// colours are wired).  Apps cannot influence this: the border is painted after
-// the present blit, over whatever Hyprland produced.
+// ── GUI roadmap G5: window geometry from the compositor, and the identity colour ──────────────
+// The kernel used to paint a 4px identity-coloured border around every client window over the
+// final frame.  That is gone (2026-10-01): the compositor now draws each window's TITLEBAR in the
+// owning domain's colour (deps/hyprland CHosTitleBarDecoration), reading the colour from
+// /proc/<pid>/status "DomainColor" -- hosIdentityColor() below, the same value the border used.
+// The bar lies outside the client's surface, so the colour is still one a program cannot choose.
+// Hyprland still reports the visible windows' rectangles each frame; the kernel only logs them.
 private struct HosWinRect { int x, y, w, h; uint pid; }
 private enum size_t HOS_WIN_MAX = 16;
-private enum int    HOS_BORDER_PX = 4;
 __gshared HosWinRect[HOS_WIN_MAX] g_hosWins;
 __gshared uint g_hosWinCount = 0;
-__gshared bool g_hosBorderLogged = false;
 
-// A small palette of distinct, unmistakable identity colours (ARGB).  Indexed by
-// the owning process so each client gets a stable border colour.
 // Drawn when the owning task has no identity.  Deliberately one fixed colour, not a pid hash.
 private enum uint HOS_ID_NEUTRAL = IDENTITY_BORDER_NEUTRAL;   // ROADMAP 4.0c: one definition
-private immutable uint[8] HOS_ID_PALETTE = [
-    0xFF4CC2A8, // teal
-    0xFFE0B341, // amber
-    0xFF6FA8DC, // blue
-    0xFFCC6699, // magenta
-    0xFF8FBF5F, // green
-    0xFFE08A4C, // orange
-    0xFFB18FE0, // violet
-    0xFFD05757, // red
-];
 
 private uint hosIdentityColor(uint pid) @nogc nothrow {
     // This draws what the kernel logs as an "identity border", and identity.d says outright that
@@ -19560,204 +19531,20 @@ private uint hosIdentityColor(uint pid) @nogc nothrow {
     return HOS_ID_NEUTRAL;
 }
 
-private void fbFillRow(int x, int y, int w, uint color) @nogc nothrow {
-    if (y < 0 || y >= cast(int)g_fb.height) return;
-    int x0 = x < 0 ? 0 : x;
-    int x1 = x + w; if (x1 > cast(int)g_fb.width) x1 = cast(int)g_fb.width;
-    auto row = cast(uint*)(cast(ubyte*)g_fb.address + cast(size_t)y * g_fb.pitch);
-    foreach (px; x0 .. x1) row[px] = color;
-}
-
-private enum int HOS_BORDER_RADIUS = 10; // GUI roadmap G16: rounded identity border
-
-private void fbPutPixel(int x, int y, uint color) @nogc nothrow {
-    if (x < 0 || y < 0 || x >= cast(int)g_fb.width || y >= cast(int)g_fb.height) return;
-    auto row = cast(uint*)(cast(ubyte*)g_fb.address + cast(size_t)y * g_fb.pitch);
-    row[x] = color;
-}
-
-private void fbDrawBorderSquare(int x, int y, int w, int h, uint color) @nogc nothrow {
-    foreach (i; 0 .. HOS_BORDER_PX) {
-        fbFillRow(x, y + i, w, color);             // top
-        fbFillRow(x, y + h - 1 - i, w, color);     // bottom
-    }
-    foreach (yy; y .. y + h) {
-        if (yy < 0 || yy >= cast(int)g_fb.height) continue;
-        auto row = cast(uint*)(cast(ubyte*)g_fb.address + cast(size_t)yy * g_fb.pitch);
-        foreach (i; 0 .. HOS_BORDER_PX) {
-            int lx = x + i, rx = x + w - 1 - i;
-            if (lx >= 0 && lx < cast(int)g_fb.width) row[lx] = color;
-            if (rx >= 0 && rx < cast(int)g_fb.width) row[rx] = color;
-        }
-    }
-}
-
-// GUI roadmap G16: a rounded 4px identity ring, matching the compositor's
-// rounded window decorations. Still kernel-owned and unspoofable.
-private void fbDrawBorder(int x, int y, int w, int h, uint color) @nogc nothrow {
-    if (w <= 0 || h <= 0) return;
-    immutable int r = HOS_BORDER_RADIUS;
-    if (w < 2 * r + 2 || h < 2 * r + 2) {
-        fbDrawBorderSquare(x, y, w, h, color);
-        return;
-    }
-    // straight edges between the corner arcs
-    foreach (i; 0 .. HOS_BORDER_PX) {
-        fbFillRow(x + r, y + i, w - 2 * r, color);
-        fbFillRow(x + r, y + h - 1 - i, w - 2 * r, color);
-    }
-    foreach (yy; (y + r) .. (y + h - r)) {
-        if (yy < 0 || yy >= cast(int)g_fb.height) continue;
-        auto row = cast(uint*)(cast(ubyte*)g_fb.address + cast(size_t)yy * g_fb.pitch);
-        foreach (i; 0 .. HOS_BORDER_PX) {
-            int lx = x + i, rx = x + w - 1 - i;
-            if (lx >= 0 && lx < cast(int)g_fb.width) row[lx] = color;
-            if (rx >= 0 && rx < cast(int)g_fb.width) row[rx] = color;
-        }
-    }
-    // four quarter-circle corner arcs, thickness HOS_BORDER_PX
-    immutable int rOut2 = r * r;
-    immutable int rIn   = r - HOS_BORDER_PX;
-    immutable int rIn2  = rIn * rIn;
-    immutable int tlx = x + r,         tly = y + r;
-    immutable int trx = x + w - 1 - r, tryy = y + r;
-    immutable int blx = x + r,         bly = y + h - 1 - r;
-    immutable int brx = x + w - 1 - r, bryy = y + h - 1 - r;
-    foreach (dy; 0 .. r + 1) {
-        foreach (dx; 0 .. r + 1) {
-            immutable int d2 = dx * dx + dy * dy;
-            if (d2 > rOut2 || d2 < rIn2) continue;
-            fbPutPixel(tlx - dx, tly - dy, color);
-            fbPutPixel(trx + dx, tryy - dy, color);
-            fbPutPixel(blx - dx, bly + dy, color);
-            fbPutPixel(brx + dx, bryy + dy, color);
-        }
-    }
-}
-
-// ── Border-aware present: per-scanline border primitives (2026-09-27) ──────────
-// The SINGLE source of truth for "which pixels on scanline rowY are an identity border" — used by
-// BOTH the present compose loop and the cursor's background recomposite, so a border pixel produced
-// by a present and by a cursor erase are byte-identical (no shimmer).  Row-sliced port of
-// fbDrawBorder / fbDrawBorderSquare above: it MUST set exactly the same pixels those set on rowY.
-// Writes into a full-width kernel line[] (indexed by absolute x), so no SMAP gate is needed.
-private void hosBorderRowOverlay(uint* line, int lineW, int rowY,
-                                 int x, int y, int w, int h, uint color) @nogc nothrow {
-    if (w <= 0 || h <= 0) return;
-    if (rowY < y || rowY >= y + h) return;                       // scanline outside this window
-    immutable int r = HOS_BORDER_RADIUS;
-    immutable int B = HOS_BORDER_PX;
-    void put(int px) @nogc nothrow { if (px >= 0 && px < lineW) line[px] = color; }
-    void span(int x0, int x1) @nogc nothrow { for (int px = x0; px < x1; ++px) put(px); }
-    if (w < 2 * r + 2 || h < 2 * r + 2) {
-        // square border (fbDrawBorderSquare): full-width top/bottom bands + left/right B columns.
-        if ((rowY >= y && rowY < y + B) || (rowY >= y + h - B && rowY < y + h)) span(x, x + w);
-        span(x, x + B); span(x + w - B, x + w);
-        return;
-    }
-    // rounded border (fbDrawBorder): straight edges between quarter-circle corner arcs.
-    if (rowY >= y && rowY < y + B)        span(x + r, x + w - r);         // top band
-    if (rowY >= y + h - B && rowY < y + h) span(x + r, x + w - r);        // bottom band
-    if (rowY >= y + r && rowY < y + h - r) { span(x, x + B); span(x + w - B, x + w); } // mid edges
-    immutable int rOut2 = r * r, rIn = r - B, rIn2 = rIn * rIn;
-    const int dyt = (y + r) - rowY;                              // top corner rows: dy in 0..r
-    if (dyt >= 0 && dyt <= r)
-        foreach (dx; 0 .. r + 1) { const int d2 = dx * dx + dyt * dyt;
-            if (d2 <= rOut2 && d2 >= rIn2) { put(x + r - dx); put(x + w - 1 - r + dx); } }
-    const int dyb = rowY - (y + h - 1 - r);                      // bottom corner rows: dy in 0..r
-    if (dyb >= 0 && dyb <= r)
-        foreach (dx; 0 .. r + 1) { const int d2 = dx * dx + dyb * dyb;
-            if (d2 <= rOut2 && d2 >= rIn2) { put(x + r - dx); put(x + w - 1 - r + dx); } }
-}
-
-// Overlay EVERY identity border onto scanline rowY of line[] (full-width, absolute-x indexed).
-private void hosStampBordersRow(uint* line, int lineW, int rowY) @nogc nothrow {
-    foreach (i; 0 .. g_hosWinCount) {
-        auto wn = g_hosWins[i];
-        hosBorderRowOverlay(line, lineW, rowY, wn.x, wn.y, wn.w, wn.h, hosIdentityColor(wn.pid));
-    }
-}
-
-// Compose the STABLE background for scanline rowY into line[]: compositor content (present shadow) +
-// identity borders — byte-identical to what the present last wrote to that row.  The cursor erase
-// uses this to restore, so it never replays a stale live-scanout capture (the old flicker source).
+// Compose the STABLE background for scanline rowY into line[]: the compositor's content (present
+// shadow) -- byte-identical to what the present last wrote to that row.  The cursor erase uses this
+// to restore, so it never replays a stale live-scanout capture (the old flicker source).
 private void bgComposeRow(uint* line, int lineW, int rowY) @nogc nothrow {
     if (g_presentShadow is null || rowY < 0 || rowY >= g_presentShadowH) return;
     const int sw = g_presentShadowW;
     auto shadow = cast(const(uint)*)(g_presentShadow + cast(size_t)rowY * cast(size_t)sw * 4);
     foreach (i; 0 .. lineW) line[i] = (i < sw) ? (shadow[i] | 0xff000000) : 0xff000000;
-    hosStampBordersRow(line, lineW, rowY);
-}
-
-private void hosDrawIdentityBorders() @nogc nothrow {
-    if (g_hosWinCount == 0) return;
-    smapBegin();
-    foreach (i; 0 .. g_hosWinCount) {
-        auto wn = g_hosWins[i];
-        const uint bc = hosIdentityColor(wn.pid);
-        fbDrawBorder(wn.x, wn.y, wn.w, wn.h, bc);
-        // ROADMAP 4.1: a census of the colours ACTUALLY PAINTED, not just window 0's.
-        // The old one-shot log below reports g_hosWins[0] alone, so a second identity on
-        // screen -- the whole point of this tier -- left no trace in the record, and any
-        // test asserting on it would pass or fail for reasons unrelated to what was drawn.
-        // One line per never-before-seen colour: bounded, so it cannot flood the UART, and
-        // complete, because a new identity appearing is exactly the event worth a line.
-        {
-            static __gshared uint[8] seen  = 0;
-            static __gshared uint    seenN = 0;
-            bool known = false;
-            foreach (k; 0 .. seenN) if (seen[k] == bc) { known = true; break; }
-            if (!known && seenN < seen.length) {
-                seen[seenN++] = bc;
-                import core.task : g_tasks, taskIdFromLinuxPid, MAX_TASKS;
-                const int ctid = taskIdFromLinuxPid(cast(int)wn.pid);
-                klog("[4.1] identity painted: color="); klog_hex(bc);
-                klog(" pid="); klog_dec(wn.pid);
-                klog(" ident=");
-                if (ctid >= 0 && ctid < MAX_TASKS) klog_hex(g_tasks[ctid].identityObjId);
-                else klog("NO-TASK");
-                klog("\n");
-            }
-        }
-    }
-    smapEnd();
-    if (!g_hosBorderLogged) {
-        klog("[g5] drew identity borders for "); klog_hex(g_hosWinCount);
-        klog(" window(s); first rect x="); klog_hex(cast(ulong)cast(uint)g_hosWins[0].x);
-        klog(" y="); klog_hex(cast(ulong)cast(uint)g_hosWins[0].y);
-        klog(" w="); klog_hex(cast(ulong)cast(uint)g_hosWins[0].w);
-        klog(" h="); klog_hex(cast(ulong)cast(uint)g_hosWins[0].h);
-        klog(" color="); klog_hex(hosIdentityColor(g_hosWins[0].pid));
-        // ROADMAP 4.0: why the border is the colour it is.  Reading the owning task's real
-        // identity here was INERT -- the colour did not move -- so one of these three is the
-        // reason, and guessing between them has already cost several boots.  pid is what the
-        // compositor reported for the window; tid is pid-1 (taskIdFromLinuxPid); ident is that
-        // task's identityObjId, which should be non-zero because task 0 is stamped System at boot
-        // and fork/thread creation inherit it.
-        {
-            import core.task : g_tasks, taskIdFromLinuxPid, MAX_TASKS;
-            const uint wpid = g_hosWins[0].pid;
-            const int wtid = taskIdFromLinuxPid(cast(int)wpid);
-            klog(" pid="); klog_dec(wpid);
-            klog(" tid="); klog_dec(cast(ulong)cast(uint)wtid);
-            klog(" ident=");
-            if (wtid >= 0 && wtid < MAX_TASKS) klog_hex(g_tasks[wtid].identityObjId);
-            else klog("NO-TASK");
-        }
-        klog(" -- G5 BORDER\n");
-        g_hosBorderLogged = true;
-    }
 }
 
 private __gshared uint g_hosWinLogN     = 0;
 private __gshared uint g_hosWinPrevN    = 0xffffffffu;
 private __gshared int  g_hosWinPrevW    = -1;
 private __gshared int  g_hosWinPrevH    = -1;
-// Border-aware present: a full snapshot of the last window set, so ANY geometry/colour change forces
-// the next present to be a full pass (a moved/removed border sits on rows whose CONTENT is unchanged,
-// which row-diff would otherwise skip — leaving the old border behind / the new one unpainted).
-private __gshared HosWinRect[HOS_WIN_MAX] g_hosWinSnap;
-private __gshared uint g_hosWinSnapN    = 0xffffffffu;
 private long drmSetHosWindows(ulong arg) @nogc nothrow {
     // arg layout: u32 count, u32 pad, then count × { i32 x,y,w,h; u32 pid }.
     uint count = userRead!uint(arg + 0);
@@ -19772,23 +19559,6 @@ private long drmSetHosWindows(ulong arg) @nogc nothrow {
         p += 20;
     }
     g_hosWinCount = count;
-    // Force-full the next present if the window set changed in ANY way (count or any rect/pid), so
-    // the border-aware present repaints borders whose underlying content did not change.
-    {
-        bool winsChanged = (count != g_hosWinSnapN);
-        if (!winsChanged)
-            foreach (i; 0 .. count) {
-                auto a = g_hosWins[i]; auto b = g_hosWinSnap[i];
-                if (a.x != b.x || a.y != b.y || a.w != b.w || a.h != b.h || a.pid != b.pid) {
-                    winsChanged = true; break;
-                }
-            }
-        if (winsChanged) {
-            g_presentForceFull = true;
-            g_hosWinSnapN = count;
-            foreach (i; 0 .. count) g_hosWinSnap[i] = g_hosWins[i];
-        }
-    }
     // Log the window SET whenever it CHANGES -- count or the first window's geometry --
     // rather than a fixed number of times at startup.  drmSetHosWindows runs every frame,
     // so a per-call klog floods the serial UART and stalls the compositor under KVM; but
@@ -19821,35 +19591,6 @@ private long drmSetHosWindows(ulong arg) @nogc nothrow {
         klog("\n");
         g_hosWinLogN++;
     }
-    // DELIBERATELY NO hosDrawIdentityBorders() HERE.  (2026-09-05)
-    //
-    // This used to paint the borders immediately, reasoning that "Hyprland's frame/present
-    // cadence is sparse after a window maps, but it still reports windows each render, so
-    // drawing here guarantees the border appears even without a fresh present blit."  The
-    // guarantee is real and so is the damage: painting outside a present writes into a
-    // framebuffer that NOTHING will clean up, because the only thing that repaints the desktop
-    // IS a present.
-    //
-    // CORRECTION (same day): the first version of this note claimed the screenshot showed
-    // STALE borders at coordinates the compositor had moved on from.  That was wrong.  Decoding
-    // the [g5] rects from that very boot against the image shows every border is exactly right:
-    //     [0] 629x750 +6+44   [1] 629x750 +645+44   [2] 1000x700 +140+50
-    //     [3] 1180x680 +50+74 [4] 920x620 +180+104
-    // and [4] is precisely the rectangle drawn around the Activities window.  What looks like
-    // misalignment is borders for OCCLUDED windows: every window the compositor reports gets a
-    // border stamped on top of the finished frame, with no z-order handling, so the windows
-    // hidden behind Activities have their borders painted over it.  That is a property of the
-    // G5 feature, not a coordinate bug, and it is tracked separately.
-    //
-    // Dropping the call here is still right on its own merits -- painting into the framebuffer
-    // outside a present is the same anti-pattern as the freeze HUD, and nothing but a present
-    // can undo it -- but it fixed no visible defect.
-    //
-    // Borders are still painted on EVERY present, by drmPresentFb() and drmPresentToFramebuffer()
-    // -- and there it is correct, because the full-screen blit immediately before wipes the
-    // previous frame's borders away first.  The cost of dropping this call is that a border
-    // appears one present later than it used to; the benefit is that it appears in the right
-    // place. A window-list change is itself damage, so a present follows shortly.
     return 0;
 }
 
@@ -19918,8 +19659,6 @@ private long drmPresentToFramebuffer(ulong arg) @nogc nothrow {
     }
     smapEnd();
 
-    // GUI roadmap G5: overlay trusted identity borders for each client window.
-    hosDrawIdentityBorders();
     cursorRepaintAfterPresent();
 
     g_fbConsoleEnabled = false;

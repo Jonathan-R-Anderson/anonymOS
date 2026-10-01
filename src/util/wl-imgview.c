@@ -3,8 +3,8 @@
  *
  * argv[1] = a PNG file path.  Decodes it with libpng's simplified API into a BGRA buffer (which matches
  * this compositor's XRGB8888 wl_shm framebuffer), then blits it scaled-to-fit (nearest-neighbour, aspect
- * preserved) into a fixed 720x540 window with our own CSD titlebar (basename + red close box).
- *   +/-  zoom      arrows pan      0 reset-to-fit      Esc / close-box  exit
+ * preserved) into a 720x514 window; the compositor draws the titlebar (basename + close/min/max).
+ *   +/-  zoom      arrows pan      0 reset-to-fit      Esc  exit
  *
  * All Wayland scaffolding (registry / seat / xdg / double-buffered wl_shm / FreeType text / evdev keymap /
  * the complete v5 wl_pointer listener) is copied VERBATIM from the proven wl-wifi-menu.c client.
@@ -33,7 +33,7 @@
 #define MFD_CLOEXEC 0x0001U
 #endif
 
-enum { WIN_W = 720, WIN_H = 540, TITLE_H = 26 };
+enum { WIN_W = 720, WIN_H = 514, TITLE_H = 0 };
 
 struct app {
     struct wl_display *display;
@@ -165,8 +165,7 @@ static double fit_scale(struct app *app){
 
 /* --- rendering --- */
 static void draw(struct app *app){
-    const uint32_t BG=0xff11141bu, TITLE=0xff232834u, TXT=0xfff2f5fau, DIM=0xff8b94a3u,
-                   CLOSE=0xffe0524du, CLOSEX=0xfff2f5fau;
+    const uint32_t BG=0xff11141bu, DIM=0xff8b94a3u;
     /* content backdrop */
     fill_rect(app, 0, 0, app->width, app->height, BG);
 
@@ -203,19 +202,6 @@ static void draw(struct app *app){
         }
     }
 
-    /* CSD titlebar drawn last, on top */
-    fill_rect(app, 0, 0, app->width, TITLE_H, TITLE);
-    draw_text(app, app->have_img ? app->base : "wl-imgview", 12, 5, app->width - TITLE_H - 20, 15, TXT);
-    /* red close box top-right */
-    int bx = app->width - TITLE_H;
-    fill_rect(app, bx, 0, TITLE_H, TITLE_H, CLOSE);
-    /* draw an 'x' with two short diagonals via single pixels */
-    for (int k = 0; k < 10; k++){
-        int cxx = bx + 8 + k, cyy = 8 + k;
-        if (cxx>=0&&cxx<app->width&&cyy>=0&&cyy<app->height) app->pixels[cyy*app->width+cxx]=CLOSEX;
-        int cxx2 = bx + 8 + k, cyy2 = 17 - k;
-        if (cxx2>=0&&cxx2<app->width&&cyy2>=0&&cyy2<app->height) app->pixels[cyy2*app->width+cxx2]=CLOSEX;
-    }
     /* zoom readout bottom-left */
     if (app->have_img){
         char z[64]; snprintf(z, sizeof z, "%dx%d  %d%%", app->iw, app->ih,
@@ -275,7 +261,7 @@ static void destroy_buffers(struct app *app){
     app->map_base = NULL; app->map_size = 0;
     app->pixels = NULL; app->dirty = 0;
 }
-/* draw() is fully size-relative (image is scaled-to-fit, CSD/text keyed off width/height),
+/* draw() is fully size-relative (image is scaled-to-fit, text keyed off width/height),
  * so rebuilding the shm buffers at the new dimensions reflows the content automatically. */
 static void resize_to(struct app *app, int w, int h){
     if (w <= 0 || h <= 0) return;
@@ -287,11 +273,6 @@ static void resize_to(struct app *app, int w, int h){
 }
 
 /* --- input --- */
-static int in_close_box(struct app *a){
-    return a->pointer_x >= a->width - TITLE_H && a->pointer_x < a->width &&
-           a->pointer_y >= 0 && a->pointer_y < TITLE_H;
-}
-
 static void pointer_enter(void *d, struct wl_pointer *p, uint32_t s, struct wl_surface *sf, wl_fixed_t x, wl_fixed_t y){ (void)p;(void)s;(void)sf; struct app*a=d; a->pointer_x=wl_fixed_to_double(x); a->pointer_y=wl_fixed_to_double(y); }
 static void pointer_leave(void *d, struct wl_pointer *p, uint32_t s, struct wl_surface *sf){ (void)p;(void)s;(void)sf; struct app*a=d; a->dragging=0; }
 static void pointer_motion(void *d, struct wl_pointer *p, uint32_t t, wl_fixed_t x, wl_fixed_t y){ (void)p;(void)t; struct app*a=d;
@@ -301,7 +282,6 @@ static void pointer_motion(void *d, struct wl_pointer *p, uint32_t t, wl_fixed_t
 static void pointer_button(void *d, struct wl_pointer *p, uint32_t se, uint32_t t, uint32_t button, uint32_t state){ (void)p;(void)se;(void)t; struct app*a=d;
     if (button != 0x110 /*BTN_LEFT*/) return;
     if (state == 1){
-        if (in_close_box(a)) exit(0);
         if (a->pointer_y >= TITLE_H){ a->dragging=1; a->drag_x=a->pointer_x; a->drag_y=a->pointer_y; }
     } else {
         a->dragging=0;

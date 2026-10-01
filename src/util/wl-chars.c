@@ -4,7 +4,7 @@
  * A scrollable grid of Unicode characters rendered with FreeType.  Click a cell to "copy" that
  * character: its UTF-8 bytes are written to /run/clipboard and printed to stdout, and the last-picked
  * glyph is shown large in a status strip.  Scroll with the mouse wheel or the Up/Down/PageUp/PageDown
- * keys.  CSD titlebar "Characters" + a close box (top-right) that exits.
+ * keys.  The compositor draws the window's titlebar (title + close/min/max).
  *
  * The Wayland scaffolding (registry / seat / xdg / persistent double-buffered wl_shm / FreeType text /
  * evdev keymap / poll loop) is the proven wl-wifi-menu pattern, reused verbatim.  draw_text() here is
@@ -34,8 +34,8 @@
 #endif
 
 enum {
-    WIN_W = 500, WIN_H = 440,
-    TITLE_H = 28,          /* CSD titlebar strip                */
+    WIN_W = 500, WIN_H = 412,
+    TITLE_H = 0,           /* no own titlebar (compositor's)    */
     STATUS_H = 64,         /* bottom "last picked" strip        */
     CELL = 36,             /* grid cell size (px)               */
     MARGIN = 8,            /* left/right grid inset             */
@@ -201,18 +201,10 @@ static void build_codepoints(struct app *app){
 
 /* --- rendering --- */
 static void draw_grid(struct app *app){
-    const uint32_t BG=0xff1b1f27u, TITLE=0xff11141bu, CLOSE=0xffc0392bu, CLOSEH=0xffe74c3cu,
+    const uint32_t BG=0xff1b1f27u,
                    TXT=0xfff2f5fau, DIM=0xff8b94a3u, ACC=0xff4da3ffu,
                    CELLBG=0xff232834u, CELLHOV=0xff3a4d66u, STATUSBG=0xff0d0f14u;
     fill_rect(app, 0, 0, app->width, app->height, BG);
-
-    /* titlebar */
-    fill_rect(app, 0, 0, app->width, TITLE_H, TITLE);
-    draw_text(app, "Characters", 12, 6, app->width-80, 16, TXT);
-    int cbx = app->width - 26, cby = 4, cbs = 20;
-    int close_hover = (app->pointer_x >= cbx && app->pointer_x < cbx+cbs && app->pointer_y >= cby && app->pointer_y < cby+cbs);
-    fill_rect(app, cbx, cby, cbs, cbs, close_hover?CLOSEH:CLOSE);
-    draw_text(app, "x", cbx+6, cby+2, cbs, 15, TXT);
 
     /* grid */
     int cols = grid_cols(app), vrows = grid_visible_rows(app);
@@ -355,15 +347,9 @@ static void pointer_leave(void *d, struct wl_pointer *p, uint32_t s, struct wl_s
 static void pointer_motion(void *d, struct wl_pointer *p, uint32_t t, wl_fixed_t x, wl_fixed_t y){ (void)p;(void)t; struct app*a=d;
     a->pointer_x=wl_fixed_to_double(x); a->pointer_y=wl_fixed_to_double(y);
     int nh = cell_at(a, a->pointer_x, a->pointer_y);
-    /* redraw on hover change OR when the pointer is over the close box (for its hover tint) */
-    int cbx = a->width - 26; int over_close = (a->pointer_x >= cbx && a->pointer_y < TITLE_H);
-    if (nh != a->hover){ a->hover = nh; redraw_commit(a); }
-    else if (over_close || a->pointer_y < TITLE_H) redraw_commit(a); }
+    if (nh != a->hover){ a->hover = nh; redraw_commit(a); } }
 static void pointer_button(void *d, struct wl_pointer *p, uint32_t se, uint32_t t, uint32_t button, uint32_t state){ (void)p;(void)se;(void)t; struct app*a=d;
     if (button != 0x110 /*BTN_LEFT*/ || state != 1) return;
-    /* close box */
-    int cbx = a->width - 26, cby = 4, cbs = 20;
-    if (a->pointer_x >= cbx && a->pointer_x < cbx+cbs && a->pointer_y >= cby && a->pointer_y < cby+cbs){ exit(0); }
     int idx = cell_at(a, a->pointer_x, a->pointer_y);
     if (idx >= 0) pick(a, idx); }
 static void pointer_axis(void *d, struct wl_pointer *p, uint32_t t, uint32_t ax, wl_fixed_t v){ (void)p;(void)t; struct app*a=d;

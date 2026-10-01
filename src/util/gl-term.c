@@ -62,13 +62,7 @@ static const uint32_t COL_BG     = 0xff101418;
 static const uint32_t COL_FG     = 0xfff2f2f2;
 static const uint32_t COL_CURSOR = 0xff30c030;
 
-// Client-side window decorations: a titlebar with minimize / maximize / close
-// buttons, drawn into the pixel buffer; the titlebar is also draggable (move).
-#define DECO_BASE_H 26          // titlebar height in base (scale=1) px
 #define BTN_LEFT_CODE 0x110     // linux/input BTN_LEFT
-static const uint32_t COL_DECO_BG = 0xff2a3140;   // titlebar bg (no-domain default)
-static const uint32_t COL_DECO_FG = 0xfff2f2f2;   // titlebar text + button glyphs
-static const uint32_t COL_DECO_SEP = 0xff10141a;  // hairline under the titlebar
 static const uint32_t COL_SB_TRACK = 0xff20262e;  // scrollback scrollbar track (subtle)
 static const uint32_t COL_SB_THUMB = 0xff5a6675;  // scrollbar thumb (brighter)
 
@@ -234,8 +228,8 @@ static void init_layout(struct app *a) {
     a->font_px = BASE_FONT_PX * a->scale;
     a->cell_w = BASE_CELL_W * a->scale;
     a->cell_h = BASE_CELL_H * a->scale;
-    a->deco_h = DECO_BASE_H * a->scale;             // reserve a titlebar strip on top
-    a->pad_x = 8 * a->scale;                        // the 4px domain border covers the left edge
+    a->deco_h = 0;   // no titlebar of our own: the compositor draws every window's, in its domain's colour
+    a->pad_x = 8 * a->scale;                        // left margin
     a->width = a->pad_x + COLS * a->cell_w + SCROLLBAR_W * a->scale;  // margin + grid + scrollback strip
     a->height = ROWS * a->cell_h + a->deco_h;
     a->baseline = (BASE_FONT_PX - 3) * a->scale;
@@ -377,11 +371,7 @@ static void render_ft_glyph(struct app *a, int x, int y, uint32_t cp, uint32_t f
     }
 }
 
-// ── window decorations (titlebar + min/max/close buttons) ────────────────────
-static void put_px(struct app *a, int x, int y, uint32_t c) {
-    if (x < 0 || y < 0 || x >= a->width || y >= a->height) return;
-    a->pixels[y * a->width + x] = c;
-}
+// ── window decorations: none of our own (the compositor draws the titlebar); deco_h is 0 ──
 // Button column x-origins (square buttons, right-aligned). Returns button width.
 static int deco_btns(struct app *a, int *minx, int *maxx, int *closex) {
     int w = a->deco_h;
@@ -398,41 +388,6 @@ static int deco_hit(struct app *a, double x, double y) {
     if (x >= maxx)   return 3;
     if (x >= minx)   return 2;
     return 1;
-}
-static void draw_deco(struct app *a) {
-    const uint32_t bg = g_has_domain ? g_domain_color : COL_DECO_BG;
-    gf_fill(a->pixels, a->width, a->width, a->height, 0, 0, a->width, a->deco_h, bg);
-    gf_fill(a->pixels, a->width, a->width, a->height, 0, a->deco_h - 1, a->width, 1, COL_DECO_SEP);
-
-    int minx, maxx, closex, bw; bw = deco_btns(a, &minx, &maxx, &closex);
-    const int pad = a->deco_h / 3;
-
-    // title text on the left, truncated before the buttons
-    int tx = 6 * a->scale;
-    int ty = (a->deco_h - a->cell_h) / 2; if (ty < 0) ty = 0;
-    for (const char *p = a->title; *p && tx + a->cell_w < minx - 4; ++p) {
-        if (*p != ' ') render_ft_glyph(a, tx, ty, (unsigned char)*p, COL_DECO_FG);
-        tx += a->cell_w;
-    }
-    // minimize: a horizontal bar near the bottom
-    gf_fill(a->pixels, a->width, a->width, a->height,
-            minx + pad, a->deco_h - pad - 2, bw - 2 * pad, 2, COL_DECO_FG);
-    // maximize: a hollow square
-    {
-        int x0 = maxx + pad, y0 = pad, s = a->deco_h - 2 * pad;
-        gf_fill(a->pixels, a->width, a->width, a->height, x0, y0, s, 1, COL_DECO_FG);
-        gf_fill(a->pixels, a->width, a->width, a->height, x0, y0 + s - 1, s, 1, COL_DECO_FG);
-        gf_fill(a->pixels, a->width, a->width, a->height, x0, y0, 1, s, COL_DECO_FG);
-        gf_fill(a->pixels, a->width, a->width, a->height, x0 + s - 1, y0, 1, s, COL_DECO_FG);
-    }
-    // close: an X (two diagonals)
-    {
-        int x0 = closex + pad, y0 = pad, s = a->deco_h - 2 * pad;
-        for (int i = 0; i < s; i++) {
-            put_px(a, x0 + i, y0 + i, COL_DECO_FG);
-            put_px(a, x0 + s - 1 - i, y0 + i, COL_DECO_FG);
-        }
-    }
 }
 
 static void frame_done(void *data, struct wl_callback *cb, uint32_t time)
@@ -511,7 +466,7 @@ static int scrollbar_geom(struct app *a, int *tx, int *ty, int *tw, int *th, int
     int w = SCROLLBAR_W * a->scale;
     *tw = w; *tx = a->width - w;
     *ty = a->deco_h;
-    *th = a->height - a->deco_h - (g_has_domain ? 4 * a->scale : 0); // keep off the bottom domain border
+    *th = a->height - a->deco_h;
     int total = a->sb_count + ROWS;
     int h = (int)((double)ROWS / total * (*th));
     if (h < 16) h = 16;
@@ -837,17 +792,7 @@ static void render(struct app *a) {
                          x, y + (a->cell_h - 8) / 2, (char)cc, COL_BG, -1);
         }
     }
-    draw_scrollbar(a);   // scrollback bar (drawn before the domain border so the border stays intact)
-    // IDENTITY_DOMAIN §6: unspoofable colored border (left/right/bottom; the titlebar
-    // covers the top), drawn before the titlebar so app pixels never reach the ring.
-    if (g_has_domain) {
-        int t = 4 * a->scale;
-        gf_fill(a->pixels, a->width, a->width, a->height, 0, a->height - t, a->width, t, g_domain_color);
-        gf_fill(a->pixels, a->width, a->width, a->height, 0, 0, t, a->height, g_domain_color);
-        gf_fill(a->pixels, a->width, a->width, a->height, a->width - t, 0, t, a->height, g_domain_color);
-    }
-    // window decorations on top (the titlebar doubles as the domain indicator).
-    draw_deco(a);
+    draw_scrollbar(a);   // scrollback bar
 }
 
 // ── Software (wl_shm) present fallback ────────────────────────────────────────
@@ -1272,7 +1217,7 @@ static const struct wl_keyboard_listener keyboard_listener = {
 // ── pointer (for the titlebar: drag-to-move + the min/max/close buttons) ──────
 // R5: is (px,py) over the terminal grid (below the titlebar, before the scrollbar strip, inside the border)?
 static int in_grid(struct app *a, double px, double py) {
-    int border = g_has_domain ? 4 * a->scale : 0;
+    int border = 0;
     return py >= a->deco_h && py < a->height - border &&
            px >= border && px < a->width - SCROLLBAR_W * a->scale;
 }

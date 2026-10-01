@@ -183,6 +183,70 @@ struct File {
     ulong fileSize; // Size for bundle files or others
     uint  objId;    // Phase 2: id of the core.objmgr Object mirroring this fd (0 = none)
     bool  cloexec;  // FD_CLOEXEC: execve closes it (set by the creating call; see fdNoteCreated)
+    ushort ofd;     // shared-offset slot (g_ofd) when dups share this file's offset; 0 = private
+}
+
+// Open file descriptions, for the one property that matters most: the OFFSET.  POSIX says dup(),
+// dup2(), F_DUPFD and fork() give descriptors that share one file offset.  Here a dup copied the
+// File, offset included, so `cmd >log 2>&1` had two writers at two offsets of one file and each
+// overwrote the other (a Go test's results vanished under its own stderr logging).  Rather than
+// turn every f.offset in this file into an indirection, a duplicated descriptor gets a shared slot
+// and the dispatcher loads the slot's offset into the File before a call that moves the offset,
+// and stores it back after (kernel_main.d dispatchLinuxSyscall).  A full table only means new dup
+// groups keep private offsets, as before.
+private enum int OFD_MAX = 2048;
+private struct SharedOffset { uint refs; ulong offset; }
+private __gshared SharedOffset[OFD_MAX] g_ofd;      // slot 0 is never used
+
+// Make src's offset shareable (allocating its slot if it has none) and take one more reference for a
+// copy of it.  False when no slot is free.
+private bool ofdShare(File* src) @nogc nothrow {
+    if (src.ofd == 0) {
+        foreach (k; 1 .. OFD_MAX) {
+            if (g_ofd[k].refs != 0) continue;
+            g_ofd[k].refs = 1;
+            g_ofd[k].offset = src.offset;
+            src.ofd = cast(ushort)k;
+            break;
+        }
+        if (src.ofd == 0) return false;
+    }
+    ++g_ofd[src.ofd].refs;
+    return true;
+}
+
+// Drop f's reference (on close).
+private void ofdRelease(File* f) @nogc nothrow {
+    if (f.ofd == 0) return;
+    if (g_ofd[f.ofd].refs > 0) --g_ofd[f.ofd].refs;
+    f.ofd = 0;
+}
+
+// The file types whose offset is state worth sharing.
+private bool ofdSeekable(FileType t) @nogc nothrow {
+    return t == FileType.FD_RTFILE || t == FileType.FD_BUNDLE;
+}
+
+// Dispatcher hooks: before and after a call on `fd` that may move its offset.
+public bool ofdLoad(int fd) @nogc nothrow {
+    if (fd < 0 || fd >= 1024 || g_fdTable is null) return false;
+    File* f = &g_fdTable[fd];
+    if (f.ofd == 0 || f.type == FileType.FD_NONE) return false;
+    f.offset = g_ofd[f.ofd].offset;
+    return true;
+}
+public void ofdStore(int fd) @nogc nothrow {
+    if (fd < 0 || fd >= 1024 || g_fdTable is null) return;
+    File* f = &g_fdTable[fd];
+    if (f.ofd != 0 && f.type != FileType.FD_NONE) g_ofd[f.ofd].offset = f.offset;
+}
+
+// A dup of fd `src` into `dst`'s slot: share the offset when the file has one.
+private void ofdDup(int src, int dst) @nogc nothrow {
+    File* s = &g_fdTable[src];
+    File* d = &g_fdTable[dst];
+    if (!ofdSeekable(s.type) && s.ofd == 0) { d.ofd = 0; return; }
+    if (ofdShare(s)) d.ofd = s.ofd; else d.ofd = 0;
 }
 
 private struct BootModuleRecord {
@@ -291,7 +355,12 @@ public void fdtabForkCopy(int srcTabId, int dstTabId) {
     foreach (ci; 0 .. cast(size_t)g_cwdLenTab[srcTabId] + 1) g_cwdTab[dstTabId][ci] = g_cwdTab[srcTabId][ci];
     capTableCloneNarrowing(srcTabId, dstTabId, CAP_RIGHT_ALL);
     foreach (i; 0 .. 1024) {
-        g_fdTabs[dstTabId][i] = g_fdTabs[srcTabId][i];
+        {   // fork shares each file's offset with the child (POSIX), as a dup does
+            File* sf = &g_fdTabs[srcTabId][i];
+            const bool share = sf.type != FileType.FD_NONE && (sf.ofd != 0 || ofdSeekable(sf.type)) && ofdShare(sf);
+            g_fdTabs[dstTabId][i] = *sf;
+            if (!share) g_fdTabs[dstTabId][i].ofd = 0;
+        }
         File* f = &g_fdTabs[dstTabId][i];
         f.objId = 0; // copied slots get child-local File objects/capabilities
         if (f.type == FileType.FD_SOCKET) {
@@ -5056,8 +5125,12 @@ public int sys_close(int fd) {
     if (oh is null) return negErrno(EBADF);
     auto cop = g_objOps[oh.type].close;
     if (cop is null) return negErrno(EBADF);
+    const ushort ofd = (fd >= 0 && fd < 1024 && g_fdTable !is null) ? g_fdTable[fd].ofd : 0;
     int ret = cast(int)cop(oh);
-    if (ret == 0) { capClear(cast(uint)fd); epollForgetFd(fd); }
+    if (ret == 0) {
+        capClear(cast(uint)fd); epollForgetFd(fd);
+        if (ofd != 0) { if (g_ofd[ofd].refs > 0) --g_ofd[ofd].refs; g_fdTable[fd].ofd = 0; }
+    }
     return ret;
 }
 
@@ -5093,6 +5166,7 @@ public void taskCloseAllFds(int fdTabId) {
             auto cop = g_objOps[oh.type].close;
             if (cop !is null) cop(oh);
         }
+        ofdRelease(&g_fdTable[fd]);
         g_fdTable[fd].type = FileType.FD_NONE;
         g_fdTable[fd].cloexec = false;
     }
@@ -5111,6 +5185,7 @@ public void execCloseOnExec() {
             auto cop = g_objOps[oh.type].close;
             if (cop !is null) cop(oh);
         }
+        ofdRelease(&g_fdTable[fd]);
         g_fdTable[fd].type = FileType.FD_NONE;
         g_fdTable[fd].cloexec = false;
         capClear(cast(uint)fd);
@@ -13421,6 +13496,7 @@ public ssize_t sys_recvmsg(int sockfd, msghdr* msg, int flags) {
                 int newFd = allocFd();
                 if (newFd < 0) break;
                 g_fdTable[newFd] = sock.passedFiles[sock.passedTail];
+                g_fdTable[newFd].ofd = 0;   // a passed descriptor keeps a private offset
                 g_fdTable[newFd].objId = 0;
                 g_fdTable[newFd].cloexec = (flags & 0x40000000) != 0;   // MSG_CMSG_CLOEXEC, not the sender's flag
                 // No kvmFdDuped here: the queue-time pin (see sendmsg) transfers
@@ -14261,6 +14337,7 @@ public long linux_sys_dup(ulong fd) {
     for (int nfd = 0; nfd < 1024; ++nfd) {
         if (g_fdTable[nfd].type == FileType.FD_NONE) {
             g_fdTable[nfd] = g_fdTable[ifd];
+            ofdDup(ifd, nfd);
             incPipeRef(ifd);
             deriveActiveFd(nfd, ifd);
             return nfd;
@@ -14283,6 +14360,7 @@ public long linux_sys_dup2(ulong fd, ulong newfd_) {
     if (g_fdTable[infd].type != FileType.FD_NONE)
         sys_close(infd);
     g_fdTable[infd] = g_fdTable[ifd];
+    ofdDup(ifd, infd);
     incPipeRef(ifd);
     deriveActiveFd(infd, ifd);
     return infd;
@@ -14364,6 +14442,7 @@ public long linux_sys_fcntl(ulong fd, ulong cmd, ulong arg) {
             for (int nfd = cast(int)arg; nfd < 1024; ++nfd) {
                 if (g_fdTable[nfd].type == FileType.FD_NONE) {
                     g_fdTable[nfd] = g_fdTable[ifd];
+                    ofdDup(ifd, nfd);
                     incPipeRef(ifd);
                     deriveActiveFd(nfd, ifd);
                     return nfd;

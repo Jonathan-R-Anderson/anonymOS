@@ -5780,7 +5780,16 @@ private long dispatchLinuxSyscall(ulong n, ulong a, ulong b, ulong c,
                                    ulong d, ulong e, ulong f) {
     {   const int ct = cast(int)g_current_task_id;
         if (ct >= 0 && ct < MAX_TASKS) { g_lastSysNr[ct] = n; g_lastSysA[ct] = a; g_lastSysB[ct] = b; } }
+    // Calls that move a descriptor's file offset run against the offset its open file description
+    // shares with its dups (posix.d ofdLoad: `cmd >log 2>&1` wrote stdout and stderr at two
+    // independent offsets of one file, each overwriting the other).
+    import core.syscalls.posix : ofdLoad, ofdStore;
+    int ofdFd = -1;
+    if (n == 0 || n == 1 || n == 8 || n == 19 || n == 20 || n == 78 || n == 217) ofdFd = cast(int)a;
+    else if (n == 40 && c == 0) ofdFd = cast(int)b;          // sendfile with no offset pointer reads in_fd's
+    const bool ofdShared = ofdFd >= 0 && ofdLoad(ofdFd);
     const long r = dispatchLinuxSyscallCall(n, a, b, c, d, e, f);
+    if (ofdShared) ofdStore(ofdFd);
     if (r >= 0) fdNoteCreated(n, a, b, c, d, r);
     // (a lookup that finds nothing is the normal outcome of a search path: not logged)
     const bool pathMiss = (r == -2 && (n == 2 || n == 4 || n == 6 || n == 21 || n == 257 || n == 262 || n == 439))

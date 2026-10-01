@@ -106,3 +106,8 @@ deps/cloud-hypervisor/
 deps/ratty/
 _home.png
 _at.png
+
+# Compatibility runtimes: source fetched by scripts/build-{wine,darling,waydroid}.sh, not vendored
+deps/wine/
+deps/darling/
+deps/waydroid/

@@ -579,6 +579,11 @@ static const struct dmapp DMAPPS[] = {
     { "Screenshot",     "/wl-screenshot", "epin-screenshot" , 0 },
     { "Logs",           "/wl-logview",    "epin-logview"    , 0 },
     { "kUML (CLI)",     "/kuml",          "kuml",           DMF_CLI },
+    /* Compatibility runtimes: delegate to a domain, install the runtime there, and run foreign
+     * software in it (src/util/hos-compat.c, docs/COMPAT.md).  CLI: run a program with them. */
+    { "Windows apps (Wine)",    "/hos-wine",     "hos-wine",     DMF_CLI },
+    { "macOS apps (Darling)",   "/hos-darling",  "hos-darling",  DMF_CLI },
+    { "Android apps (Waydroid)","/hos-waydroid", "hos-waydroid", DMF_CLI },
 };
 enum { N_DMAPP = (int)(sizeof(DMAPPS)/sizeof(DMAPPS[0])) };
 static const char *dmapp_id(const struct dmapp *a) { return a->exec + 1; }   // exec basename == appId

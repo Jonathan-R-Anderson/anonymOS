@@ -90,6 +90,14 @@ static immutable AppRegEntry[] g_appReg = [
     AppRegEntry("wl-chars",          "wl-chars",      APP, SES, DSE, null, DLG | DSK),
     AppRegEntry("wl-screenshot",     "wl-screenshot", APP, SES, DSE, null, DLG | DSK),
     AppRegEntry("kuml",              "kuml",          APP, SES, DNM, "Development", DLG | DSK),
+    // Compatibility runtimes (src/util/hos-compat.c, docs/COMPAT.md): one launcher per foreign
+    // platform, delegable to any domain.  Granted the app AND the runtime installed there (Wine
+    // from the Software Center; Darling/Waydroid built by scripts/build-*.sh), the domain runs
+    // Windows/macOS/Android software as its own -- isolated and badged like everything else.
+    AppRegEntry("hos-compat",        "hos-compat",    APP, SES, DNO, null, DLG | DSK),
+    AppRegEntry("hos-wine",          "hos-wine",      APP, SES, DNO, null, DLG | DSK),
+    AppRegEntry("hos-darling",       "hos-darling",   APP, SES, DNO, null, DLG | DSK),
+    AppRegEntry("hos-waydroid",      "hos-waydroid",  APP, SES, DNO, null, DLG | DSK),
     // Virtual Machines: System-hosted from the desktop, and delegable -- a domain granted it (plus
     // Virtualization in its Permissions, i.e. DEVCLASS_VIRT for /dev/kvm) runs its own hypervisor.
     AppRegEntry("wl-vmm",            "wl-vmm",        APP, SYH, DNO, null, DLG | DSK),

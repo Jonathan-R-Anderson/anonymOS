@@ -189,6 +189,10 @@ SCPTEST_BIN      := build/hos-scp-test        # one-command scp/upload self-test
 HTTPUPLOAD_BIN   := build/hos-http-upload      # direct send/recv HTTP client (avoids musl stdio syscall bypass)
 LOGUPLOAD_BIN := build/hos-log-upload
 WIFITERM_BIN := build/hos-wifiterm
+# hos-compat: the compatibility-runtime launcher.  One static-musl binary staged under three
+# names (hos-wine/hos-darling/hos-waydroid); the Domain Manager delegates it to a domain and it
+# runs a foreign program through the runtime installed there (Wine/Darling/Waydroid).
+COMPAT_BIN := build/hos-compat
 THREADTEST_BIN := build/hos-thread-test
 STORE_APP_BIN := build/store-app
 ZSH_BIN := deps/zsh/zsh           # Z1: real upstream zsh (built by deps/zsh/Makefile, Z0)
@@ -811,6 +815,10 @@ $(LOGUPLOAD_BIN): src/util/hos-log-upload.c
 $(WIFITERM_BIN): src/util/hos-wifiterm.c
 	@echo "==== Building hos-wifiterm (TEMP lightweight terminal launcher) ===="
 	$(MUSL_CC) -static -O2 -o $@ src/util/hos-wifiterm.c
+
+$(COMPAT_BIN): src/util/hos-compat.c
+	@echo "==== Building hos-compat (Wine/Darling/Waydroid launcher) ===="
+	$(MUSL_CC) -static -O2 -o $@ src/util/hos-compat.c
 
 $(THREADTEST_BIN): src/util/hos-thread-test.c
 	@echo "==== Building hos-thread-test (diag: cross-thread wakeup) ===="
@@ -1501,6 +1509,16 @@ stage-iso-tree: kernel.elf $(WLSOFTWARE_BIN) $(PKGFETCH_BIN) $(VMFETCH_BIN) $(SO
 	     echo "Included kuml (Development-domain UML class-diagram renderer, static musl)"; \
 	   else echo "Skipping kuml (jhc build failed — run 'make -C $(KUML_HS_DIR) check')"; fi; \
 	 else echo "Skipping kuml (need jhc on PATH + $(MUSL_CC))"; fi
+
+	@# hos-compat: the Windows/macOS/Android compatibility-runtime launcher, staged under the three
+	@# exec names the Domain Manager delegates (appreg.d / DMAPPS).  One binary; argv[0] picks the
+	@# runtime.  The runtimes themselves are installed per-domain (Wine from the Software Center;
+	@# Darling/Waydroid via scripts/build-{darling,waydroid}.sh) -- see docs/COMPAT.md.
+	@if $(MAKE) --no-print-directory $(COMPAT_BIN) >/dev/null 2>&1 && [ -f $(COMPAT_BIN) ]; then \
+		for n in hos-compat hos-wine hos-darling hos-waydroid; do cp $(COMPAT_BIN) cd/$$n; done; \
+		printf '\n    module_path: boot():/hos-compat\n    module_path: boot():/hos-wine\n    module_path: boot():/hos-darling\n    module_path: boot():/hos-waydroid\n' >> cd/boot/limine/limine.conf; \
+		echo "Included hos-compat (compatibility runtimes: hos-wine / hos-darling / hos-waydroid)"; \
+	 else echo "Skipping hos-compat (build it: make $(COMPAT_BIN))"; fi
 
 	@# On-device NETWORKED deploy backend for the installer's "Deploy contract" button: the
 	@# dynamic-musl deploy pair (hos-ethsign-dyn + hos-attest-deploy) + libgcc_s.so.1, staged as

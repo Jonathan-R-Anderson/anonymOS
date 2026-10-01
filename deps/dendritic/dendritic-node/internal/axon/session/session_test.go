@@ -144,10 +144,23 @@ func migrateUnderLoad(t *testing.T, explicit bool) {
 		up, down := arrived(x.ss), arrived(x.cs)
 		p.mu.Unlock()
 		p.kill(explicit)
+		// A direction that had fully arrived before the death has nothing left to resume -- on a
+		// slow machine one side can finish between the threshold check and the kill.
 		dUp, ok1 := waitProgress(func() int64 { return arrived(x.ss) }, up, 2*bound)
+		if up >= size {
+			dUp, ok1 = 0, true
+		}
 		dDown, ok2 := waitProgress(func() int64 { return arrived(x.cs) }, down, 2*bound)
+		if down >= size {
+			dDown, ok2 = 0, true
+		}
 		if !ok1 || !ok2 {
-			t.Fatalf("kill %d: stream did not resume within 2x the bound (%v)", i+1, bound)
+			pr.mu.Lock()
+			paths := pr.paths
+			pr.mu.Unlock()
+			t.Fatalf("kill %d: stream did not resume within 2x the bound (%v): up moved=%v down moved=%v; "+
+				"client %s %+v; service %s %+v; paths built %d",
+				i+1, bound, ok1, ok2, pr.cli.State(), pr.cli.Stats(), pr.svc.State(), pr.svc.Stats(), paths)
 		}
 		stall := dUp
 		if dDown > stall {

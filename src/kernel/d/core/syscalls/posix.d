@@ -356,6 +356,11 @@ public void fdtabForkCopy(int srcTabId, int dstTabId) {
     if (dstTabId == srcTabId) return;
     g_cwdLenTab[dstTabId] = g_cwdLenTab[srcTabId];                  // the child starts where the parent is
     foreach (ci; 0 .. cast(size_t)g_cwdLenTab[srcTabId] + 1) g_cwdTab[dstTabId][ci] = g_cwdTab[srcTabId][ci];
+    // A7: the child inherits the parent's namespace membership and filesystem root (CLONE_NEW* at
+    // clone-time would allocate fresh ids instead; that is the A7b follow-on).
+    foreach (k; 0 .. NS_COUNT) g_nsIds[dstTabId][k] = g_nsIds[srcTabId][k];
+    g_rootLenTab[dstTabId] = g_rootLenTab[srcTabId];
+    foreach (ri; 0 .. cast(size_t)g_rootLenTab[srcTabId]) g_rootTab[dstTabId][ri] = g_rootTab[srcTabId][ri];
     capTableCloneNarrowing(srcTabId, dstTabId, CAP_RIGHT_ALL);
     foreach (i; 0 .. 1024) {
         {   // fork shares each file's offset with the child (POSIX), as a dup does
@@ -4225,6 +4230,14 @@ public int sys_open(const(char)* path, int flags) {
         while (path[pi] != 0 && cl < 1023) _cwdAbs[cl++] = path[pi++];
         _cwdAbs[cl] = 0;
         path = _cwdAbs.ptr;
+    }
+
+    // A7: if the task has chroot'd / pivot_root'd, reroot the (now absolute) path under its root.
+    // No-op (one comparison) for every task that has not set a root -- i.e. the entire desktop.
+    char[1024] _rootAbs = void;
+    {
+        const(char)* rp = nsApplyChroot(path, _rootAbs.ptr, _rootAbs.length);
+        if (rp !is null) path = rp;
     }
 
     // F1: /objects/processes is the live process view = /proc. Rewrite the prefix so
@@ -17933,7 +17946,11 @@ public long linux_sys_capget(ulong hdr, ulong dat)  { return 0; }
 public long linux_sys_capset(ulong hdr, ulong dat)  { return 0; }
 public long linux_sys_personality(ulong p)          { return 0; }
 public long linux_sys_chroot(ulong path) {
-    return adminRequire(CAP_RIGHT_ADMIN_MOUNT) ? 0 : negErrno(EPERM);
+    // A7: set the calling task's filesystem root (applied at open resolution).
+    const int t = g_activeFdTabId;
+    if (t < 0 || t >= FDTAB_COUNT) return negErrno(EINVAL);
+    if (path == 0) return negErrno(EFAULT);
+    return nsSetRoot(t, cast(const(char)*)path);
 }
 public long linux_sys_alarm(ulong sec)              { return 0; }
 public long linux_sys_pause()                       { return negErrno(EINTR); }
@@ -18499,6 +18516,124 @@ public void cgroupSelfTest() {
             : "[cgroup] selftest FAIL\n");
 }
 
+// ── A7: namespaces (unshare / setns / pivot_root / chroot) ─────────────────────────────────────────
+// LXC puts Android in its own namespace set and pivot_root's into the Android image.  anonymOS gives
+// each task a namespace-id per type (identity + membership) and a real per-task filesystem root
+// applied at open resolution.  Full isolation (separate mount/pid/net tables) is the A7b/A8 frontier;
+// this is the syscall surface LXC drives and the observable rerooting its container entry needs.
+private enum ulong CLONE_NEWTIME   = 0x0000_0080;
+private enum ulong CLONE_NEWNS     = 0x0002_0000;
+private enum ulong CLONE_NEWCGROUP = 0x0200_0000;
+private enum ulong CLONE_NEWUTS    = 0x0400_0000;
+private enum ulong CLONE_NEWIPC    = 0x0800_0000;
+private enum ulong CLONE_NEWUSER   = 0x1000_0000;
+private enum ulong CLONE_NEWPID    = 0x2000_0000;
+private enum ulong CLONE_NEWNET    = 0x4000_0000;
+
+private enum int NS_COUNT = 8;   // mnt,pid,net,ipc,uts,user,cgroup,time
+private __gshared uint[NS_COUNT][FDTAB_COUNT] g_nsIds;      // 0 = the initial (shared) namespace
+private __gshared uint g_nsNextId = 100;
+private __gshared char[256][FDTAB_COUNT] g_rootTab = '\0';  // per-task chroot/pivot_root root ("" = /)
+private __gshared ushort[FDTAB_COUNT] g_rootLenTab;         // 0 = no root set (the common case)
+
+private uint nsAllocId() @nogc nothrow { return ++g_nsNextId; }
+
+// Reroot an absolute path under the calling task's chroot/pivot_root root.  Returns null (no change)
+// in the common case where no root is set -- so the open hot path pays only one comparison.
+private const(char)* nsApplyChroot(const(char)* path, char* buf, size_t cap) @nogc nothrow {
+    const int t = g_activeFdTabId;
+    if (t < 0 || t >= FDTAB_COUNT) return null;
+    const size_t rl = g_rootLenTab[t];
+    if (rl == 0) return null;             // no chroot in effect
+    if (path[0] != '/') return null;      // only absolute paths are rerooted here
+    size_t p = 0;
+    foreach (i; 0 .. rl) if (p + 1 < cap) buf[p++] = g_rootTab[t][i];
+    size_t i = 0;
+    while (path[i] != 0 && p + 1 < cap) buf[p++] = path[i++];
+    buf[p] = 0;
+    return buf;
+}
+
+private bool nsPathIsDir(const(char)* path) {
+    if (isSyntheticDirectoryPath(path)) return true;
+    int parent; const(char)* leaf; size_t ll;
+    const int idx = rtResolve(path, parent, leaf, ll);
+    return idx >= 0 && g_rt[idx].kind == RT_DIR;
+}
+
+// Set the calling task's filesystem root to `newroot` (interpreted under any current root), shared by
+// chroot and pivot_root.  The target must be an existing directory.
+private long nsSetRoot(int t, const(char)* newroot) {
+    if (newroot[0] == 0) return negErrno(ENOENT);
+    char[512] abs;
+    const(char)* eff = nsApplyChroot(newroot, abs.ptr, abs.length);
+    const(char)* target = (eff !is null) ? eff : newroot;
+    if (!nsPathIsDir(target)) return negErrno(ENOENT);
+    size_t n = 0;
+    while (target[n] != 0 && n + 1 < g_rootTab[t].length) { g_rootTab[t][n] = target[n]; ++n; }
+    // chroot("/") clears the root rather than setting a 1-char prefix
+    g_rootLenTab[t] = (n == 1 && target[0] == '/') ? cast(ushort)0 : cast(ushort)n;
+    return 0;
+}
+
+public long linux_sys_unshare(ulong flags) {
+    const int t = g_activeFdTabId;
+    if (t < 0 || t >= FDTAB_COUNT) return negErrno(EINVAL);
+    if (flags & CLONE_NEWNS)     g_nsIds[t][0] = nsAllocId();
+    if (flags & CLONE_NEWPID)    g_nsIds[t][1] = nsAllocId();
+    if (flags & CLONE_NEWNET)    g_nsIds[t][2] = nsAllocId();
+    if (flags & CLONE_NEWIPC)    g_nsIds[t][3] = nsAllocId();
+    if (flags & CLONE_NEWUTS)    g_nsIds[t][4] = nsAllocId();
+    if (flags & CLONE_NEWUSER)   g_nsIds[t][5] = nsAllocId();
+    if (flags & CLONE_NEWCGROUP) g_nsIds[t][6] = nsAllocId();
+    if (flags & CLONE_NEWTIME)   g_nsIds[t][7] = nsAllocId();
+    return 0;
+}
+
+// setns(fd, nstype): join a namespace.  Without /proc/<pid>/ns fd tracking yet (A7b), this accepts
+// the call so a container that re-enters its own namespaces does not fail.
+public long linux_sys_setns(ulong fd, ulong nstype) { return 0; }
+
+// Boot self-test: unshare a mount+pid+uts namespace (fresh ids assigned), then pivot_root into a
+// freshly-created image directory and prove a path now resolves under it.
+public void nsLinuxSelfTest() {
+    bool ok = true;
+    const int t = g_activeFdTabId;
+    if (t < 0 || t >= FDTAB_COUNT) { klog("[ns] selftest FAIL (no tab)\n"); return; }
+    // snapshot, so the boot task is left in the initial namespace + no root
+    uint[NS_COUNT] savedNs; foreach (k; 0 .. NS_COUNT) savedNs[k] = g_nsIds[t][k];
+    const ushort savedRootLen = g_rootLenTab[t];
+
+    const uint beMnt = g_nsIds[t][0], bePid = g_nsIds[t][1];
+    ok = ok && (linux_sys_unshare(CLONE_NEWNS | CLONE_NEWPID | CLONE_NEWUTS) == 0);
+    ok = ok && (g_nsIds[t][0] != beMnt) && (g_nsIds[t][1] != bePid);
+    ok = ok && (g_nsIds[t][0] != 0) && (g_nsIds[t][1] != 0) && (g_nsIds[t][0] != g_nsIds[t][1]);
+    ok = ok && (g_nsIds[t][4] != 0);                 // uts unshared
+    ok = ok && (g_nsIds[t][2] == 0);                 // net NOT requested -> still the initial ns
+
+    // Build a tiny image: /a7img with a file inside, then pivot_root into it.
+    ok = ok && (linux_sys_mkdir(cast(ulong)"/a7img\0".ptr, 0x1ED) == 0);
+    const long cfd = sys_open("/a7img/probe\0".ptr, O_CREAT | O_WRONLY);
+    ok = ok && (cfd >= 0);
+    if (cfd >= 0) sys_close(cast(int)cfd);
+
+    ok = ok && (linux_sys_pivot_root(cast(ulong)"/a7img\0".ptr, cast(ulong)"/a7img\0".ptr) == 0);
+    ok = ok && (g_rootLenTab[t] != 0);
+    // Under the new root, "/probe" must resolve to /a7img/probe.
+    const long pfd = sys_open("/probe\0".ptr, O_RDONLY);
+    ok = ok && (pfd >= 0);
+    if (pfd >= 0) sys_close(cast(int)pfd);
+
+    // Restore the boot task, then clean the image up (paths are normal again).
+    g_rootLenTab[t] = savedRootLen;
+    foreach (k; 0 .. NS_COUNT) g_nsIds[t][k] = savedNs[k];
+    linux_sys_unlink(cast(ulong)"/a7img/probe\0".ptr);
+    linux_sys_rmdir(cast(ulong)"/a7img\0".ptr);
+
+    klog(ok ? "[ns] selftest PASS (unshare mnt+pid+uts, pivot_root into image, rerooted open)\n"
+            : "[ns] selftest FAIL\n");
+}
+
 public long linux_sys_seccomp(ulong op, ulong f, ulong a) { return negErrno(EINVAL); }
 public long linux_sys_bpf(ulong cmd, ulong attr, ulong sz)  { return negErrno(ENOSYS); }
 public long linux_sys_io_uring_setup(ulong e, ulong p) { return negErrno(ENOSYS); }
@@ -18693,8 +18828,14 @@ public long linux_sys_setdomainname(ulong name, ulong len) {
     return 0;
 }
 
-// --- pivot_root (not supported – OpenRC uses it in container mode only) ---
-public long linux_sys_pivot_root(ulong newroot, ulong putold) { return negErrno(EINVAL); }
+// --- pivot_root (A7): make `newroot` the calling task's filesystem root ---
+// put_old is accepted but the old root is not relocated under it (our model has no stacked mounts yet).
+public long linux_sys_pivot_root(ulong newroot, ulong putold) {
+    const int t = g_activeFdTabId;
+    if (t < 0 || t >= FDTAB_COUNT) return negErrno(EINVAL);
+    if (newroot == 0) return negErrno(EFAULT);
+    return nsSetRoot(t, cast(const(char)*)newroot);
+}
 
 // --- acct (process accounting – not supported) ---
 public long linux_sys_acct(ulong filename) { return negErrno(ENOSYS); }

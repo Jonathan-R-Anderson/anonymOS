@@ -6017,6 +6017,10 @@ private long dispatchLinuxSyscallCall(ulong n, ulong a, ulong b, ulong c,
         case 296: return linux_sys_pwritev(a, b, c, d);
         case 299: return linux_sys_recvmmsg(a, b, c, d, e);
         case 302: return linux_sys_prlimit64(a, b, c, d);
+        case 155: return linux_sys_pivot_root(a, b);      // ANDROID A7: container root pivot
+        case 161: return linux_sys_chroot(a);             // ANDROID A7: per-task filesystem root
+        case 272: return linux_sys_unshare(a);            // ANDROID A7: new namespaces (CLONE_NEW*)
+        case 308: return linux_sys_setns(a, b);           // ANDROID A7: join a namespace
         case 307: return linux_sys_sendmmsg(a, b, c, d);
         case 316: return linux_sys_renameat2(a, b, c, d, e);
         case 318: return linux_sys_getrandom(a, b, c);
@@ -7111,6 +7115,7 @@ void d_kernel_main() {
     { import core.syscalls.posix : binderFdPassSelfTest; binderFdPassSelfTest(); }  // ANDROID A3b: prove the real cross-fd-table dup that TYPE_FD uses
     { import core.syscalls.posix : ashmemSelfTest; ashmemSelfTest(); }  // ANDROID A5: prove /dev/ashmem (name/size/mappable backing/prot/pin)
     { import core.syscalls.posix : cgroupSelfTest; cgroupSelfTest(); }  // ANDROID A6: prove the cgroup2 hierarchy (mkdir/controllers/subtree/procs/statfs/rmdir)
+    { import core.syscalls.posix : nsLinuxSelfTest; nsLinuxSelfTest(); }  // ANDROID A7: prove namespaces (unshare) + pivot_root rerooting
     { import core.sysupdate : updateAdoptBootSlot; updateAdoptBootSlot(); } // UPDATE U1: read A/B boot-state → g_bootSlot
     { import core.sysversion : updateVersionProof; updateVersionProof(); } // UPDATE U0: version identity proof
     {   // UPDATE U1: prove the boot-state on-disk contract, but only on a scratch/install

@@ -12,6 +12,11 @@ produce it, and the dendritic node fully working inside the OS.
   proof-of-facilitation contracts already live). The contract is chain-agnostic; moving chains is a
   deployment change.
 - Computers reach the server **through the dendritic network**, never by direct connection.
+- **No I2P (user, 2026-10-01).** The dendritic network runs on **its own Tor/I2P-style routing**
+  -- AXON, the overlay `deps/dendritic` is building (onion circuits, tunnel pools, guards, a blinded
+  DHT) -- with **its own on-chain naming**: domains registered on Ethereum under namespaces anyone
+  can propose (`.anonymous`, or whatever gets registered), resolving to AXON service keys.  i2pd is
+  not part of the build, and there is no non-anonymous fallback transport.
 - **syndichan.org plays no part.** The coordinator role the node used to get from it moves to the new
   server, which also pushes updates into the peer-to-peer network.
 - The server is **a single VPS**.
@@ -30,7 +35,8 @@ over what is a release belongs to the wallet alone.
         │  signed manifest + artifacts                         ▲ read by clients (transparency,
         ▼                                                      │  anti-rollback, revocation)
  origin server (VPS) ── seeds into ──▶ dendritic network ──▶ every anonymOS node
-   coordinator · crash intake           (I2P today, AXON later)    verifies the WALLET signature
+   coordinator · crash intake           (AXON circuits; names on   verifies the WALLET signature
+   an AXON service: origin.<ns>.axon     Ethereum)
 ```
 
 - **The wallet is the only release authority.** A release is a manifest (§3) that the wallet signs
@@ -80,15 +86,17 @@ wallet's signature over it shipped next to it.
 
 ## 4. The origin server (VPS)
 
-One Go binary, **`hos-origin`**, beside an I2P router (i2pd) and a dendritic node in origin mode —
-a systemd unit each, one deploy script. Reachable only as an I2P destination (no public HTTP).
+One Go binary, **`hos-origin`**, beside a dendritic node in origin mode — a systemd unit each, one
+deploy script.  Reachable only as an **AXON hidden service**: its self-certifying address
+(`<key>.key.axon`, which needs no chain) and a registered name (`origin.<namespace>.axon`).  No
+public HTTP; it listens on loopback and the node's rendezvous path carries requests to it.
 
 | Part | Does |
 |---|---|
 | **Coordinator** | what nodes previously asked syndichan.org for: a signed bootstrap document (live peers), heartbeats, the peer list, network directives — re-implemented with the same signed formats so the node needs only an endpoint change. Signed by a coordinator Ed25519 key that the OS pins (rotatable by a wallet-signed directive). |
 | **Release push** | watches ReleaseRegistry; when the wallet publishes, fetches the manifest + artifacts from the publisher's upload, verifies them against the chain, **seeds them into the dendritic network** (object manifests in the DHT), and announces `{channel, version, manifestHash}` to connected nodes. Nodes also learn it on their next heartbeat, so a missed push costs at most one interval. Optional BitTorrent seeding for the magnet locators. |
 | **Repository** | the signed software catalog and a **mirror of every pinned `.apk`** the catalog names, so installs keep working when Alpine rotates versions, served through the dendritic network instead of plain HTTP to Alpine's CDN. |
-| **Crash intake** | accepts scrubbed crash reports (§5) over the dendritic network: schema-checked, size-capped, rate-limited per circuit with a small proof-of-work; stores them in SQLite; a CLI/dashboard groups them by crash signature. No IP is ever seen — reports arrive over I2P. |
+| **Crash intake** | accepts scrubbed crash reports (§5) over the dendritic network: schema-checked, size-capped (unknown fields refused), rate-limited per circuit; stored as JSON lines and grouped by crash signature. No IP is ever seen -- reports arrive through AXON circuits. |
 
 The publisher side is **`hos-release`**, a CLI on the owner's machine: packs the manifest from build
 outputs, has the wallet sign it (`personal_sign`), sends the `publish` transaction, uploads the
@@ -127,18 +135,20 @@ needs, all found in the survey (2026-10-01):
   `CGO_ENABLED=0` (no cgo anywhere in the node).
 - Endpoints hardcoded to syndichan.org (`config.go:22`, `heartbeat.go:37`, `p2p/node.go:111`,
   `p2p/recall.go:119`, `config.go:591`, `computeimage/loader.go:83`) become config, defaulting to
-  the origin's I2P destination. The heartbeat and gateway calls, direct HTTPS today, go over I2P.
+  the origin's AXON name.  The heartbeat -- deliberately sent DIRECT today so the coordinator sees
+  the node's real address -- goes through AXON like everything else.
 
 ### 6.2 Kernel and runtime gaps that block it
 | Gap | Fix |
 |---|---|
-| **No loopback** — TCP to 127.x is refused | loopback interface in the in-kernel stack (SAM 7656, the S3/dashboard ports, and the OS's own clients talking to the node) |
+| **No loopback** — TCP to 127.x is refused | loopback interface in the in-kernel stack, domain-isolated (done 2026-10-01): the S3/dashboard/operator ports, and the OS's own clients talking to the node |
 | `bind` ignores the address — "loopback-only" listeners are reachable from outside | honour the bound address |
 | **File `mmap` is a copy** — bbolt (the node's store) needs `MAP_SHARED` to see its own `pwrite`s | share the file's pages for shared file mappings (rtfs payloads are already page-scattered) |
 | **Node data must persist** — identity keys + store; `/home` snapshots cap at 1 MiB | a disk-backed data volume for the node on installed systems, the `/vmstore` pattern |
-| TCP limited to 32 connections system-wide, accept queue 8 | raise (libp2p over SAM is one TCP stream per I2P stream) |
-| Go runtime unproven here (P1 of `DENDRITIC_NETWORK_ROADMAP.md`) | boot `tests/go-runtime/hello`; `tgkill`/`sigaltstack` for goroutine preemption; netlink dump if libp2p asks |
-| No I2P router — the node exits without SAM | **i2pd** in the image as a System service |
+| TCP limited to 32 connections system-wide, accept queue 8 | raised to 1024 / 64, buffers per connection (done 2026-10-01) |
+| Go runtime: a small Go program runs (verified 2026-10-01); the node crashes in package init with `rip=0` | `sigaltstack` (a stub that never fills its result, which Go's signal setup reads), real signal delivery |
+| AXON's link layer is QUIC over UDP | UDP that carries QUIC: `recvmsg`/`sendmsg` with control messages, socket buffer sizes, bound-address checks |
+| The node's storage, coordinator and heartbeat paths are I2P-only (`internal/i2p`, `/garlic32` addresses) | moved onto AXON -- the dendritic roadmap's 2.9 + 2.13, gated on its session layer (5.2) |
 | No CA bundle — the node's Go TLS needs one for any HTTPS it still does | stage Alpine's `ca-certificates-bundle` |
 
 ### 6.3 OS update path (kernel + client)
@@ -156,7 +166,7 @@ The `.hosupd` format and A/B fallback exist; nothing can install one yet.
 
 ## 7. "Push", precisely
 
-Computers behind home routers cannot be reached, and over I2P nobody is addressed by IP anyway, so
+Computers behind home routers cannot be reached, and over AXON nobody is addressed by IP anyway, so
 "push" is: the wallet publishes → the origin sees the chain event, seeds the files and **announces to
 every node connected to it**; any node that missed it learns at its next heartbeat (minutes) or from
 the chain. Files flow peer to peer, so the VPS is not the bottleneck.
@@ -166,10 +176,15 @@ the chain. Files flow peer to peer, so the VPS is not the bottleneck.
 Each ends with a falsifiable exit.
 
 - **P1 — The node runs in the OS.** §6.1 + §6.2: build, Go runtime, loopback, shared file mmap,
-  persistent data volume, i2pd, connection limits; launched as a System service with logs and the
-  dashboard. **Exit:** on a booted anonymOS the node reaches I2P, joins a DHT with a node on another
-  machine, and stores + reads back an object; it survives a reboot with its identity.
-- **P2 — Origin server.** `hos-origin` coordinator + i2pd + origin node on a VPS, deploy script,
+  persistent data volume, UDP for QUIC, connection limits; launched as a System service with logs
+  and the dashboard. **Exit:** on a booted anonymOS the node starts, its AXON link layer handshakes
+  with a node on another machine, and it survives a reboot with its identity.
+- **P1b — AXON carries the network** (in `deps/dendritic`, its own roadmap): the session layer
+  (5.2), storage and DHT over circuits (2.9, 2.10b), `internal/i2p` deleted (2.13), the registrar
+  (1.10) and resolver wired, so a name like `origin.<ns>.axon` resolves and a request reaches a
+  hidden service.  **Exit:** two anonymOS VMs fetch an object from each other through AXON circuits,
+  and resolve a registered name.
+- **P2 — Origin server.** `hos-origin` coordinator + origin node (an AXON hidden service) on a VPS, deploy script,
   the node's endpoints pointed at it. **Exit:** OS nodes bootstrap and heartbeat only via the origin.
 - **P3 — ReleaseRegistry + `hos-release`.** Contract (Foundry tests), deploy from the owner wallet,
   manifest format, publisher CLI. **Exit:** a release published on a testnet is visible to `eth_call`
@@ -186,7 +201,12 @@ Each ends with a falsifiable exit.
   review, threat review of the origin.
 
 ## 9. Open questions
-- AXON (the node's own anonymizing transport) is ~110 items from done upstream; I2P carries
-  everything until it lands, then the same design runs over AXON.
+- AXON is ~110 items from done upstream, and its **session layer (a byte stream over cells) is still
+  research** (`deps/dendritic/roadmap/OUTSTANDING.md` 5.2).  Every request/response service here --
+  coordinator, release fetch, crash upload -- waits on it.  There is deliberately no non-anonymous
+  stand-in.
+- Naming: AXON's design has one fixed root suffix (`.axon`) under which voted namespaces live
+  (`updates.anonymous.axon`).  If `.anonymous` itself must be the last label, that is a change to
+  §11.0 of the AXON spec (R15-R17), not just a registration.
 - Encrypted (FDE / hidden) installs have no A/B slots: their update path is unresolved.
 - Older installs have 320 MiB slots; images larger than that need `minVersion` gating or delta updates.

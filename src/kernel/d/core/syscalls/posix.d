@@ -356,9 +356,13 @@ public void fdtabForkCopy(int srcTabId, int dstTabId) {
     if (dstTabId == srcTabId) return;
     g_cwdLenTab[dstTabId] = g_cwdLenTab[srcTabId];                  // the child starts where the parent is
     foreach (ci; 0 .. cast(size_t)g_cwdLenTab[srcTabId] + 1) g_cwdTab[dstTabId][ci] = g_cwdTab[srcTabId][ci];
-    // A7: the child inherits the parent's namespace membership and filesystem root (CLONE_NEW* at
-    // clone-time would allocate fresh ids instead; that is the A7b follow-on).
+    // A7: the child inherits the parent's namespace membership and filesystem root.
     foreach (k; 0 .. NS_COUNT) g_nsIds[dstTabId][k] = g_nsIds[srcTabId][k];
+    // A7b: a pending child pid-ns (from the parent's unshare(CLONE_NEWPID)) takes effect here -- the
+    // child becomes pid 1 of that new namespace.  The pending flag stays on the parent (every later
+    // child enters the same ns) and is NOT inherited by the child.
+    if (g_pendingPidNs[srcTabId] != 0) g_nsIds[dstTabId][1] = g_pendingPidNs[srcTabId];
+    g_pendingPidNs[dstTabId] = 0;
     g_rootLenTab[dstTabId] = g_rootLenTab[srcTabId];
     foreach (ri; 0 .. cast(size_t)g_rootLenTab[srcTabId]) g_rootTab[dstTabId][ri] = g_rootTab[srcTabId][ri];
     capTableCloneNarrowing(srcTabId, dstTabId, CAP_RIGHT_ALL);
@@ -3121,6 +3125,9 @@ private int namespaceCheckOpen(const(char)* path, int flags) {
     // A process's OWN /proc entry (/proc/self/stat, status, ...), read-only: it describes only the
     // caller, and runtimes read it (Firefox, glib) -- a domain's namespace otherwise has no /proc.
     if ((need & CAP_RIGHT_WRITE) == 0 && cstrEqPrefix(path, "/proc/self/")) return 0;
+    // A8: a container manages its own cgroup subtree under /sys/fs/cgroup, so it must be able to
+    // open (and write) cgroup control files even when confined to a domain.
+    if (cgIsPath(path)) return 0;
     {   const int v = nsPathVerdict(path, need);
         if (v != 0) return v; }
 
@@ -18538,6 +18545,9 @@ private enum ulong CLONE_NEWNET    = 0x4000_0000;
 
 private enum int NS_COUNT = 8;   // mnt,pid,net,ipc,uts,user,cgroup,time
 private __gshared uint[NS_COUNT][FDTAB_COUNT] g_nsIds;      // 0 = the initial (shared) namespace
+// CLONE_NEWPID does not move the caller into the new pid-ns; it makes the caller's FUTURE children
+// pid 1 of a new namespace.  This records that pending child pid-ns (0 = none).
+private __gshared uint[FDTAB_COUNT] g_pendingPidNs;
 private __gshared uint g_nsNextId = 100;
 private __gshared char[256][FDTAB_COUNT] g_rootTab = '\0';  // per-task chroot/pivot_root root ("" = /)
 private __gshared ushort[FDTAB_COUNT] g_rootLenTab;         // 0 = no root set (the common case)
@@ -18586,7 +18596,7 @@ public long linux_sys_unshare(ulong flags) {
     const int t = g_activeFdTabId;
     if (t < 0 || t >= FDTAB_COUNT) return negErrno(EINVAL);
     if (flags & CLONE_NEWNS)     g_nsIds[t][0] = nsAllocId();
-    if (flags & CLONE_NEWPID)    g_nsIds[t][1] = nsAllocId();
+    if (flags & CLONE_NEWPID)    g_pendingPidNs[t] = nsAllocId();  // takes effect for the next child
     if (flags & CLONE_NEWNET)    g_nsIds[t][2] = nsAllocId();
     if (flags & CLONE_NEWIPC)    g_nsIds[t][3] = nsAllocId();
     if (flags & CLONE_NEWUTS)    g_nsIds[t][4] = nsAllocId();
@@ -18610,12 +18620,15 @@ public void nsLinuxSelfTest() {
     uint[NS_COUNT] savedNs; foreach (k; 0 .. NS_COUNT) savedNs[k] = g_nsIds[t][k];
     const ushort savedRootLen = g_rootLenTab[t];
 
-    const uint beMnt = g_nsIds[t][0], bePid = g_nsIds[t][1];
+    const uint beMnt = g_nsIds[t][0];
+    const uint savedPending = g_pendingPidNs[t];
     ok = ok && (linux_sys_unshare(CLONE_NEWNS | CLONE_NEWPID | CLONE_NEWUTS) == 0);
-    ok = ok && (g_nsIds[t][0] != beMnt) && (g_nsIds[t][1] != bePid);
-    ok = ok && (g_nsIds[t][0] != 0) && (g_nsIds[t][1] != 0) && (g_nsIds[t][0] != g_nsIds[t][1]);
-    ok = ok && (g_nsIds[t][4] != 0);                 // uts unshared
+    // mnt + uts move the caller into a fresh namespace immediately...
+    ok = ok && (g_nsIds[t][0] != beMnt) && (g_nsIds[t][0] != 0) && (g_nsIds[t][4] != 0);
+    // ...but pid is deferred: the caller stays, and the next child enters this pending pid-ns.
+    ok = ok && (g_pendingPidNs[t] != 0);
     ok = ok && (g_nsIds[t][2] == 0);                 // net NOT requested -> still the initial ns
+    g_pendingPidNs[t] = savedPending;                // don't leave the boot task with a pending pid-ns
 
     // Build a tiny image: /a7img with a file inside, then pivot_root into it.
     ok = ok && (linux_sys_mkdir(cast(ulong)"/a7img\0".ptr, 0x1ED) == 0);
@@ -18825,11 +18838,12 @@ public long linux_sys_statx(ulong dfd, ulong path, ulong fl, ulong mask, ulong b
 
 // --- mount / umount2 (pretend success – no real VFS) ---
 public long linux_sys_mount(ulong src, ulong tgt, ulong fstype, ulong fl, ulong data) {
-    if (!adminRequire(CAP_RIGHT_ADMIN_MOUNT)) return negErrno(EPERM);
-    // A7b: a mount made inside a (non-initial) mount namespace is recorded there, so it is visible
-    // only to tasks sharing that mnt-ns.
     const int t = g_activeFdTabId;
-    if (t >= 0 && t < FDTAB_COUNT && g_nsIds[t][0] != 0 && tgt != 0) {
+    const bool inMntNs = (t >= 0 && t < FDTAB_COUNT && g_nsIds[t][0] != 0);
+    // A7b: a mount inside a task's OWN (non-initial) mount namespace affects only that namespace, so
+    // it is allowed without host mount privilege; a mount in the initial namespace still needs it.
+    if (!inMntNs && !adminRequire(CAP_RIGHT_ADMIN_MOUNT)) return negErrno(EPERM);
+    if (inMntNs && tgt != 0) {
         auto p = cast(const(char)*)tgt;
         size_t len = 0; while (p[len] != 0 && len < MNT_PATH_MAX) ++len;
         mntAdd(g_nsIds[t][0], p, len);

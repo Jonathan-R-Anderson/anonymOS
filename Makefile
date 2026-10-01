@@ -820,6 +820,13 @@ $(COMPAT_BIN): src/util/hos-compat.c
 	@echo "==== Building hos-compat (Wine/Darling/Waydroid launcher) ===="
 	$(MUSL_CC) -static -O2 -o $@ src/util/hos-compat.c
 
+# hos-container: the minimal container runtime (ANDROID A8) -- unshare/cgroup/mount-ns/pivot_root
+# sandbox launcher that satisfies Waydroid's container contract against the A1-A7b kernel surface.
+CONTAINER_BIN := build/hos-container
+$(CONTAINER_BIN): src/util/hos-container.c
+	@echo "==== Building hos-container (ANDROID A8 container runtime) ===="
+	$(MUSL_CC) -static -O2 -o $@ src/util/hos-container.c
+
 $(THREADTEST_BIN): src/util/hos-thread-test.c
 	@echo "==== Building hos-thread-test (diag: cross-thread wakeup) ===="
 	$(MUSL_CC) -O2 -pthread -o $@ src/util/hos-thread-test.c
@@ -1519,6 +1526,13 @@ stage-iso-tree: kernel.elf $(WLSOFTWARE_BIN) $(PKGFETCH_BIN) $(VMFETCH_BIN) $(SO
 		printf '\n    module_path: boot():/hos-compat\n    module_path: boot():/hos-wine\n    module_path: boot():/hos-darling\n    module_path: boot():/hos-waydroid\n' >> cd/boot/limine/limine.conf; \
 		echo "Included hos-compat (compatibility runtimes: hos-wine / hos-darling / hos-waydroid)"; \
 	 else echo "Skipping hos-compat (build it: make $(COMPAT_BIN))"; fi
+
+	@# hos-container: the ANDROID A8 container runtime (unshare/cgroup/mount-ns/pivot_root sandbox).
+	@if $(MAKE) --no-print-directory $(CONTAINER_BIN) >/dev/null 2>&1 && [ -f $(CONTAINER_BIN) ]; then \
+		cp $(CONTAINER_BIN) cd/hos-container; \
+		printf '\n    module_path: boot():/hos-container\n' >> cd/boot/limine/limine.conf; \
+		echo "Included hos-container (ANDROID A8 container runtime)"; \
+	 else echo "Skipping hos-container (build it: make $(CONTAINER_BIN))"; fi
 
 	@# On-device NETWORKED deploy backend for the installer's "Deploy contract" button: the
 	@# dynamic-musl deploy pair (hos-ethsign-dyn + hos-attest-deploy) + libgcc_s.so.1, staged as

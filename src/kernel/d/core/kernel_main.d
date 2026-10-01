@@ -7107,7 +7107,8 @@ void d_kernel_main() {
     { import core.software : softwareCatalogReport; softwareCatalogReport(); }  // Software Center catalog
     { import core.syscalls.posix : softwareApkInstallSelfTest; softwareApkInstallSelfTest(); }  // Software Center: prove the cap-gated apk placement path (no network needed)
     { import core.syscalls.posix : rtDomainIsolationProof; rtDomainIsolationProof(); }  // DM6.2: prove per-domain rtfs file isolation (data plane)
-    { import core.android.binder : binderSelfTest; binderSelfTest(); }  // ANDROID A1: prove the binder IPC device + WRITE_READ protocol (docs/hw-bringup/ANDROID.md)
+    { import core.android.binder : binderSelfTest; binderSelfTest(); }  // ANDROID A1-A3: binder device, mmap/buffers, objects/handles/reply/death (docs/hw-bringup/ANDROID.md)
+    { import core.syscalls.posix : binderFdPassSelfTest; binderFdPassSelfTest(); }  // ANDROID A3b: prove the real cross-fd-table dup that TYPE_FD uses
     { import core.sysupdate : updateAdoptBootSlot; updateAdoptBootSlot(); } // UPDATE U1: read A/B boot-state → g_bootSlot
     { import core.sysversion : updateVersionProof; updateVersionProof(); } // UPDATE U0: version identity proof
     {   // UPDATE U1: prove the boot-state on-disk contract, but only on a scratch/install

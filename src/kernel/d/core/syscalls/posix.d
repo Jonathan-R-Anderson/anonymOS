@@ -4383,7 +4383,7 @@ public int sys_open(const(char)* path, int flags) {
     // /dev/binder -- Android's IPC driver (core/android/binder.d, docs/hw-bringup/ANDROID.md).
     // Each open is a binder "proc"; its index rides in backend.  ioctl-only (plus mmap in phase A2).
     if (cstrEq(path, "/dev/binder")) {
-        import core.android.binder : binderAlloc;
+        import core.android.binder : binderAlloc, binderSetProcTab, binderSetFdDup;
         const int bp = binderAlloc();
         if (bp < 0) return negErrno(ENOMEM);
         g_fdTable[fd].type     = FileType.FD_BINDER;
@@ -4392,6 +4392,10 @@ public int sys_open(const(char)* path, int flags) {
         g_fdTable[fd].backend  = cast(void*)cast(size_t)bp;
         g_fdTable[fd].fileSize = 0;
         g_fdTable[fd].objId    = 0;
+        // A3b: remember which process this binder proc belongs to, and register the cross-process
+        // fd installer once, so a TYPE_FD object sent over a transaction lands in the right table.
+        binderSetProcTab(bp, g_activeFdTabId);
+        if (!g_binderFdDupRegistered) { binderSetFdDup(&binderFdInstall); g_binderFdDupRegistered = true; }
         deviceNoteOpen(path);
         return publishActiveFdReturn(fd);
     }
@@ -12087,6 +12091,66 @@ private long binderIoctl(int id, uint cmd, ulong arg) {
         default:
             return negErrno(EINVAL);
     }
+}
+
+// ── binder A3b: cross-process fd passing ─────────────────────────────────────────────────────────
+// A BINDER_TYPE_FD object carries an fd from the sender; the kernel must install it into the
+// receiver's fd table (like SCM_RIGHTS, or a dup into another process).  binder.d owns no fd
+// machinery, so it calls this through a function pointer (binderSetFdDup).  Mirrors the per-entry
+// dup fork does (fdtabForkCopy): copy the File, bump the shared backend's refcount, publish the
+// capability.  Returns the new fd in `toTab`, or -1.
+__gshared bool g_binderFdDupRegistered = false;
+
+extern(D) long binderFdInstall(int fromTab, uint fromFd, int toTab) @nogc nothrow {
+    if (fromTab < 0 || fromTab >= FDTAB_COUNT || toTab < 0 || toTab >= FDTAB_COUNT) return -1;
+    if (fromFd >= 1024) return -1;
+    File* src = &g_fdTabs[fromTab][fromFd];
+    if (src.type == FileType.FD_NONE) return -1;
+    // Lowest free slot in the target table (occupied stdio/others are naturally skipped).
+    int nf = -1;
+    foreach (i; 0 .. 1024) if (g_fdTabs[toTab][i].type == FileType.FD_NONE) { nf = cast(int)i; break; }
+    if (nf < 0) return -1;
+    File* dst = &g_fdTabs[toTab][nf];
+    // Share the open file description (offset), as a dup/SCM_RIGHTS does, exactly like fork.
+    const bool share = (src.ofd != 0 || ofdSeekable(src.type)) && ofdShare(src);
+    *dst = *src;
+    if (!share) dst.ofd = 0;
+    dst.objId = 0;                       // the receiver gets its own File object/capability
+    if (dst.type == FileType.FD_SOCKET) {
+        auto s = fileSocket(dst); if (s !is null) ++s.refCount;
+    } else if (dst.type == FileType.FD_PIPE_READ) {
+        auto p = getPipe(cast(size_t)pipeIdFromFd(dst)); if (p !is null) ++p.readers;
+    } else if (dst.type == FileType.FD_PIPE_WRITE) {
+        auto p = getPipe(cast(size_t)pipeIdFromFd(dst)); if (p !is null) ++p.writers;
+    } else if (dst.type == FileType.FD_KVM_VM || dst.type == FileType.FD_KVM_VCPU) {
+        kvmFdDuped(dst);
+    } else {
+        fdInstanceRef(dst);              // epoll/eventfd/memfd/timerfd instance refs
+    }
+    publishFdInTable(toTab, nf, dst, fromTab, cast(int)fromFd);
+    if (dst.type == FileType.FD_KVM_VM || dst.type == FileType.FD_KVM_VCPU) kvmFdAddEdge(dst);
+    return nf;
+}
+
+// Boot self-test of the installer alone (binder.d proves the TYPE_FD translation path with a stub;
+// this proves the real cross-table dup).  Uses two high scratch tables, an FD_NULL source (no
+// backend refcount to disturb), and restores both slots -- skips rather than clobbers if in use.
+public void binderFdPassSelfTest() {
+    enum int FROM = FDTAB_COUNT - 2, TO = FDTAB_COUNT - 1, SFD = 1000;
+    if (g_fdTabs[FROM][SFD].type != FileType.FD_NONE) { klog("[binder] fd-pass selftest SKIP (table busy)\n"); return; }
+    g_fdTabs[FROM][SFD] = File.init;
+    g_fdTabs[FROM][SFD].type  = FileType.FD_NULL;
+    g_fdTabs[FROM][SFD].flags = O_RDWR;
+    publishFdInTable(FROM, SFD, &g_fdTabs[FROM][SFD], -1, -1);
+
+    const long nf = binderFdInstall(FROM, SFD, TO);
+    const bool ok = (nf >= 0) && (nf < 1024) && (g_fdTabs[TO][cast(int)nf].type == FileType.FD_NULL);
+
+    if (nf >= 0 && nf < 1024) { capClearIn(TO, cast(uint)nf); g_fdTabs[TO][cast(int)nf] = File.init; }
+    capClearIn(FROM, SFD); g_fdTabs[FROM][SFD] = File.init;
+
+    klog(ok ? "[binder] fd-pass selftest PASS (fd dup'd across fd tables)\n"
+            : "[binder] fd-pass selftest FAIL\n");
 }
 
 public long linuxSyscallCapPrecheck(ulong n, ulong a, ulong b, ulong c,

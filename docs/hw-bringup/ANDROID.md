@@ -31,7 +31,7 @@ anonymOS has none of binder, ashmem, cgroups, or the `CLONE_NEW*` namespace flag
 | **A1 — binder device** (started) | `/dev/binder` as an in-kernel device: open/close, `BINDER_VERSION`, `BINDER_SET_MAX_THREADS`, `BINDER_SET_CONTEXT_MGR`, and the `BINDER_WRITE_READ` command/return framing (BC_*/BR_*). | A self-test opens `/dev/binder`, reads protocol version 8, registers a context manager, and round-trips a transaction through `BINDER_WRITE_READ`. **Done: `core/android/binder.d`, `[binder] selftest PASS`.** |
 | **A2 — binder mmap + buffers** (done) | mmap the receive buffer; the kernel allocates transaction buffers from it and writes transaction data there; `BC_FREE_BUFFER` reclaims. | libbinder (`servicemanager`) opens, mmaps, and blocks in its read loop without error. **Done: `/dev/binder` mmap + bump allocator + data carried into the target's region (copy-in under SMAP) + free; `[binder] selftest PASS (A1+A2 …)`.** |
 | **A3 — binder objects & handles** (done; fd deferred to A3b) | Flat-object translation (BINDER_TYPE_BINDER/HANDLE), per-proc handle tables, node table + ref counting, synchronous reply routing via a transaction stack, death notifications, the thread pool (`BC_REGISTER_LOOPER`). | Two processes pass a binder reference across a transaction, a reply routes back to the caller, and a crash fires a death notification. **Done: node/handle tables + BINDER↔HANDLE translation + `BC_REPLY`→`BR_REPLY` routing + `BC_REQUEST_DEATH_NOTIFICATION`→`BR_DEAD_BINDER`; `[binder] selftest PASS (A1+A2+A3 …)`.** |
-| **A3b — fd passing** | `BINDER_TYPE_FD` translation: install the sender's fd into the target's fd table across a transaction. Needs cross-proc fd dup (posix.d fd-table plumbing), so it is its own step; A3 safely *rejects* a transaction carrying an fd rather than deliver a bogus one. | A process passes an open fd to another over a transaction and the receiver reads from it. |
+| **A3b — fd passing** (done) | `BINDER_TYPE_FD` translation: install the sender's fd into the target's fd table across a transaction, via a cross-table dup that mirrors `fork`'s fd-table copy (shares the open file description, bumps the shared backend's refcount, publishes the capability). | A fd object carried in a transaction is dup'd into the receiver's fd table and rewritten to the receiver's new fd. **Done: `binderFdInstall` in posix.d + `BINDER_TYPE_FD` case in `translateObject`; `[binder] selftest PASS (… fd passing …)` + `[binder] fd-pass selftest PASS`.** |
 | **A4 — binderfs + hw/vnd binder** | `/dev/binderfs` with `binder-control`; the `hwbinder` and `vndbinder` contexts Android needs. | `servicemanager` and a `hwservicemanager` come up on their own contexts. |
 | **A5 — ashmem / memfd seals** | `/dev/ashmem` ioctls (SET_NAME/SET_SIZE/PIN/UNPIN) and/or `memfd_create` with `F_SEAL_*`. | Android's `libcutils` ashmem path allocates and maps a region. |
 | **A6 — cgroups v2** | A cgroup2 mount, the controllers Android/LXC require, and the clone/attach plumbing. | `lxc-start` creates and enters a cgroup without error. |
@@ -54,10 +54,16 @@ already dispatches `waydroid app …`). None of A2–A9 is a flag: each is a sub
   notifications (`BC_REQUEST_DEATH_NOTIFICATION` → `BR_DEAD_BINDER` when an owner proc goes away).
   Boot self-test: `[binder] selftest PASS (A1+A2+A3 …)` exercises two procs — a context-manager
   server and a client — passing a binder reference both directions, a reply, and a death.
-- **A3b (fd passing) and everything from A4 on are not started.** A3 deliberately rejects a
-  transaction carrying a `BINDER_TYPE_FD` object rather than deliver an untranslated fd.
-  `hos-waydroid` reports Waydroid-not-installed until the stack can start a session, so nothing
-  pretends to run.
+- **A3b fd passing: implemented and self-tested** — a `BINDER_TYPE_FD` object in a transaction is
+  now dup'd from the sender's fd table into the receiver's (`binderFdInstall` in `posix.d`, wired
+  through `binderSetFdDup`/`binderSetProcTab`), mirroring `fork`'s per-entry fd-table copy. The
+  binder self-test proves the translation path (with a stub installer); a second boot self-test
+  (`[binder] fd-pass selftest PASS`) proves the real cross-table dup.
+- **Everything from A4 on is not started.** `hos-waydroid` reports Waydroid-not-installed until the
+  stack can start a session, so nothing pretends to run. End-to-end fd passing between two *real*
+  processes awaits a userspace binder client, which does not exist yet; the mechanism is proven in
+  isolation.
 
 This is the honest state: the IPC core — the part nothing in Android starts without — is in and
-proven; binderfs, shared memory, cgroups, namespaces, LXC and the image are not built.
+proven, references and fds cross it; binderfs, shared memory, cgroups, namespaces, LXC and the
+image are not built.

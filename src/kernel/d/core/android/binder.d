@@ -135,6 +135,9 @@ private struct BinderProc {
     int[MAX_HANDLES] handleNode = -1;
     int  txStackN;
     int[MAX_TXSTACK] txStackSender;
+    // A3b: the fd-table id of the task that opened this /dev/binder, so a TYPE_FD object can be
+    // installed into the right process's fd table.  -1 until posix.d records it (binderSetProcTab).
+    int  ownerTab = -1;
 }
 
 // BINDER_VM_MAX caps a proc's receive region.  libbinder uses ~1 MiB by default and at most 4 MiB.
@@ -200,6 +203,20 @@ public void binderFree(int id) {
 }
 
 public int binderVersion() { return BINDER_CURRENT_PROTOCOL_VERSION; }
+
+// A3b: record the owning task's fd-table id, so a TYPE_FD object sent by this proc is dup'd out of
+// (and into) the right process's fd table.  posix.d calls this when /dev/binder is opened.
+public void binderSetProcTab(int id, int tab) {
+    if (id >= 0 && id < MAX_PROCS && g_procs[id].used) g_procs[id].ownerTab = tab;
+}
+
+// A3b: the cross-process fd installer.  binder.d holds no fd machinery of its own, so posix.d
+// supplies this: dup `fromFd` out of table `fromTab` into table `toTab`, returning the new fd there
+// (or -1).  Set once via binderSetFdDup; null until then (and in the kernel-only self-test, which
+// swaps in a stub).
+alias BinderFdDup = long function(int fromTab, uint fromFd, int toTab) @nogc nothrow;
+private __gshared BinderFdDup g_binderFdDup;
+public void binderSetFdDup(BinderFdDup f) { g_binderFdDup = f; }
 
 public void binderSetMaxThreads(int id, uint n) {
     if (id >= 0 && id < MAX_PROCS && g_procs[id].used) g_procs[id].maxThreads = n;
@@ -345,8 +362,21 @@ private bool translateObject(int sender, int target, FlatBinderObject* fo) {
             }
             return true;
         }
+        case BINDER_TYPE_FD: {
+            // A3b: the low 32 bits hold the sender's fd; dup it into the target's fd table and
+            // rewrite to the target's new fd.  Without an installer, or across procs whose owning
+            // task is unknown, the fd cannot cross -- fail rather than hand over a bogus number.
+            if (g_binderFdDup is null) return false;
+            const int fromTab = g_procs[sender].ownerTab;
+            const int toTab   = g_procs[target].ownerTab;
+            if (fromTab < 0 || toTab < 0) return false;
+            const long nf = g_binderFdDup(fromTab, cast(uint)fo.payload, toTab);
+            if (nf < 0) return false;
+            fo.payload = cast(uint)nf;
+            return true;
+        }
         default:
-            // TYPE_FD (and anything unexpected): not carried in A3.
+            // Anything unexpected: fail closed.
             return false;
     }
 }
@@ -648,6 +678,16 @@ private FlatBinderObject* testFirstFlat(const ref BinderTxData t) @nogc nothrow 
     return cast(FlatBinderObject*)(t.data_buffer + offVal);
 }
 
+// A stub fd installer for the self-test (the real one lives in posix.d and needs user fd tables):
+// it records the arguments and returns a remapped fd, so the test can prove the TYPE_FD path calls
+// the installer with the right (fromTab, fd, toTab) and delivers the new fd.
+private __gshared int   g_testFdFrom, g_testFdTo;
+private __gshared uint  g_testFdOld;
+private long testFdDup(int fromTab, uint fromFd, int toTab) @nogc nothrow {
+    g_testFdFrom = fromTab; g_testFdTo = toTab; g_testFdOld = fromFd;
+    return fromFd + 0x100;   // a distinctive remap the test can check for
+}
+
 /// A3 proof: a client and a context-manager server, each with a receive region.
 ///  (1) the client sends a transaction to handle 0 carrying a LOCAL binder object; the server must
 ///      receive it rewritten to a HANDLE.
@@ -729,6 +769,39 @@ private bool binderSelfTestA3() {
         ok = ok && (f2.type == BINDER_TYPE_BINDER) && (f2.payload == 0xA000) && (f2.cookie == 0xC0DE);
         binderFreeBuffer(cl, got2.data_buffer);
     } else ok = false;
+
+    // (3b) fd passing: client -> handle 0 carrying a BINDER_TYPE_FD (fd 5).  With a stub installer
+    // and the procs given fd-table ids, the server must receive the object as a TYPE_FD with the
+    // remapped fd, and the installer must have been called with (client tab, 5, server tab).
+    {
+        const BinderFdDup saved = g_binderFdDup;
+        binderSetFdDup(&testFdDup);
+        binderSetProcTab(cl, 9);
+        binderSetProcTab(sv, 7);
+        g_testFdFrom = g_testFdTo = -1; g_testFdOld = 0xFFFF_FFFF;
+        FlatBinderObject fbf; fbf.type = BINDER_TYPE_FD; fbf.payload = 5; fbf.cookie = 0;
+        ulong[1] offsF = [0UL];
+        ubyte[4 + BinderTxData.sizeof] wbF = 0; ulong wF = 0;
+        putU32(wbF.ptr, wbF.length, wF, BC_TRANSACTION);
+        BinderTxData tF; tF.target = 0; tF.code = 3; tF.flags = TF_ONE_WAY;
+        tF.data_size = FlatBinderObject.sizeof; tF.data_buffer = cast(ulong)&fbf;
+        tF.offsets_size = 8; tF.data_offsets = cast(ulong)offsF.ptr;
+        putTx(wbF.ptr, wbF.length, wF, tF);
+        ubyte[128] rbClF = 0; ulong rcClF = 0;
+        ok = ok && (binderWriteRead(cl, wbF.ptr, wF, null, rbClF.ptr, rbClF.length, &rcClF, &testCopyIn) == 0);
+        ubyte[256] rbSvF = 0; ulong rcSvF = 0;
+        ok = ok && (binderWriteRead(sv, null, 0, null, rbSvF.ptr, rbSvF.length, &rcSvF, &testCopyIn) == 0);
+        BinderTxData gotF;
+        if (ok && testFindTxn(rbSvF.ptr, rcSvF, BR_TRANSACTION, gotF)) {
+            auto fF = testFirstFlat(gotF);
+            ok = ok && (fF.type == BINDER_TYPE_FD) && (fF.payload == 5 + 0x100);
+            binderFreeBuffer(sv, gotF.data_buffer);
+        } else ok = false;
+        ok = ok && (g_testFdFrom == 9) && (g_testFdTo == 7) && (g_testFdOld == 5);
+        binderSetProcTab(cl, -1);
+        binderSetProcTab(sv, -1);
+        binderSetFdDup(saved);   // never leave the stub installed in a running kernel
+    }
 
     // (4) server requests a death notification on svHandle, the client crashes, server reads the death.
     ubyte[4 + 12] wbD = 0; ulong wD = 0;
@@ -822,6 +895,6 @@ public void binderSelfTest() {
     // A3: objects/handles, reply routing, death notifications (two procs).
     ok = ok && binderSelfTestA3();
 
-    if (ok) klog("[binder] selftest PASS (A1+A2+A3: version 8, context-mgr, mmap region, data round-trip, handle translation, reply routing, death notify)\n");
+    if (ok) klog("[binder] selftest PASS (A1+A2+A3+A3b: version 8, context-mgr, mmap region, data round-trip, handle translation, reply routing, fd passing, death notify)\n");
     else    klog("[binder] selftest FAIL\n");
 }

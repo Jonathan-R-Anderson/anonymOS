@@ -1,9 +1,11 @@
 package main
 
 import (
+	"context"
 	"crypto/sha256"
 	"encoding/hex"
 	"encoding/json"
+	"net"
 	"net/http"
 	"regexp"
 	"sort"
@@ -12,7 +14,7 @@ import (
 	"time"
 )
 
-// Crash intake (roadmap §5).  Reports arrive over I2P, already scrubbed on the computer; this
+// Crash intake (roadmap §5).  Reports arrive through AXON, already scrubbed on the computer; this
 // side re-checks them against a whitelist schema -- any field it does not know is refused, not
 // stored -- so a client bug cannot leak something the scrubber missed into the archive.  Stored as
 // JSON lines (crashes/YYYY-MM-DD.jsonl), grouped by signature for the operator's view.
@@ -160,10 +162,10 @@ func (c *CrashIntake) Register(mux *http.ServeMux) {
 		_ = c.store.SaveJSON("crash-groups.json", snapshot)
 		writeJSON(w, 200, map[string]any{"ok": true, "signature": sig})
 	})
-	// The operator's view.  Served on the same loopback listener; the i2pd tunnel exposes only
-	// the paths the server tunnel config allows, and this one is meant to be read on the VPS.
+	// The operator's view, meant to be read on the VPS.  A request that came in through the
+	// network (the AXON service's listener marks its connections, see viaNetwork) is refused.
 	mux.HandleFunc("GET /api/v1/crash/groups", func(w http.ResponseWriter, r *http.Request) {
-		if r.Header.Get("X-I2P-DestB32") != "" || r.Header.Get("X-I2P-DestHash") != "" {
+		if viaNetwork(r) {
 			writeJSON(w, 403, map[string]string{"error": "operator view is local only"})
 			return
 		}
@@ -191,4 +193,17 @@ func contains(xs []string, s string) bool {
 		}
 	}
 	return false
+}
+
+type networkConnKey struct{}
+
+// MarkNetwork is the http.Server ConnContext for the listener that carries requests arriving
+// through the dendritic network: handlers meant only for the operator refuse those requests.
+func MarkNetwork(ctx context.Context, _ net.Conn) context.Context {
+	return context.WithValue(ctx, networkConnKey{}, true)
+}
+
+func viaNetwork(r *http.Request) bool {
+	v, _ := r.Context().Value(networkConnKey{}).(bool)
+	return v
 }

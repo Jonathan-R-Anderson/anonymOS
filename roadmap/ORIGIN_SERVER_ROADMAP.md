@@ -63,7 +63,8 @@ Owner-gated, replacing the permissionless `contracts/UpdateRegistry.sol` for sys
 | `transferOwnership(newOwner)` | owner, two-step | key rotation |
 
 - Per file, the `File` event carries `sha256`, `size`, `kind` (os-image, catalog, package, …),
-  `name`, and locators: a **magnet URI** and a **dendritic object id**. Events, not storage: a few
+  `name`, and locators: an **`axon-swarm:` locator** (this network's magnet link: the Merkle root
+  every piece is verified against, §4a) and a **dendritic object id** (the durable copy). Events, not storage: a few
   hundred bytes per file at event prices, readable with `eth_getLogs`.
 - Header in storage: what a client needs in one `eth_call` (latest version + manifest hash + revoked).
 - Channels: `stable`, `testing`; `catalog` and `packages` publish independently of OS images so the
@@ -77,7 +78,7 @@ wallet's signature over it shipped next to it.
 ```json
 {"channel":"stable","created":1790816536,"files":[
   {"kind":"os-image","name":"anonymos-0.2.0.hosupd","sha256":"…","size":536870912,
-   "locators":["dendritic:obj:…","magnet:?xt=urn:btih:…"]},
+   "locators":["axon-swarm:<merkle root>?size=…&piece=262144","dendritic:obj:…"]},
   {"kind":"catalog","name":"software-catalog.bin","sha256":"…","size":…, "locators":[…]}],
  "minVersion":1,"notes":"…","version":2}
 ```
@@ -86,7 +87,7 @@ wallet's signature over it shipped next to it.
 
 ## 4. The origin server (VPS)
 
-One Go binary, **`hos-origin`**, beside a dendritic node in origin mode — a systemd unit each, one
+One Go binary, **`hos-origin`** (`deps/dendritic/dendritic-node/cmd/hos-origin`, in the node's module so it shares AXON's packages), beside a dendritic node in origin mode — a systemd unit each, one
 deploy script.  Reachable only as an **AXON hidden service**: its self-certifying address
 (`<key>.key.axon`, which needs no chain) and a registered name (`origin.<namespace>.axon`).  No
 public HTTP; it listens on loopback and the node's rendezvous path carries requests to it.
@@ -94,13 +95,38 @@ public HTTP; it listens on loopback and the node's rendezvous path carries reque
 | Part | Does |
 |---|---|
 | **Coordinator** | what nodes previously asked syndichan.org for: a signed bootstrap document (live peers), heartbeats, the peer list, network directives — re-implemented with the same signed formats so the node needs only an endpoint change. Signed by a coordinator Ed25519 key that the OS pins (rotatable by a wallet-signed directive). |
-| **Release push** | watches ReleaseRegistry; when the wallet publishes, fetches the manifest + artifacts from the publisher's upload, verifies them against the chain, **seeds them into the dendritic network** (object manifests in the DHT), and announces `{channel, version, manifestHash}` to connected nodes. Nodes also learn it on their next heartbeat, so a missed push costs at most one interval. Optional BitTorrent seeding for the magnet locators. |
+| **Release push** | watches ReleaseRegistry; when the wallet publishes, fetches the manifest + artifacts from the publisher's upload, verifies them against the chain, **seeds them into the swarm** (§4a: it is the tracker and the first, super-seeding source; the computers fetching an update serve it to each other) and stores a durable copy as dendritic objects, and announces `{channel, version, manifestHash}` to connected nodes. Nodes also learn it on their next heartbeat, so a missed push costs at most one interval. |
 | **Repository** | the signed software catalog and a **mirror of every pinned `.apk`** the catalog names, so installs keep working when Alpine rotates versions, served through the dendritic network instead of plain HTTP to Alpine's CDN. |
 | **Crash intake** | accepts scrubbed crash reports (§5) over the dendritic network: schema-checked, size-capped (unknown fields refused), rate-limited per circuit; stored as JSON lines and grouped by crash signature. No IP is ever seen -- reports arrive through AXON circuits. |
 
 The publisher side is **`hos-release`**, a CLI on the owner's machine: packs the manifest from build
 outputs, has the wallet sign it (`personal_sign`), sends the `publish` transaction, uploads the
 artifacts to the origin. The wallet key never touches the VPS.
+
+### 4a. The release swarm — built (internal/axon/swarm, cmd/hos-origin/swarm.go)
+
+Every computer that fetches an update also serves it, so a release reaches N computers faster than
+any one server could send it to them, and the origin's upload is the smallest share of the work.
+
+| Piece | What it does |
+|---|---|
+| **Content** | A file is cut into 256 KiB pieces under a Merkle tree (`leaf = SHA256(0 ‖ LE64(i) ‖ piece)`, `node = SHA256(1 ‖ l ‖ r)`); the root is its identity and its locator, `axon-swarm:<root>?size=…&piece=…`, is what the manifest and the chain record. Each piece travels with its 13-hash proof, so it is verified on arrival from any peer; a peer that sends one bad piece is dropped. |
+| **Transfer** | One stream per peer pair on an AXON session (BULK). Whole pieces are requested, pipelined; every verified piece is announced to every peer at once, so a downloading computer is a source from its first piece. **Rarest first** after four random pieces; **endgame** asks a second peer for the last pieces. |
+| **Fairness** | **Tit-for-tat**: upload slots go to the peers giving the most; a complete node serves those taking its upload fastest; one **optimistic** slot rotates so newcomers get started and better partners are found. |
+| **Origin** | **Super-seeds**: advertises a few pieces at a time to each peer, least distributed first, so its upload goes into pieces the swarm lacks. It is the **tracker** (`POST /api/v1/swarm/{root}/announce`, `GET …/peers`), listing itself first for files it seeds; artifacts dropped in `<state>/artifacts/` are seeded at start (`GET /api/v1/swarm` lists their locators). `Front` routes each client session's streams: HTTP to the API, swarm streams to the seeder. |
+
+Measured (`TestReleaseDayFlashCrowd`, shaped links, every computer starting at once): 16 computers,
+1 MiB file, origin 1 MiB/s up, computers 256 KiB/s up each. The origin alone needs 16 s. The swarm
+finishes in about **4.5 s, 3.6× faster, 71 % of the physical floor** (all bytes over all upload
+capacity, 3.2 s); the computers uploaded 16 copies to each other, the origin about 3. A lying peer
+serving corrupt pieces with real proofs is refused piece by piece and every computer ends intact;
+half the swarm leaving midway does not stop the rest. `TestOriginSeedsARealArtifactToTheSwarmOverSessions`
+runs the whole path — artifact in the state directory, locator and peers from the origin's tracker
+over AXON sessions, pieces swapped between computers over session streams — race-clean.
+
+Not yet: provider records in the DHT (§7 ClassLocation) so the swarm survives the origin being down;
+per-node upload caps and a "seed while idle" policy in the OS; the AXON runtime that carries it all
+off the test bench.
 
 ## 5. Crash reporting (opt-out)
 

@@ -1,17 +1,16 @@
 // hos-origin -- the anonymOS origin server (roadmap/ORIGIN_SERVER_ROADMAP.md).
 //
 // One process on the VPS: the dendritic network's coordinator (signed bootstrap document,
-// heartbeats, peer list), the release channel the OS update client polls, and crash-report
-// intake.  It listens on loopback only; i2pd's server tunnel makes it reachable as an I2P
-// destination, which is the only way computers running anonymOS reach it.
+// heartbeats, peer list), the release channel the OS update client polls, crash-report intake,
+// and the tracker and first seeder of every release's swarm (swarm.go).  It listens on loopback
+// only: computers running anonymOS reach it as an AXON hidden service, never directly.
 //
 // It holds no release-signing key: releases are signed by the owner's wallet off this machine,
 // and clients verify that signature themselves.  Taking this server over lets an attacker stop
 // updates, not ship one.
 //
 //	hos-origin keygen -out coordinator.key     # once: the coordinator's Ed25519 seed
-//	hos-origin serve  -data /var/lib/hos-origin -key coordinator.key -listen 127.0.0.1:8470 \
-//	                  -seed /garlic32/<b32>/p2p/<peer-id>
+//	hos-origin serve  -data /var/lib/hos-origin -key coordinator.key -listen 127.0.0.1:8470
 package main
 
 import (
@@ -27,6 +26,8 @@ import (
 	"os"
 	"strings"
 	"time"
+
+	"github.com/syndichan/maniwani/storage-client/internal/axon/swarm"
 )
 
 func main() {
@@ -101,9 +102,10 @@ func cmdServe(args []string) {
 	fs := flag.NewFlagSet("serve", flag.ExitOnError)
 	dataDir := fs.String("data", "/var/lib/hos-origin", "state directory")
 	keyPath := fs.String("key", "/etc/hos-origin/coordinator.key", "coordinator key file")
-	listen := fs.String("listen", "127.0.0.1:8470", "address to listen on (loopback: i2pd forwards to it)")
+	listen := fs.String("listen", "127.0.0.1:8470", "address to listen on (loopback only: the AXON service forwards to it)")
 	var seeds seedList
 	fs.Var(&seeds, "seed", "a bootstrap multiaddr always published (repeatable): the origin's own node")
+	swarmAddr := fs.String("swarm-addr", "", "the origin's own AXON address, handed to swarm members as the first seed")
 	_ = fs.Parse(args)
 
 	host, _, err := net.SplitHostPort(*listen)
@@ -111,7 +113,7 @@ func cmdServe(args []string) {
 		log.Fatalf("listen: %v", err)
 	}
 	if ip := net.ParseIP(host); ip == nil || !ip.IsLoopback() {
-		log.Fatalf("listen %s is not loopback: the origin is reached only through I2P", *listen)
+		log.Fatalf("listen %s is not loopback: the origin is reached only through the dendritic network", *listen)
 	}
 	for _, s := range seeds {
 		if !reBootstrap.MatchString(s) {
@@ -130,10 +132,17 @@ func cmdServe(args []string) {
 	releases := NewReleases(store)
 	crashes := NewCrashIntake(store)
 
+	tracker := NewTracker(swarm.PeerAddr(*swarmAddr))
+	seeder := NewSeeder(tracker)
+	if err := seeder.Load(store.Path("artifacts")); err != nil {
+		log.Fatal(err)
+	}
+
 	mux := http.NewServeMux()
 	coord.Register(mux)
 	releases.Register(mux)
 	crashes.Register(mux)
+	tracker.Register(mux, seeder)
 	mux.HandleFunc("GET /api/v1/status", func(w http.ResponseWriter, r *http.Request) {
 		writeJSON(w, 200, map[string]any{"ok": true, "active_nodes": coord.ActiveCount(),
 			"coordinator_public_key": coord.PublicKeyB64(), "time": time.Now().UTC().Format(time.RFC3339)})

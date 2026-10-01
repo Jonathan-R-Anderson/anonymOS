@@ -159,10 +159,10 @@ DBUSLAUNCH_BIN := build/hos-dbus-launch
 # block nor a shell wrapper can set a variable for a keybinding-launched app (see the source).
 WLTRACE_BIN   := build/hos-wl-trace
 SSHDLAUNCH_BIN := build/hos-sshd-launch        # SSH-in: AF_UNIX->dropbear -i launcher
-# The dendritic network node (deps/dendritic/dendritic-node, syndichan-node), a static Go binary.
+# The dendritic network node (deps/dendritic-node, syndichan-node), a static Go binary.
 # OPT-IN: built by `make syndichan-node` and staged only if the binary exists (see stage-iso-tree),
 # so a normal build without a Go toolchain is unaffected.
-SYNDICHAN_NODE_SRC := deps/dendritic/dendritic-node
+SYNDICHAN_NODE_SRC := deps/dendritic-node
 SYNDICHAN_NODE_BIN := build/syndichan-node
 DROPBEAR_SERVER_BIN := deps/dropbear/install/bin/dropbear   # SSH-in: the SSH server (inetd mode)
 # VMM: Cloud Hypervisor (static-musl), built by scripts/build-cloud-hypervisor.sh
@@ -1203,7 +1203,7 @@ stage-iso-tree: kernel.elf $(WLSOFTWARE_BIN) $(PKGFETCH_BIN) $(VMFETCH_BIN) $(SO
 		echo "pfsense.iso NOT staged (opt-in: 'PFSENSE=1 make iso'; adds ~1 GiB, ISO exceeds 2 GiB)"; \
 	fi
 
-	@# The dendritic network node (deps/dendritic, syndichan-node).  Staged as a
+	@# The dendritic network node (deps/dendritic-node, syndichan-node).  Staged as a
 	@# boot module so it is PRESENT in the image; launched on demand, NOT auto-started at boot yet
 	@# (it needs its anonymizing transport wired — see roadmap/DENDRITIC_NETWORK_ROADMAP.md).
 	@if [ -f $(SYNDICHAN_NODE_BIN) ]; then \

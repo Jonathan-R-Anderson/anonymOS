@@ -13,7 +13,7 @@ produce it, and the dendritic node fully working inside the OS.
   deployment change.
 - Computers reach the server **through the dendritic network**, never by direct connection.
 - **No I2P (user, 2026-10-01).** The dendritic network runs on **its own Tor/I2P-style routing**
-  -- AXON, the overlay `deps/dendritic` is building (onion circuits, tunnel pools, guards, a blinded
+  -- AXON, the overlay the dendritic project is building (onion circuits, tunnel pools, guards, a blinded
   DHT) -- with **its own on-chain naming**: domains registered on Ethereum under namespaces anyone
   can propose (`.anonymous`, or whatever gets registered), resolving to AXON service keys.  i2pd is
   not part of the build, and there is no non-anonymous fallback transport.
@@ -87,7 +87,7 @@ wallet's signature over it shipped next to it.
 
 ## 4. The origin server (VPS)
 
-One Go binary, **`hos-origin`** (`deps/dendritic/dendritic-node/cmd/hos-origin`, in the node's module so it shares AXON's packages), beside a dendritic node in origin mode — a systemd unit each, one
+One Go binary, **`hos-origin`** (`deps/dendritic-node/cmd/hos-origin`, in the node's module so it shares AXON's packages), beside a dendritic node in origin mode — a systemd unit each, one
 deploy script.  Reachable only as an **AXON hidden service**: its self-certifying address
 (`<key>.key.axon`, which needs no chain) and a registered name (`origin.<namespace>.axon`).  No
 public HTTP; it listens on loopback and the node's rendezvous path carries requests to it.
@@ -157,7 +157,7 @@ Today it is a wallpaper only: nothing builds, launches or networks the node. Wha
 needs, all found in the survey (2026-10-01):
 
 ### 6.1 Build
-- `make syndichan-node` points at `dendritic/` — moved to `deps/dendritic/`; fix the path. Static,
+- `make syndichan-node` points at `dendritic/` — moved to `deps/dendritic-node/`; fix the path. Static,
   `CGO_ENABLED=0` (no cgo anywhere in the node).
 - Endpoints hardcoded to syndichan.org (`config.go:22`, `heartbeat.go:37`, `p2p/node.go:111`,
   `p2p/recall.go:119`, `config.go:591`, `computeimage/loader.go:83`) become config, defaulting to
@@ -205,7 +205,7 @@ Each ends with a falsifiable exit.
   persistent data volume, UDP for QUIC, connection limits; launched as a System service with logs
   and the dashboard. **Exit:** on a booted anonymOS the node starts, its AXON link layer handshakes
   with a node on another machine, and it survives a reboot with its identity.
-- **P1b — AXON carries the network** (in `deps/dendritic`, its own roadmap): the session layer
+- **P1b — AXON carries the network** (in the dendritic project, its own roadmap): the session layer
   (5.2), storage and DHT over circuits (2.9, 2.10b), `internal/i2p` deleted (2.13), the registrar
   (1.10) and resolver wired, so a name like `origin.<ns>.axon` resolves and a request reaches a
   hidden service.  **Exit:** two anonymOS VMs fetch an object from each other through AXON circuits,
@@ -228,7 +228,7 @@ Each ends with a falsifiable exit.
 
 ## 9. Open questions
 - AXON is ~110 items from done upstream, and its **session layer (a byte stream over cells) is still
-  research** (`deps/dendritic/roadmap/OUTSTANDING.md` 5.2).  Every request/response service here --
+  research** (`../dendritic/roadmap/OUTSTANDING.md` 5.2).  Every request/response service here --
   coordinator, release fetch, crash upload -- waits on it.  There is deliberately no non-anonymous
   stand-in.
 - Naming: AXON's design has one fixed root suffix (`.axon`) under which voted namespaces live

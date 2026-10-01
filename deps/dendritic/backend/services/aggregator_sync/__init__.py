@@ -1,2 +1,0 @@
-"""Aggregator sync service package."""
-

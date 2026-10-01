@@ -1,7 +1,0 @@
-{
-	"default_threadlimit": 100,
-	"default_mimetypes": "image/jpeg|image/png|image/gif|image/webp|video/webm",
-	"boards": [],
-	"slips": [],
-	"tags": []
-}

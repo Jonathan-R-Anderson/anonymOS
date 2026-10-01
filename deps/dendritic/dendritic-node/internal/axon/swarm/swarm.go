@@ -403,6 +403,7 @@ func (s *Swarm) handleLocked(p *peer, m *message) error {
 			p.nHas++
 			s.avail[m.index]++
 		}
+		delete(p.rejected, m.index) // (re)advertised: it is willing to be asked
 		if s.complete() && p.nHas == n {
 			return io.EOF
 		}
@@ -424,7 +425,10 @@ func (s *Swarm) handleLocked(p *peer, m *message) error {
 			s.fillLocked(q)
 		}
 	case msgUnchoke:
+		// A REJECT usually meant "choked right now", not "never": forget them all,
+		// or a piece whose other holders have left is never asked for again.
 		p.peerChoking = false
+		clear(p.rejected)
 		s.fillLocked(p)
 	case msgRequest:
 		i := m.index

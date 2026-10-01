@@ -50,7 +50,7 @@ FORMAT
           0 = none.  The kernel installs a package's missing dependencies first, each pinned and
           verified like the package itself, so the mirror never decides what gets installed.
 """
-import gzip, io, os, re, struct, sys, tarfile, time, urllib.request, xml.etree.ElementTree as ET
+import gzip, io, json, os, re, struct, sys, tarfile, time, urllib.request, xml.etree.ElementTree as ET
 
 CATEGORIES = ["All", "Accessories", "Development", "Games", "Graphics", "Internet",
               "Multimedia", "Office", "Science", "Security", "System", "Fonts",
@@ -361,6 +361,10 @@ def harvest(repo, limit, offline):
     return uniq, total
 
 
+def p_self():
+    return os.path.abspath(sys.argv[0])
+
+
 def main():
     args = [a for a in sys.argv[1:] if not a.startswith("--")]
     out = args[0] if args else "build/software-catalog.bin"
@@ -439,6 +443,55 @@ def main():
         dep_offs.append(s(" ".join(out_names)) if out_names else 0)
     print("  dependencies: %d apk packages, %d with dependencies, %d unresolvable tokens" %
           (sum(1 for r in apk_raw if r), sum(1 for o in dep_offs if o), unresolved))
+
+    # The Kali domain's tool groups (scripts/kali-tools.json). Each group becomes ONE virtual
+    # metapackage in a "Kali Linux" repo: installable, so the kernel planner finds it and reads its
+    # dependency list, but carrying the sentinel checksum KALI_META_SUM instead of an apk control
+    # digest -- the install path (core/software.d) recognises that and installs the group's members
+    # (its dependencies) without fetching anything for the metapackage itself. The members are the
+    # tools from the group's list that Alpine actually packages, so every dependency the kernel
+    # installs is a real, pinned-and-verified apk. A tool Alpine lacks is dropped from the group
+    # here (and listed, so the build log shows exactly what each image's groups contain).
+    KALI_META_SUM = "HOSKALI-META-V1"
+    installable_apk = {rec[0] for rec in apk_raw if rec is not None}
+    kali_meta = 0
+    try:
+        with open(os.path.join(os.path.dirname(p_self()), "kali-tools.json")) as kf:
+            kali = json.load(kf)
+    except Exception as e:
+        kali = None
+        print("  [warn] kali-tools.json not read (%s); no Kali metapackages" % e, file=sys.stderr)
+    if kali:
+        kali_ri = len(repo_recs)
+        repo_recs.append(struct.pack("<IIIIIIIBBBBII",
+                                     s("Kali Linux " + kali.get("version", "")), s("Kali Linux"),
+                                     s("apk"), s("kali:tools"), s("x86_64"),
+                                     0, 0, 1, 0, 0, 0, 0, 0x367BB5))
+        built = 0
+        for gname, g in kali.get("groups", {}).items():
+            members = [t for t in g.get("tools", []) if t in installable_apk]
+            dropped = [t for t in g.get("tools", []) if t not in installable_apk]
+            if not members:
+                print("  kali %-34s (no Alpine package for any member; skipped)" % gname)
+                continue
+            desc = g.get("summary", "")
+            title = g.get("title", gname)
+            pkg_recs.append(struct.pack("<IIIIIIHH",
+                                        s(gname[:48]), s(kali.get("version", "")[:24]),
+                                        s(ascii_fold("Kali: " + title + " -- " + desc, 96)),
+                                        s("metapackage"), 0, 0, kali_ri, CAT["Security"]))
+            sum_offs.append(s(KALI_META_SUM))
+            dep_offs.append(s(" ".join(members)))
+            built += 1
+            kali_meta += 1
+            print("  kali %-34s %2d tools%s" % (gname, len(members),
+                  ("  (dropped: " + " ".join(dropped) + ")") if dropped else ""))
+        # The repo's package counts, now that the groups are known.
+        repo_recs[kali_ri] = struct.pack("<IIIIIIIBBBBII",
+                                         s("Kali Linux " + kali.get("version", "")), s("Kali Linux"),
+                                         s("apk"), s("kali:tools"), s("x86_64"),
+                                         built, built, 1, 0, 0, 0, 0, 0x367BB5)
+        print("  Kali Linux                   %6d metapackages" % kali_meta)
 
     HDR = 52
     repo_off = HDR + 4 * len(cat_offs)

@@ -325,6 +325,12 @@ public void identityInitDefaults() {
     mkBootIdentity("Work\0".ptr,       0xFF1565C0, TRUST_WORK,       CEIL_USER, NetPolicy.VPN,        ClipPolicy.AllowSameIdentity, GUI_WORK, false, DEV_WORK);
     mkBootIdentity("Banking\0".ptr,    0xFFFFD600, TRUST_BANKING,    CEIL_USER, NetPolicy.VPN,        ClipPolicy.Deny,              GUI_BANK, false, DEV_LOCKNET);
     mkBootIdentity("Development\0".ptr,0xFF6A1B9A, TRUST_DEV,        CEIL_USER, NetPolicy.LocalOnly,  ClipPolicy.AskApproval,       GUI_BASE, false, DEV_FULL);
+    // Kali: the security-tools domain (scripts/kali-tools.json).  Dev-level capability so pentest
+    // tools can open raw sockets and drive a USB wireless adapter; LocalOnly network by default, so
+    // out of the box it reaches a lab or LAN but not the open internet -- the Domain Manager widens
+    // that when the engagement calls for it.  The tools it runs are the Alpine (musl) builds of the
+    // same upstream programs Kali ships.
+    mkBootIdentity("Kali\0".ptr,       0xFF367BB5, TRUST_DEV,        CEIL_USER, NetPolicy.LocalOnly,  ClipPolicy.AskApproval,       GUI_BASE, false, DEV_FULL | DEVCLASS_USB);
     mkBootIdentity("Untrusted\0".ptr,  0xFFB71C1C, TRUST_UNTRUSTED,  CEIL_USER, NetPolicy.Tor,        ClipPolicy.Deny,              GUI_BASE, false, DEV_LOCKNET);
     // Disposable also gets USB by default: it is the place to open an untrusted USB device -- the
     // domain is thrown away afterwards, and nothing it saw can reach another domain (clipboard

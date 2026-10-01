@@ -1,0 +1,84 @@
+{
+  "_comment": [
+    "The Kali tool groups, as anonymOS ships them. Kali Linux is Debian plus a curated set of",
+    "security tools organised into kali-tools-* metapackages; this is the same idea for anonymOS.",
+    "",
+    "anonymOS runs musl (its Linux personality is Alpine's libc), so a tool runs here when it is",
+    "packaged for Alpine -- it is the SAME upstream program (nmap is nmap). Each group below lists",
+    "the tools we want in it; scripts/pack-software-catalog.py keeps only the ones that actually",
+    "exist in the Alpine main/community index it harvested, and emits one virtual metapackage per",
+    "group whose dependencies are exactly those survivors. Installing the metapackage installs each",
+    "of them through the ordinary pinned-and-verified apk path, into the domain that asked -- the",
+    "Kali domain. The metapackage itself ships no bytes; every file is a real, checksummed Alpine",
+    "apk. A tool on a list that Alpine does not package is simply left out of that image's group,",
+    "and the catalog's Security category still lists it as browsable-not-installable like any other.",
+    "",
+    "These are tools for authorised security work -- penetration testing engagements you are",
+    "permitted to run, CTF, lab practice, research, and defence. The domain is isolated and routed",
+    "like any other; what it may reach is the domain's network policy, set in the Domain Manager."
+  ],
+  "domain": "Kali",
+  "version": "2026.1",
+  "groups": {
+    "kali-tools-top10": {
+      "title": "Top 10",
+      "summary": "The ten tools reached for most often.",
+      "tools": ["nmap", "wireshark", "aircrack-ng", "hydra", "john", "sqlmap", "nikto", "tcpdump", "netcat-openbsd", "hashcat"]
+    },
+    "kali-tools-information-gathering": {
+      "title": "Information gathering",
+      "summary": "Mapping a network and the hosts and services on it.",
+      "tools": ["nmap", "masscan", "arp-scan", "nbtscan", "dnsrecon", "fierce", "whois", "bind-tools", "theharvester", "dmitry", "netdiscover", "onesixtyone", "snmp"]
+    },
+    "kali-tools-vulnerability": {
+      "title": "Vulnerability analysis",
+      "summary": "Probing hosts and services for known weaknesses.",
+      "tools": ["nikto", "nmap", "sqlmap", "wapiti", "lynis", "sslscan", "testssl.sh"]
+    },
+    "kali-tools-web": {
+      "title": "Web applications",
+      "summary": "Testing web servers and web apps.",
+      "tools": ["sqlmap", "nikto", "wapiti", "whatweb", "wfuzz", "dirb", "gobuster", "ffuf", "zaproxy", "skipfish"]
+    },
+    "kali-tools-passwords": {
+      "title": "Password attacks",
+      "summary": "Online and offline credential recovery.",
+      "tools": ["john", "hashcat", "hydra", "medusa", "ncrack", "crunch", "hashid", "chntpw", "ophcrack"]
+    },
+    "kali-tools-wireless": {
+      "title": "Wireless",
+      "summary": "802.11 and other radio. Needs a capable adapter; grant USB to the domain.",
+      "tools": ["aircrack-ng", "reaver", "mdk4", "wifite", "cowpatty", "bully", "hostapd", "wpa_supplicant", "iw"]
+    },
+    "kali-tools-sniffing-spoofing": {
+      "title": "Sniffing & spoofing",
+      "summary": "Watching and interfering with traffic on a network you are testing.",
+      "tools": ["wireshark", "tshark", "tcpdump", "ettercap", "dsniff", "bettercap", "mitmproxy", "responder", "macchanger", "hping3"]
+    },
+    "kali-tools-exploitation": {
+      "title": "Exploitation",
+      "summary": "Frameworks and helpers for running exploits.",
+      "tools": ["metasploit", "exploitdb", "set", "sqlmap", "crackmapexec"]
+    },
+    "kali-tools-post-exploitation": {
+      "title": "Post-exploitation",
+      "summary": "Working from an established foothold.",
+      "tools": ["mimikatz", "proxychains-ng", "powersploit", "weevely"]
+    },
+    "kali-tools-forensics": {
+      "title": "Forensics",
+      "summary": "Recovering and examining data and disks.",
+      "tools": ["sleuthkit", "foremost", "binwalk", "testdisk", "ddrescue", "scalpel", "ext4magic", "dc3dd", "bulk-extractor"]
+    },
+    "kali-tools-reverse-engineering": {
+      "title": "Reverse engineering",
+      "summary": "Taking binaries apart.",
+      "tools": ["radare2", "gdb", "ltrace", "strace", "binutils", "nasm", "edb-debugger", "jadx"]
+    },
+    "kali-tools-reporting": {
+      "title": "Reporting",
+      "summary": "Note-taking and evidence capture.",
+      "tools": ["cherrytree", "pandoc", "recordmydesktop", "wireshark"]
+    }
+  }
+}

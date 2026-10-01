@@ -130,6 +130,7 @@ static const struct domain DOMAINS[] = {
     {"Work",        0xFF1565C0u,  60},
     {"Banking",     0xFFFFD600u,  80},
     {"Development",  0xFF6A1B9Au,  40},
+    {"Kali",        0xFF367BB5u,  40},
     {"Untrusted",   0xFFB71C1Cu,  10},
     {"Disposable",  0xFFFF6D00u,   5},
 };

@@ -217,6 +217,7 @@ public void domainInitDefaults() {
     mkBootDomain("Work\0".ptr);
     mkBootDomain("Banking\0".ptr);
     mkBootDomain("Development\0".ptr);
+    mkBootDomain("Kali\0".ptr);
     mkBootDomain("Untrusted\0".ptr);
     mkBootDomain("Disposable\0".ptr);
 }

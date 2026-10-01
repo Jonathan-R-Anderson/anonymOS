@@ -179,6 +179,16 @@ __gshared char[SW_ARG_MAX] g_swTargetUrl;
 __gshared char[64] g_swMissing;    // the dependency the catalog lacks, for the refusal
 __gshared uint g_swMissingLen = 0;
 
+// The checksum the catalog packer writes for a Kali tool-group metapackage (scripts/
+// pack-software-catalog.py KALI_META_SUM).  A package pinned with exactly this string installs no
+// file of its own; see swStartNext.
+private immutable string SW_META_SUM = "HOSKALI-META-V1";
+private bool swSumIsMeta(const(char)* sum) {
+    size_t i = 0;
+    for (; i < SW_META_SUM.length; ++i) if (sum[i] != SW_META_SUM[i]) return false;
+    return sum[i] == 0;
+}
+
 private bool swNameEq(const(char)* a, const(char)* b) {
     size_t i = 0;
     for (; a[i] != 0 && b[i] != 0; ++i) if (a[i] != b[i]) return false;
@@ -301,6 +311,18 @@ private bool swStartNext() {
     }
     klog("[software] pinned "); klog(nm); klog(" "); klog(pver.ptr);
     klog(" control="); klog(psum.ptr); klog("\n");
+    // A Kali tool group (scripts/kali-tools.json) is a VIRTUAL package: it carries the sentinel
+    // checksum instead of an apk digest, places no files of its own, and exists only to pull in its
+    // members, which are queued before it and have already been fetched and verified as ordinary
+    // apks.  So there is nothing to download for it -- record it done and let the plan finish.
+    if (swSumIsMeta(psum.ptr)) {
+        klog("[software] "); klog(nm); klog(" is a tool group; its members are installed, nothing to fetch\n");
+        ++g_swQPos;
+        if (g_swQPos < g_swQN) return swStartNext();
+        swReportDone();
+        g_swPendActive = false;
+        return true;
+    }
     if (!softwareSpawnFetcher("apk\0".ptr, nm, pbase.ptr, pver.ptr, psum.ptr)) {
         swSet("refused could not start the package fetcher (hos-pkg-fetch is not staged in this image)");
         g_swPendActive = false;
@@ -345,6 +367,22 @@ private void swClearMarkers(const(char)* name, uint nameLen) {
     swMarkerPath(p[], name, nameLen, ".fail"); linux_sys_unlink(cast(ulong)p.ptr);
 }
 
+// The final "ok installed ..." line, once the whole plan has completed.  A plan of more than one
+// package names the target and its dependency count; a lone package names itself.  (A metapackage
+// install -- see swStartNext -- always has a plan of more than one, so it takes the first branch.)
+private void swReportDone() {
+    if (g_swQN > 1) {
+        char[12] nd = 0; uint l = 0;
+        void pn(uint v) { if (v >= 10) pn(v / 10); nd[l++] = cast(char)('0' + v % 10); }
+        pn(g_swQN - 1);
+        swSet("ok installed ", g_swTarget[0 .. g_swTargetLen], " and ", nd[0 .. l],
+              " dependencies into this domain's filesystem (see Logs, filter 'pkg').");
+    } else {
+        swSet("ok installed ", g_swPendName[0 .. g_swPendLen],
+              " into this domain's filesystem (see Logs, filter 'pkg').");
+    }
+}
+
 // Kernel supervisor hook: when an install is armed, watch for the fetcher's completion marker and,
 // on .done, do the cap-gated placement into the REQUESTING domain and report the real verdict; on
 // .fail, report the failure.  Throttled.  softwareApkTryComplete impersonates g_swPendDom so the
@@ -359,16 +397,7 @@ public void softwarePoll() {
         g_swPendActive = false;
         ++g_swQPos;
         if (g_swQPos < g_swQN) { swStartNext(); return; }     // next package in the plan
-        if (g_swQN > 1) {
-            char[12] nd = 0; uint l = 0;
-            void pn(uint v) { if (v >= 10) pn(v / 10); nd[l++] = cast(char)('0' + v % 10); }
-            pn(g_swQN - 1);
-            swSet("ok installed ", g_swTarget[0 .. g_swTargetLen], " and ", nd[0 .. l],
-                  " dependencies into this domain's filesystem (see Logs, filter 'pkg').");
-        } else {
-            swSet("ok installed ", g_swPendName[0 .. g_swPendLen],
-                  " into this domain's filesystem (see Logs, filter 'pkg').");
-        }
+        swReportDone();
     } else if (rc == -2) {
         const bool dep = !swNameEq(g_swPendName.ptr, g_swTarget.ptr);
         swSet("refused could not fetch or unpack ", g_swPendName[0 .. g_swPendLen],

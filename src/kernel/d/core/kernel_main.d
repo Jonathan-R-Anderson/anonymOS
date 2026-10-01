@@ -4809,6 +4809,12 @@ private void dispatchSyscall(int tid) {
             }
             if (mmapOk) {
                 ret = cast(long)vaddr;
+                // ANDROID A2: a /dev/binder mapping -- tell binder where its receive region landed
+                // and how much was mapped, so the pointers it hands the proc are backed.
+                if (useObjectBacking && mfd < 1024) {
+                    import core.syscalls.posix : binderNoteMmapFd;
+                    binderNoteMmapFd(mfd, vaddr, alignedLen);
+                }
                 // Diagnostic: log file-backed maps so a crash RIP inside a dlopen'd
                 // .so can be mapped back to a base.
                 //

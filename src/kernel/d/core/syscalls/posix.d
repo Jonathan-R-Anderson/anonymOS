@@ -12019,6 +12019,17 @@ private enum ulong BINDER_BOUNCE = 64 * 1024;
 private __gshared ubyte[BINDER_BOUNCE] g_binderWBounce;
 private __gshared ubyte[BINDER_BOUNCE] g_binderRBounce;
 
+// Copy from the sender's user memory into a kernel buffer, under SMAP -- the BinderCopyIn the
+// binder engine calls to pull a transaction's data out of the sender's address space (ANDROID A2).
+extern(D) ulong binderCopyInUser(ulong uaddr, ubyte* dst, ulong n) @nogc nothrow {
+    if (uaddr == 0 || dst is null || n == 0) return 0;
+    smapBegin();
+    auto src = cast(const(ubyte)*)uaddr;
+    foreach (i; 0 .. n) dst[i] = src[i];
+    smapEnd();
+    return n;
+}
+
 private long binderIoctl(int id, uint cmd, ulong arg) {
     import core.android.binder : binderVersion, binderSetMaxThreads, binderSetContextMgr,
                                  binderWriteRead, BINDER_VERSION, BINDER_SET_MAX_THREADS,
@@ -12059,7 +12070,7 @@ private long binderIoctl(int id, uint cmd, ulong arg) {
             }
             ulong wc = 0, rc = 0;
             const long r = binderWriteRead(id, g_binderWBounce.ptr, wavail, &wc,
-                                           g_binderRBounce.ptr, ravail, &rc);
+                                           g_binderRBounce.ptr, ravail, &rc, &binderCopyInUser);
             if (r < 0) return r;
             if (rc > 0 && rbuf != 0) {
                 smapBegin();
@@ -16439,11 +16450,38 @@ private long fileObjMmap(ObjHeader* oh, ulong offset, ulong* physOut,
 
 public long fdMmapBacking(ulong fd, ulong offset, ulong* physOut,
                           ulong* sizeOut, uint* vmoOut, bool* sharedOut) {
+    // /dev/binder: the receive buffer (ANDROID A2).  No object backs it; allocate the proc's region
+    // and hand back its physical base.  The caller records the mapped vaddr via binderNoteMmapFd.
+    {
+        initFdTable();
+        const int ifd = cast(int)fd;
+        if (ifd >= 0 && ifd < 1024 && g_fdTable[ifd].type == FileType.FD_BINDER) {
+            import core.android.binder : binderMmapAlloc, binderRegionSize;
+            const int proc = cast(int)cast(size_t)g_fdTable[ifd].backend;
+            const ulong phys = binderMmapAlloc(proc, 1024 * 1024);
+            if (phys == 0) return negErrno(ENOMEM);
+            if (sizeOut   !is null) *sizeOut   = binderRegionSize(proc);
+            if (sharedOut !is null) *sharedOut = true;   // kernel writes must be visible, not CoW
+            if (vmoOut    !is null) *vmoOut    = 0;
+            if (physOut   !is null) *physOut   = phys;
+            return cast(long)phys;
+        }
+    }
     ObjHeader* oh = fdObjectByIndexWithRights(cast(int)fd, CAP_RIGHT_MMAP);
     if (oh is null) return negErrno(EBADF);
     auto mop = g_objOps[oh.type].mmap;
     if (mop is null) return 0;
     return mop(oh, offset, physOut, sizeOut, vmoOut, sharedOut);
+}
+
+// The mmap dispatcher (kernel_main.d) calls this after mapping a /dev/binder region, so binder
+// knows the user base and how many bytes were mapped (ANDROID A2).
+public void binderNoteMmapFd(ulong fd, ulong uvaddr, ulong mappedLen) {
+    initFdTable();
+    const int ifd = cast(int)fd;
+    if (ifd < 0 || ifd >= 1024 || g_fdTable[ifd].type != FileType.FD_BINDER) return;
+    import core.android.binder : binderNoteMmap;
+    binderNoteMmap(cast(int)cast(size_t)g_fdTable[ifd].backend, uvaddr, mappedLen);
 }
 
 // --- Permission / ownership ---

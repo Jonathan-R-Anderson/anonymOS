@@ -29,7 +29,7 @@ anonymOS has none of binder, ashmem, cgroups, or the `CLONE_NEW*` namespace flag
 | Phase | What | Exit criterion |
 |---|---|---|
 | **A1 — binder device** (started) | `/dev/binder` as an in-kernel device: open/close, `BINDER_VERSION`, `BINDER_SET_MAX_THREADS`, `BINDER_SET_CONTEXT_MGR`, and the `BINDER_WRITE_READ` command/return framing (BC_*/BR_*). | A self-test opens `/dev/binder`, reads protocol version 8, registers a context manager, and round-trips a transaction through `BINDER_WRITE_READ`. **Done: `core/android/binder.d`, `[binder] selftest PASS`.** |
-| **A2 — binder mmap + buffers** | mmap the receive buffer; the kernel allocates transaction buffers from it and writes transaction data there; `BC_FREE_BUFFER` reclaims. | libbinder (`servicemanager`) opens, mmaps, and blocks in its read loop without error. |
+| **A2 — binder mmap + buffers** (done) | mmap the receive buffer; the kernel allocates transaction buffers from it and writes transaction data there; `BC_FREE_BUFFER` reclaims. | libbinder (`servicemanager`) opens, mmaps, and blocks in its read loop without error. **Done: `/dev/binder` mmap + bump allocator + data carried into the target's region (copy-in under SMAP) + free; `[binder] selftest PASS (A1+A2 …)`.** |
 | **A3 — binder objects & handles** | Flat-object translation (BINDER_TYPE_BINDER/HANDLE/FD), per-proc handle tables, ref counting, death notifications, the thread pool (`BC_REGISTER_LOOPER`). | Two processes pass a binder reference and an fd across a transaction; a crash fires a death notification. |
 | **A4 — binderfs + hw/vnd binder** | `/dev/binderfs` with `binder-control`; the `hwbinder` and `vndbinder` contexts Android needs. | `servicemanager` and a `hwservicemanager` come up on their own contexts. |
 | **A5 — ashmem / memfd seals** | `/dev/ashmem` ioctls (SET_NAME/SET_SIZE/PIN/UNPIN) and/or `memfd_create` with `F_SEAL_*`. | Android's `libcutils` ashmem path allocates and maps a region. |
@@ -44,9 +44,11 @@ already dispatches `waydroid app …`). None of A2–A9 is a flag: each is a sub
 
 ## Current status
 
-- **A1 binder device: implemented and self-tested** — `src/kernel/d/core/android/binder.d`, opened at
-  `/dev/binder` (`FD_BINDER` in `posix.d`), boot self-test prints `[binder] selftest PASS`.
-- Everything from A2 on is not started. `hos-waydroid` reports Waydroid-not-installed until the
+- **A1 binder device + A2 mmap/buffers: implemented and self-tested** — `src/kernel/d/core/android/binder.d`,
+  opened at `/dev/binder` (`FD_BINDER` in `posix.d`), `mmap`-able receive region with a bump
+  allocator; transaction data is copied from the sender into the target's region and freed on
+  `BC_FREE_BUFFER`. Boot self-test: `[binder] selftest PASS (A1+A2 …)`.
+- Everything from A3 on is not started. `hos-waydroid` reports Waydroid-not-installed until the
   stack can start a session, so nothing pretends to run.
 
 This is the honest state: the foundation stone is in and proven; the building is not built.

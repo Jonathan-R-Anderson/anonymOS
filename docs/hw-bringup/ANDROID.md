@@ -36,7 +36,7 @@ anonymOS has none of binder, ashmem, cgroups, or the `CLONE_NEW*` namespace flag
 | **A5 — ashmem / memfd seals** (done) | `memfd_create` with `F_SEAL_*` (already present) **and** `/dev/ashmem` ioctls (SET/GET NAME, SET/GET SIZE, SET/GET PROT_MASK, PIN/UNPIN, GET_PIN_STATUS, PURGE_ALL_CACHES), backed by the memfd machinery so mmap/fstat/dup reuse that path. | Android's `libcutils` ashmem path allocates and maps a region. **Done: `/dev/ashmem` in posix.d (memfd-backed) + the memfd+seals path; `[ashmem] selftest PASS`.** |
 | **A6 — cgroups v2** (done) | A mutable cgroup2 hierarchy under `/sys/fs/cgroup`: `mkdir`/`rmdir` sub-cgroups, per-cgroup control files (cgroup.controllers / subtree_control / procs / threads / type / events / stat, memory.max/current, pids.max/current, cpu.max), pid attachment, and the cgroup2 statfs magic. | A cgroup is created, controllers enabled, a pid attached and read back, and the cgroup removed. **Done: in-kernel cgroup tree in posix.d hooked into open/read/write/getdents/mkdir/rmdir/statfs; `[cgroup] selftest PASS`.** |
 | **A7 — namespaces** (done; isolation is A7b) | `unshare(CLONE_NEW*)` assigns per-task namespace ids (mnt/pid/net/ipc/uts/user/cgroup/time), `setns` accepts, and `chroot`/`pivot_root` set a real per-task filesystem root applied at open resolution (both were no-ops/EINVAL before). Child tasks inherit the namespace set + root at fork. | A process unshares a mount+pid namespace and `pivot_root`s into an image, after which a path resolves under it. **Done: per-task ns ids + rerooting in posix.d, syscalls 155/161/272/308 routed; `[ns] selftest PASS (… pivot_root into image, rerooted open)`.** |
-| **A7b — namespace isolation** | Make the ids *mean* something: separate mount tables per mnt-ns, pid translation per pid-ns, a per-net-ns stack, and `CLONE_NEW*` at clone-time (not just `unshare`); `/proc/<pid>/ns/*` fds for `setns`. | Two pid namespaces see disjoint pid sets; a mount in one mnt-ns is invisible in another. |
+| **A7b — namespace isolation** (done; net/clone-time are follow-ons) | Per-pid-ns pid numbering + `getpid`/`getppid` translation (each ns starts at pid 1 → disjoint pid sets), and a per-mnt-ns mount set so `mount`/`umount` in one mnt-ns is scoped to it. | Two pid namespaces see disjoint pid sets; a mount in one mnt-ns is invisible in another. **Done: pid-ns translation table + per-mnt-ns mount registry in posix.d, `getpid`/`getppid`/`mount`/`umount` hooked; `[nsiso] selftest PASS`.** Still open: per-net-ns/ipc stacks, `CLONE_NEW*` at clone-time, `/proc/<pid>/ns/*` fds. |
 | **A8 — LXC** | The container runtime Waydroid drives (`lxc` + liblxc), or a built-in equivalent that satisfies Waydroid's container contract. | `waydroid init` lays down the container config; `waydroid session start` gets Android's `init` to run. |
 | **A9 — Android image + Wayland** | Fetch/verify a Waydroid GSI (system + vendor), and wire Android's SurfaceFlinger/Wayland output into the domain's compositor surface. | The Android launcher renders in the domain; an `.apk` installed with `waydroid app install` launches and draws. |
 
@@ -83,13 +83,22 @@ already dispatches `waydroid app …`). None of A2–A9 is a flag: each is a sub
   assigns per-task namespace ids, `setns` accepts, and `chroot`/`pivot_root` set a real per-task
   filesystem root applied at `open` resolution (guarded so the desktop, which sets no root, pays one
   comparison). `[ns] selftest PASS` unshares mnt+pid+uts and pivot_root's into a created image dir,
-  proving a path then resolves under it. **Isolation semantics (separate mount/pid/net tables,
-  `CLONE_NEW*` at clone-time, `/proc/<pid>/ns/*`) are the A7b follow-on** — the ids are identities,
-  not yet enforced boundaries.
-- **A8 (LXC) and A9 (Android image) are not started.** `hos-waydroid` reports Waydroid-not-installed
-  until the stack can start a session, so nothing pretends to run.
+  proving a path then resolves under it.
+- **A7b namespace isolation: implemented and self-tested** — the ids now mean something. Each pid
+  namespace has its own pid numbering (starts at 1), `getpid`/`getppid` translate into the caller's
+  pid-ns, so two pid namespaces hold disjoint pid sets; each mount namespace has its own mount set,
+  so a `mount`/`umount` in one is invisible in another. `[nsiso] selftest PASS` proves both. Still
+  open: per-net-ns/ipc stacks, `CLONE_NEW*` at clone-time (vs `unshare`), and `/proc/<pid>/ns/*` fds.
+- **A8 (LXC): the next step, and it IS verifiable here.** liblxc builds against musl; running
+  `lxc-start` inside the anonymOS VM exercises the A1–A7b kernel surface for real. That is the plan,
+  rather than writing it unproven.
+- **A9 (Android image): the real wall is userland, not virtualization.** Waydroid runs Android's own
+  init/Zygote/ART/SurfaceFlinger/HALs as *container* processes on our kernel, and those are built
+  against **bionic** (Android's libc) with Android-specific ABI/SELinux/property-service/gralloc
+  assumptions, while our personality is **musl** — a large userland bring-up. Nested virtualization
+  does not help the container model (Waydroid is not a VM); it instead opens a *different* Android
+  path — booting **android-x86** as a Cloud Hypervisor guest (it brings its own kernel + bionic),
+  which is a VM and so needs a call on the earlier "no VM" preference.
 
-This is the honest state: binder IPC, shared memory, cgroup2 and the namespace/chroot *syscall
-surface* are in and proven. Namespace isolation (A7b), the LXC container runtime (A8) and the Android
-system image + SurfaceFlinger→Wayland (A9) are the remaining frontier, and the last two need the
-container userland that does not exist in this environment yet.
+This is the honest state: binder IPC, shared memory, cgroup2 and namespaces (surface + isolation)
+are in and proven. A8 (LXC) is buildable+runnable in the VM; A9 (Android userland) is the frontier.

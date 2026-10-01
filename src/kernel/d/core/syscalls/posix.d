@@ -14161,7 +14161,10 @@ public long linux_sys_uname(ulong buf) {
 }
 
 public long linux_sys_getpid() {
-    return cast(long)linuxPidForTask(cast(int)g_current_task_id);
+    const int gp = cast(int)linuxPidForTask(cast(int)g_current_task_id);
+    const int t = g_activeFdTabId;   // A7b: a task in a pid namespace sees ns-local pids
+    if (t >= 0 && t < FDTAB_COUNT && g_nsIds[t][1] != 0) return cast(long)pidnsLocal(g_nsIds[t][1], gp);
+    return cast(long)gp;
 }
 
 public long linux_sys_rt_sigaction(ulong signum, ulong act, ulong oldact, ulong sigsetsize) {
@@ -14450,7 +14453,10 @@ public long linux_sys_getppid() {
     if (tid < 0 || tid >= MAX_TASKS) return 0;
     int parent = g_tasks[tid].parentId;
     if (parent < 0 || parent >= MAX_TASKS) return 0;
-    return cast(long)linuxPidForTask(parent);
+    const int gp = cast(int)linuxPidForTask(parent);
+    const int t = g_activeFdTabId;   // A7b: translate into the caller's pid namespace
+    if (t >= 0 && t < FDTAB_COUNT && g_nsIds[t][1] != 0) return cast(long)pidnsLocal(g_nsIds[t][1], gp);
+    return cast(long)gp;
 }
 // Track A A4: setpgid records the task's process group for terminal ^C/^\ delivery.
 // getpgid/getpgrp keep the historical constant (1): busybox ash's job-control init
@@ -18634,6 +18640,113 @@ public void nsLinuxSelfTest() {
             : "[ns] selftest FAIL\n");
 }
 
+// ── A7b: namespace ISOLATION — pid translation + per-mnt-ns mount visibility ───────────────────────
+// A7 gave each task a namespace id; A7b makes those ids mean something.  A pid namespace has its own
+// pid numbering (every ns starts at pid 1), so two pid namespaces hold disjoint pid sets and getpid
+// returns the ns-local pid.  A mount namespace has its own mount set, so a mount made in one is
+// invisible in another.  (Full net/ipc isolation and CLONE_NEW* at clone-time remain follow-ons.)
+private enum int PIDNS_MAX     = 32;
+private enum int PIDNS_MAP_MAX = 128;
+private struct PidNs {
+    bool used; uint nsId; int nextLocal; int nmap;
+    int[PIDNS_MAP_MAX] gpid; int[PIDNS_MAP_MAX] lpid;
+}
+private __gshared PidNs[PIDNS_MAX] g_pidns;
+
+private int pidnsSlot(uint nsId) @nogc nothrow {   // find-or-create; -1 if full (or the init ns)
+    if (nsId == 0) return -1;
+    foreach (i; 0 .. PIDNS_MAX) if (g_pidns[i].used && g_pidns[i].nsId == nsId) return i;
+    foreach (i; 0 .. PIDNS_MAX) if (!g_pidns[i].used) {
+        g_pidns[i] = PidNs.init; g_pidns[i].used = true; g_pidns[i].nsId = nsId; g_pidns[i].nextLocal = 1;
+        return i;
+    }
+    return -1;
+}
+
+// Global pid -> ns-local pid in `nsId` (identity for the initial namespace); assigns on first sight.
+private int pidnsLocal(uint nsId, int gpid) @nogc nothrow {
+    if (nsId == 0) return gpid;
+    const int s = pidnsSlot(nsId);
+    if (s < 0) return gpid;
+    foreach (k; 0 .. g_pidns[s].nmap) if (g_pidns[s].gpid[k] == gpid) return g_pidns[s].lpid[k];
+    if (g_pidns[s].nmap >= PIDNS_MAP_MAX) return gpid;
+    const int lp = g_pidns[s].nextLocal++;
+    g_pidns[s].gpid[g_pidns[s].nmap] = gpid;
+    g_pidns[s].lpid[g_pidns[s].nmap] = lp;
+    ++g_pidns[s].nmap;
+    return lp;
+}
+
+private enum int MNTNS_MOUNT_MAX = 64;
+private enum int MNT_PATH_MAX    = 64;
+private struct MntEntry { bool used; uint mntNsId; ubyte pathLen; char[MNT_PATH_MAX] path; }
+private __gshared MntEntry[MNTNS_MOUNT_MAX] g_mnts;
+
+private bool mntPathEq(ref MntEntry e, const(char)* p, size_t len) @nogc nothrow {
+    if (e.pathLen != len) return false;
+    foreach (i; 0 .. len) if (e.path[i] != p[i]) return false;
+    return true;
+}
+private long mntAdd(uint mntNsId, const(char)* p, size_t len) @nogc nothrow {
+    if (len == 0 || len > MNT_PATH_MAX) return -1;
+    foreach (i; 0 .. MNTNS_MOUNT_MAX)
+        if (g_mnts[i].used && g_mnts[i].mntNsId == mntNsId && mntPathEq(g_mnts[i], p, len)) return 0;
+    foreach (i; 0 .. MNTNS_MOUNT_MAX)
+        if (!g_mnts[i].used) {
+            g_mnts[i].used = true; g_mnts[i].mntNsId = mntNsId; g_mnts[i].pathLen = cast(ubyte)len;
+            foreach (k; 0 .. len) g_mnts[i].path[k] = p[k];
+            return 0;
+        }
+    return -1;
+}
+private void mntRemove(uint mntNsId, const(char)* p, size_t len) @nogc nothrow {
+    foreach (i; 0 .. MNTNS_MOUNT_MAX)
+        if (g_mnts[i].used && g_mnts[i].mntNsId == mntNsId && mntPathEq(g_mnts[i], p, len)) g_mnts[i].used = false;
+}
+private bool mntVisible(uint mntNsId, const(char)* p, size_t len) @nogc nothrow {
+    foreach (i; 0 .. MNTNS_MOUNT_MAX)
+        if (g_mnts[i].used && g_mnts[i].mntNsId == mntNsId && mntPathEq(g_mnts[i], p, len)) return true;
+    return false;
+}
+
+// Boot self-test: two pid namespaces hold disjoint pid sets, getpid translates into the caller's
+// pid-ns, and a mount in one mnt-ns is invisible in another.
+public void nsIsolationSelfTest() {
+    bool ok = true;
+
+    // --- pid namespaces: independent numbering, so disjoint pid sets ---
+    const uint nsA = nsAllocId(), nsB = nsAllocId();
+    ok = ok && (pidnsLocal(nsA, 5000) == 1) && (pidnsLocal(nsA, 5001) == 2);
+    ok = ok && (pidnsLocal(nsB, 6000) == 1) && (pidnsLocal(nsB, 6001) == 2);
+    // local pid 1 names DIFFERENT global tasks in the two namespaces (that is what "disjoint" means)
+    ok = ok && (pidnsLocal(nsA, 5000) == 1) && (pidnsLocal(nsB, 6000) == 1);
+    // a global pid not yet seen in nsA gets a fresh local pid there, not the one it has in nsB
+    ok = ok && (pidnsLocal(nsA, 6000) == 3);
+    ok = ok && (pidnsLocal(0, 1234) == 1234);   // the initial namespace is identity
+
+    // --- getpid translation: the boot task, placed in nsA, reports an ns-local pid ---
+    const int t = g_activeFdTabId;
+    const uint savedPid = g_nsIds[t][1];
+    const long gp0 = linux_sys_getpid();        // ns 0 -> the global pid
+    g_nsIds[t][1] = nsA;
+    const long lp1 = linux_sys_getpid();
+    const long lp2 = linux_sys_getpid();
+    ok = ok && (lp1 == lp2) && (lp1 >= 1);      // stable, ns-local
+    g_nsIds[t][1] = savedPid;
+    ok = ok && (linux_sys_getpid() == gp0);     // restored to the global pid
+
+    // --- mount namespaces: a mount in one is invisible in another ---
+    const uint mA = nsAllocId(), mB = nsAllocId();
+    ok = ok && (mntAdd(mA, "/data".ptr, 5) == 0);
+    ok = ok && mntVisible(mA, "/data".ptr, 5);
+    ok = ok && !mntVisible(mB, "/data".ptr, 5);
+    mntRemove(mA, "/data".ptr, 5);
+    ok = ok && !mntVisible(mA, "/data".ptr, 5);
+
+    klog(ok ? "[nsiso] selftest PASS (disjoint pid namespaces, getpid translation, per-mnt-ns mount visibility)\n"
+            : "[nsiso] selftest FAIL\n");
+}
+
 public long linux_sys_seccomp(ulong op, ulong f, ulong a) { return negErrno(EINVAL); }
 public long linux_sys_bpf(ulong cmd, ulong attr, ulong sz)  { return negErrno(ENOSYS); }
 public long linux_sys_io_uring_setup(ulong e, ulong p) { return negErrno(ENOSYS); }
@@ -18713,10 +18826,25 @@ public long linux_sys_statx(ulong dfd, ulong path, ulong fl, ulong mask, ulong b
 // --- mount / umount2 (pretend success – no real VFS) ---
 public long linux_sys_mount(ulong src, ulong tgt, ulong fstype, ulong fl, ulong data) {
     if (!adminRequire(CAP_RIGHT_ADMIN_MOUNT)) return negErrno(EPERM);
+    // A7b: a mount made inside a (non-initial) mount namespace is recorded there, so it is visible
+    // only to tasks sharing that mnt-ns.
+    const int t = g_activeFdTabId;
+    if (t >= 0 && t < FDTAB_COUNT && g_nsIds[t][0] != 0 && tgt != 0) {
+        auto p = cast(const(char)*)tgt;
+        size_t len = 0; while (p[len] != 0 && len < MNT_PATH_MAX) ++len;
+        mntAdd(g_nsIds[t][0], p, len);
+    }
     return 0;
 }
 public long linux_sys_umount2(ulong tgt, ulong fl) {
-    return adminRequire(CAP_RIGHT_ADMIN_MOUNT) ? 0 : negErrno(EPERM);
+    if (!adminRequire(CAP_RIGHT_ADMIN_MOUNT)) return negErrno(EPERM);
+    const int t = g_activeFdTabId;
+    if (t >= 0 && t < FDTAB_COUNT && g_nsIds[t][0] != 0 && tgt != 0) {
+        auto p = cast(const(char)*)tgt;
+        size_t len = 0; while (p[len] != 0 && len < MNT_PATH_MAX) ++len;
+        mntRemove(g_nsIds[t][0], p, len);
+    }
+    return 0;
 }
 
 // --- swapon / swapoff ---

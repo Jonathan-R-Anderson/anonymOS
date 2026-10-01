@@ -9963,7 +9963,7 @@ private immutable VFEntry[] g_vfs = [
     },
     { "/etc/dconf/db/local.d/00-hanonymos-desktop",
       "[org/gnome/desktop/interface]\n" ~
-      "gtk-theme='Default'\n" ~
+      "gtk-theme='Adwaita'\n" ~          // an installed theme ("Default" is only a key theme)
       "icon-theme='hicolor'\n" ~
       "clock-format='24h'\n" ~
       "color-scheme='prefer-light'\n" ~
@@ -10202,11 +10202,17 @@ private immutable VFEntry[] g_vfs = [
     },
 
     // ── GTK3 ───────────────────────────────────────────────────────────────
+    // gtk-theme-name must name a theme that EXISTS: "Epin" is an icon theme only, and GTK, finding
+    // no Epin/gtk-3.x/gtk.css, ran with no theme at all -- toolbars and headerbars drawn with no
+    // background.  Firefox treats those as opaque and repaints only the text on them, so titles
+    // piled up on each other and the toolbar kept whatever was under it.  Adwaita is built into
+    // every GTK 3 (loaded from its resources, no files needed); dark matches the desktop.
     { "/etc/gtk-3.0/settings.ini",
       "[Settings]\n" ~
       "gtk-font-name=Noto Sans 10\n" ~
       "gtk-icon-theme-name=Epin\n" ~
-      "gtk-theme-name=Epin\n" ~
+      "gtk-theme-name=Adwaita\n" ~
+      "gtk-application-prefer-dark-theme=1\n" ~
       "gtk-cursor-theme-name=Epin\n" ~
       "gtk-xft-antialias=1\n" ~
       "gtk-xft-hinting=1\n" ~
@@ -10223,7 +10229,7 @@ private immutable VFEntry[] g_vfs = [
     { "/usr/share/glib-2.0/schemas/org.gnome.desktop.interface.gschema.xml",
       "<schemalist>\n" ~
       "  <schema id=\"org.gnome.desktop.interface\" path=\"/org/gnome/desktop/interface/\">\n" ~
-      "    <key name=\"gtk-theme\" type=\"s\"><default>'Epin'</default></key>\n" ~
+      "    <key name=\"gtk-theme\" type=\"s\"><default>'Adwaita'</default></key>\n" ~
       "    <key name=\"icon-theme\" type=\"s\"><default>'Epin'</default></key>\n" ~
       "    <key name=\"cursor-theme\" type=\"s\"><default>'Epin'</default></key>\n" ~
       "    <key name=\"font-name\" type=\"s\"><default>'Noto Sans 10'</default></key>\n" ~
@@ -10728,7 +10734,10 @@ private bool isVirtualDirectoryPath(const(char)* path) {
         cstrEqPrefix(path, "/usr/share/icons/") ||
         cstrEqPrefix(path, "/usr/share/cursors/") ||
         cstrEqPrefix(path, "/usr/share/backgrounds/") ||
-        cstrEqPrefix(path, "/usr/share/themes/") ||
+        // Not /usr/share/themes/: GTK probes <theme>/gtk-3.24, gtk-3.23, ... gtk-3.0 and loads
+        // the FIRST that is a directory.  Fabricating every one of them made a missing theme look
+        // installed (so GTK never fell back to Adwaita), and hid a package's real gtk-3.0 files
+        // behind a fake, empty gtk-3.24.  Themes a package installs are rtfs nodes and still resolve.
         cstrEqPrefix(path, "/usr/share/hos/") ||
         cstrEqPrefix(path, "/usr/share/X11/") ||
         cstrEqPrefix(path, "/usr/lib/pango/") ||

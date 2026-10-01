@@ -1041,7 +1041,12 @@ ulong linux_seed_initial_stack(
     if (envVirt != 0) envVirts[envc++] = envVirt;
     envVirt = _copyKernelStrToStack(stackPhysVirt, stackVirtBase, strCursor, "HOS_TERMINAL_FONT=/usr/share/fonts/noto/NotoSansMono-Regular.ttf\0".ptr);
     if (envVirt != 0) envVirts[envc++] = envVirt;
-    envVirt = _copyKernelStrToStack(stackPhysVirt, stackVirtBase, strCursor, "GTK_THEME=Epin\0".ptr);
+    // GTK_THEME overrides every other theme setting, so it has to name a theme GTK can load.  "Epin"
+    // is an ICON theme only: with no Epin/gtk-3.x/gtk.css every GTK program ran with no theme at all
+    // -- headerbars and toolbars without a background, which Firefox treats as opaque and so only
+    // ever repainted the text on (titles drawn over titles, a toolbar showing whatever was under
+    // it).  Adwaita is compiled into GTK itself; dark matches the desktop.
+    envVirt = _copyKernelStrToStack(stackPhysVirt, stackVirtBase, strCursor, "GTK_THEME=Adwaita:dark\0".ptr);
     if (envVirt != 0) envVirts[envc++] = envVirt;
     envVirt = _copyKernelStrToStack(stackPhysVirt, stackVirtBase, strCursor, "XCURSOR_THEME=Epin\0".ptr);
     if (envVirt != 0) envVirts[envc++] = envVirt;

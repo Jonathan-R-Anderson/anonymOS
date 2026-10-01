@@ -12271,14 +12271,15 @@ public int sys_clock_gettime(int clk_id, timespec* tp) {
     // CLOCK_REALTIME must be wall-clock, not uptime.  This used to ignore clk_id entirely and
     // hand every caller seconds-since-boot, so userspace believed it was January 1970 -- which
     // is why file timestamps, TLS validity checks and any clock display were all wrong.  Once
-    // SNTP has set the clock, offset the same PIT reading by the epoch base it established.
-    // Before that it still reports uptime: no sync means no better answer exists, and inventing
-    // a plausible date would be worse than an obviously wrong one.
+    // the clock is known (the hardware RTC at boot, or an SNTP reply), report that.  Before that
+    // it still reports uptime: no better answer exists, and inventing a plausible date would be
+    // worse than an obviously wrong one.
     if (clk_id == CLOCK_REALTIME) {
-        import network.ntp : ntpSynced, ntpNowSec;
+        import network.ntp : ntpSynced, ntpNowNs;
         if (ntpSynced()) {
-            tp.tv_sec  = cast(long)ntpNowSec();
-            tp.tv_nsec = cast(long)((ticks % 1000) * 1000000) + subMsNs;
+            const ulong wallNs = ntpNowNs();
+            tp.tv_sec  = cast(long)(wallNs / 1_000_000_000UL);
+            tp.tv_nsec = cast(long)(wallNs % 1_000_000_000UL);
             return 0;
         }
     }
@@ -14813,14 +14814,15 @@ private struct linux_timezone  { int tz_minuteswest; int tz_dsttime; }
 
 public long linux_sys_gettimeofday(ulong tv, ulong tz) {
     // Was a hardcoded zero, i.e. 1970-01-01T00:00:00Z on every call -- the other half of why
-    // userspace had no idea what year it was.  Report the SNTP-established wall clock when one
-    // exists, and fall back to uptime (not zero) when it does not, so at least the value moves.
-    import network.ntp : ntpSynced, ntpNowSec;
+    // userspace had no idea what year it was.  Report the wall clock (RTC or SNTP) when it is
+    // known, and fall back to uptime (not zero) when it is not, so at least the value moves.
+    import network.ntp : ntpSynced, ntpNowNs;
+    import core.ticks : monoNs;
     if (tv) {
         auto t = cast(linux_timeval*)tv;
-        const ulong ms = pitMs();
-        t.tv_sec  = ntpSynced() ? cast(long)ntpNowSec() : cast(long)(ms / 1000);
-        t.tv_usec = cast(long)((ms % 1000) * 1000);
+        const ulong ns = ntpSynced() ? ntpNowNs() : monoNs();
+        t.tv_sec  = cast(long)(ns / 1_000_000_000UL);
+        t.tv_usec = cast(long)((ns % 1_000_000_000UL) / 1000);
     }
     // No timezone database exists, so UTC is the honest answer rather than a guessed offset.
     if (tz) { auto z = cast(linux_timezone*)tz; z.tz_minuteswest = 0; z.tz_dsttime = 0; }

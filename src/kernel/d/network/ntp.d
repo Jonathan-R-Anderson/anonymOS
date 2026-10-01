@@ -13,7 +13,6 @@ module network.ntp;
 import network.types;
 import network.udp   : udpSocket, udpBind, udpSend, udpSetCallback, udpClose;
 import network.dns   : dnsResolve;
-import core.ticks    : pitMs;
 
 @nogc nothrow:
 
@@ -28,30 +27,54 @@ enum ulong NTP_TO_UNIX_EPOCH = 2_208_988_800UL;
 enum ushort NTP_PORT      = 123;
 enum ushort NTP_LOCALPORT = 12300;   // fixed local port; this kernel has no ephemeral allocator
 
-// The wall clock, as a Unix-epoch second count that corresponds to g_realtimeAtMs on the PIT.
-// Reading the time is then base + (pitMs() - atMs)/1000, so the clock keeps advancing between
-// syncs and a later sync simply re-bases it.
+// The wall clock: the Unix time g_realtimeBaseSec corresponds to the monotonic instant
+// g_realtimeAtNs (core.ticks.monoNs).  Reading the time is base + (monoNs() - atNs), so the clock
+// keeps advancing between settings, and a later setting (an SNTP reply, a fresh RTC read) simply
+// re-bases it.  Seconds and the fraction come from the same count, so the time never steps back
+// at a second boundary.
 private __gshared ulong g_realtimeBaseSec = 0;
-private __gshared ulong g_realtimeAtMs    = 0;
+private __gshared ulong g_realtimeAtNs    = 0;
 private __gshared bool  g_synced          = false;
+private __gshared bool  g_fromRtc         = false;   // set from the hardware clock, not a server
 
-/// True once a server reply has set the clock.  Callers that must not report a fabricated
-/// wall-clock time (rather than an obviously-wrong one) can check this first.
+/// True once the wall clock is known -- from an SNTP reply or the hardware RTC (drivers/rtc.d).
+/// Callers that must not report a fabricated wall-clock time (rather than an obviously-wrong one)
+/// can check this first.
 public bool ntpSynced() { return g_synced; }
 
-/// Current wall-clock time in Unix epoch seconds, or 0 if never synced.
-public ulong ntpNowSec() {
+/// True while the wall clock comes from the RTC (no SNTP reply has set it).
+public bool clockFromRtc() { return g_synced && g_fromRtc; }
+
+/// Current wall-clock time in Unix epoch nanoseconds, or 0 if not known.
+public ulong ntpNowNs() {
+    import core.ticks : monoNs;
     if (!g_synced) return 0;
-    const ulong now = pitMs();
-    const ulong elapsed = (now >= g_realtimeAtMs) ? (now - g_realtimeAtMs) : 0;
-    return g_realtimeBaseSec + elapsed / 1000;
+    const ulong now = monoNs();
+    const ulong elapsed = (now >= g_realtimeAtNs) ? (now - g_realtimeAtNs) : 0;
+    return g_realtimeBaseSec * 1_000_000_000UL + elapsed;
 }
 
-/// Set the clock directly. Used by the SNTP reply path, and available for a future RTC read.
+/// Current wall-clock time in Unix epoch seconds, or 0 if not known.
+public ulong ntpNowSec() { return ntpNowNs() / 1_000_000_000UL; }
+
+/// Set the clock from an SNTP server.
 public void ntpSetRealtime(ulong unixSec) {
+    import core.ticks : monoNs;
     g_realtimeBaseSec = unixSec;
-    g_realtimeAtMs    = pitMs();
+    g_realtimeAtNs    = monoNs();
     g_synced          = true;
+    g_fromRtc         = false;
+}
+
+/// Set the clock from the hardware RTC.  An SNTP time, once there is one, is the better source:
+/// the RTC only fills in until then (and on live media, where SNTP never runs).
+public void clockSetFromRtc(ulong unixSec) {
+    if (g_synced && !g_fromRtc) return;
+    import core.ticks : monoNs;
+    g_realtimeBaseSec = unixSec;
+    g_realtimeAtNs    = monoNs();
+    g_synced          = true;
+    g_fromRtc         = true;
 }
 
 private __gshared int  g_sock      = -1;

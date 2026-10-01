@@ -3208,6 +3208,31 @@ enum ulong NTP_RETRY_MS     = 4_000;
 // Re-sync interval, in pitMs which runs behind wall clock -- so the real gap between corrections
 // is longer than this number suggests.  Sized to bound drift, not to be precise.
 enum ulong NTP_RESYNC_MS    = 60_000;
+// The wall clock from the battery-backed RTC (drivers/rtc.d) -- read at boot, before the first
+// program runs, so nothing starts in January 1970, and again every RTC_REBASE_MS while the RTC is
+// the source: the clock is extrapolated from the PIT between readings, and the PIT runs behind
+// real time under load.  An SNTP time, once there is one, takes over (clockSetFromRtc defers).
+private __gshared ulong g_rtcNextMs = 0;
+private __gshared bool  g_rtcTried  = false;
+enum ulong RTC_REBASE_MS = 30_000;
+private void maybeRtcClock() {
+    import drivers.rtc : rtcReadUnix;
+    import network.ntp : clockSetFromRtc, clockFromRtc, ntpSynced;
+    const ulong now = pitMs();
+    if (g_rtcTried && (!clockFromRtc() || now < g_rtcNextMs)) return;
+    g_rtcNextMs = now + RTC_REBASE_MS;
+    ulong sec;
+    const bool ok = rtcReadUnix(sec);
+    if (!g_rtcTried) {
+        g_rtcTried = true;
+        if (!ok) { klog("[rtc] no believable date in the hardware clock; wall clock waits for SNTP\n"); return; }
+        clockSetFromRtc(sec);
+        klog("[rtc] wall clock set from the hardware clock: unix="); klog_dec(sec); klog("\n");
+        return;
+    }
+    if (ok && ntpSynced()) clockSetFromRtc(sec);
+}
+
 private void maybeSyncNtp() {
     import network.ntp : ntpRequest, ntpSynced, ntpResetForRetry, ntpHaveServer;
     if (!g_netConfigured || !ntpHaveServer()) return;
@@ -5304,8 +5329,8 @@ private void dispatchSyscall(int tid) {
                 if (rax == 230 && (rsi & 1) != 0) {
                     ulong nowMs = pitMs();
                     if (cast(int)rdi == 0 /*CLOCK_REALTIME*/) {
-                        import network.ntp : ntpSynced, ntpNowSec;
-                        if (ntpSynced()) nowMs = cast(ulong)ntpNowSec() * 1000 + nowMs % 1000;
+                        import network.ntp : ntpSynced, ntpNowNs;
+                        if (ntpSynced()) nowMs = ntpNowNs() / 1_000_000UL;
                     }
                     ms = (ms > nowMs) ? ms - nowMs : 0;
                 }
@@ -6237,6 +6262,7 @@ private void kernelLoop() {
         maybeProcSelfTest();   // ROADMAP 2.1: prove /proc once real time and load have accrued
         maybeSyscallAudit();   // ROADMAP 2.2: record which syscalls are missing, once
         maybeEpollDump();      // ROADMAP 2.3: is the compositor watching the new client fd?
+        maybeRtcClock();       // the wall clock from the hardware RTC: no network needed
         maybeSyncNtp();        // NTP: set the wall clock from pool.ntp.org, with retries
         maybeVmStoreWork();    // the firewall chosen at install: download it, then start it headless
         maybeAutoPkg();        // TEST IMAGES ONLY: AUTOPKG=<name> installs a package headlessly
@@ -6907,6 +6933,7 @@ void d_kernel_main() {
     // appgate: the delegation table goes live AFTER the last boot-time domain mutation (the proofs
     // above create/clone/delete throwaway domains) and BEFORE the first program runs (kernelLoop).
     appgateBootInit();
+    maybeRtcClock();             // the date, before any program can ask for it
     smpWorkReport();             // SMP_ROADMAP S4 foundation: APs ran parallel kernel work during boot
     bootProgress("domains");
     if (g_mboot_modules !is null && g_module_count > 0) {

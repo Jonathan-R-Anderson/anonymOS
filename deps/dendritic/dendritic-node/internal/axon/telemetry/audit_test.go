@@ -96,6 +96,10 @@ var notTelemetry = map[string]string{
 	"internal/p2p": "storage lease requests and revocations to the coordinator. " +
 		"Protocol traffic naming the object being leased, to the party issuing " +
 		"the lease.",
+	"internal/axon/swarm": "a swarm announce to the tracker: this node's own " +
+		"service address and whether it holds the whole file, sent to the party " +
+		"introducing the file's peers to each other. Protocol traffic; it carries " +
+		"no observation about any other node.",
 }
 
 // Field names that name a third party or a unit of work.

@@ -14,7 +14,8 @@ import core.task : g_tasks, MAX_TASKS, linuxPidForTask, linuxTidForTask,
                    objEnsureNamespace, taskIdFromLinuxPid,
                    g_taskPgid, g_taskSigCustom, deliverSignalToGroup, g_taskExecName,
                    g_sigHandler, g_sigRestorer, domainRecordWrite,   // DOMAIN_MANAGER DM6.2
-                   g_taskPendingSig;                                 // ITIMER_REAL -> SIGALRM
+                   g_taskPendingSig,                                 // ITIMER_REAL -> SIGALRM
+                   g_sigFlags, g_sigAltSp, g_sigAltSize, g_sigAltOn, sigProc, sigIgnored;
 import core.objmgr : ObjType, ObjHeader, objAlloc, objRetain, objRelease, objGet,
                      g_objOps, g_objOpsDispatch; // Phase 2/5 object mgr
 import core.cap : Capability, CAP_INVALID,
@@ -76,6 +77,35 @@ enum O_EXCL = 0x80;
 enum O_TRUNC = 0x200;
 enum O_APPEND = 0x400;
 enum TCGETS = 0x5401;
+
+// Write exactly the terminal-attribute struct the request names, never more: TCGETS fills the
+// kernel's struct termios (36 bytes: four u32 flags, c_line at 16, c_cc[19] at 17), TCGETS2 a
+// struct termios2 (44: + c_ispeed, c_ospeed), TCGETA the old struct termio (17: four u16 flags,
+// c_line at 8, c_cc[8] at 9).  The console used to zero 60 bytes for TCGETS -- musl's 60-byte
+// struct absorbed it, Go's 44-byte one on its stack did not: the overrun zeroed a saved return
+// address and the dendritic node jumped to 0 whenever its output was a terminal.
+private void termiosPut(ulong arg, ulong cmd, uint iflag, uint oflag, uint cflag, uint lflag,
+                        const(ubyte)* cc19) @nogc nothrow {
+    auto b = cast(ubyte*)arg;
+    if ((cmd & 0xFFFF) == 0x5405) {                       // TCGETA: struct termio
+        auto h = cast(ushort*)arg;
+        h[0] = cast(ushort)iflag; h[1] = cast(ushort)oflag; h[2] = cast(ushort)cflag; h[3] = cast(ushort)lflag;
+        b[8] = 0;                                         // c_line
+        foreach (i; 0 .. 8) b[9 + i] = cc19[i];
+        return;
+    }
+    auto w = cast(uint*)arg;
+    w[0] = iflag; w[1] = oflag; w[2] = cflag; w[3] = lflag;
+    b[16] = 0;                                            // c_line
+    foreach (i; 0 .. 19) b[17 + i] = cc19[i];
+    if ((cmd & 0xFFFF) == 0x542a) {                       // TCGETS2: + c_ispeed, c_ospeed
+        w[9] = 38400; w[10] = 38400;
+    }
+}
+
+// The control characters of an interactive terminal (VINTR, VQUIT, VERASE, VKILL, VEOF, VTIME,
+// VMIN, VSWTC, VSTART, VSTOP, VSUSP, VEOL, VREPRINT, VDISCARD, VWERASE, VLNEXT, VEOL2, ...).
+private immutable ubyte[19] g_ttyDefaultCc = [3, 28, 127, 21, 4, 0, 1, 0, 17, 19, 26, 255, 18, 15, 23, 22, 255, 0, 0];
 enum TCSETS = 0x5402;
 
 private enum ushort ps2DataPort = 0x60;
@@ -333,7 +363,7 @@ static assert(EpollEvent.sizeof == 12);
 // lastReady/lastGen: what an edge-triggered (EPOLLET) watch last reported; disarmed: an
 // EPOLLONESHOT watch that fired and waits for EPOLL_CTL_MOD.
 private struct EpollWatch { bool active; int watchFd; uint events; ulong data;
-                            uint lastReady; ulong lastGen; bool disarmed; }
+                            uint lastReady; ulong lastGen; bool disarmed; ulong lastWrGen; }
 private struct EpollInst  { bool inUse; ubyte nestDepth; uint refs; EpollWatch[EPOLL_MAX_WATCHES] watches; }
 
 __gshared EpollInst[EPOLL_MAX_INSTANCES] g_epollTable;
@@ -588,10 +618,7 @@ private long ptyIoctl(int idx, ulong cmd, ulong arg) @nogc nothrow {
             return 0;
         case 0x5401: case 0x5405: case 0x542a: { // TCGETS / TCGETA / TCGETS2
             if (arg == 0) return negErrno(14);
-            auto t = cast(uint*)arg;
-            t[0] = p.iflag; t[1] = p.oflag; t[2] = p.cflag; t[3] = p.lflag;
-            auto cc = cast(ubyte*)(arg + 17); // c_cc follows c_line at offset 17
-            foreach (i; 0 .. 19) cc[i] = p.cc[i];
+            termiosPut(arg, cmd, p.iflag, p.oflag, p.cflag, p.lflag, p.cc.ptr);
             return 0;
         }
         case 0x5402: case 0x5403: case 0x5404: case 0x542b: { // TCSETS{,W,F} / TCSETS2
@@ -1316,6 +1343,7 @@ private struct LocalSocket
     size_t backlog;
     int peerId;
     bool peerClosed;
+    uint wrBlockGen;   // bumped when a write is refused for a full peer buffer (fdWriteGen)
     // Credentials captured when this endpoint is created.  SO_PEERCRED must
     // report the PEER endpoint's owner, not whichever task happens to execute
     // getsockopt (the latter made dbus-daemon attribute every client to itself).
@@ -1867,6 +1895,7 @@ private ssize_t localSocketWrite(File* f, const(void)* buffer, size_t length)
     const size_t written = socketBufferWrite(peer.rx, cast(const(ubyte)*)buffer, length);
     if (written == 0 && length != 0)
     {
+        ++sock.wrBlockGen;
         return negErrno(EAGAIN);
     }
     return cast(ssize_t)written;
@@ -11703,31 +11732,9 @@ private long fileObjIoctl(ObjHeader* oh, ulong cmd, ulong arg) {
     // TCGETS / TCGETA / TCGETS2
     if (cmd == 0x5401 || cmd == 0x5405 || cmd == 0x542a) {
         if (arg == 0) return cast(long)negErrno(14); // EFAULT
-        // Fill a struct termios with sane interactive-terminal defaults.
-        // Layout (x86-64 Linux ABI): c_iflag, c_oflag, c_cflag, c_lflag
-        // followed by c_line (1 byte) and c_cc[19].
-        auto t = cast(uint*)arg;
-        t[0] = 0x0500;        // c_iflag: ICRNL|IXON
-        t[1] = 0x0005;        // c_oflag: OPOST|ONLCR
-        t[2] = 0x04bf;        // c_cflag: B38400|CS8|CREAD|HUPCL
-        t[3] = 0x8a3b;        // c_lflag: ICANON|ECHO|ECHOE|ECHOK|ISIG|IEXTEN
-        // c_line and c_cc start at byte offset 16
-        auto cc = cast(ubyte*)(cast(ubyte*)arg + 16);
-        cc[ 0] = 3;   // VINTR  = Ctrl-C
-        cc[ 1] = 28;  // VQUIT  = Ctrl-\
-        cc[ 2] = 127; // VERASE = DEL
-        cc[ 3] = 21;  // VKILL  = Ctrl-U
-        cc[ 4] = 4;   // VEOF   = Ctrl-D
-        cc[ 5] = 0;   // VTIME
-        cc[ 6] = 1;   // VMIN   = wait for at least 1 character
-        cc[ 7] = 0;   cc[8] = 17;  cc[9] = 19;  // VSWTC VSTART VSTOP
-        cc[10] = 26;  // VSUSP  = Ctrl-Z
-        cc[11] = 255; // VEOL
-        cc[12] = 18;  // VREPRINT = Ctrl-R
-        cc[13] = 0;   // VDISCARD
-        cc[14] = 23;  // VWERASE = Ctrl-W
-        cc[15] = 22;  // VLNEXT = Ctrl-V
-        cc[16] = 255; // VEOL2
+        // An interactive terminal: ICRNL|IXON, OPOST|ONLCR, B38400|CS8|CREAD|HUPCL,
+        // ICANON|ECHO|ECHOE|ECHOK|ISIG|IEXTEN.
+        termiosPut(arg, cmd, 0x0500, 0x0005, 0x04bf, 0x8a3b, g_ttyDefaultCc.ptr);
         return 0;
     }
 
@@ -11874,10 +11881,14 @@ public long linux_sys_ioctl(ulong fd, ulong cmd, ulong arg) {
     // IS a terminal) and TCSETS* being accepted keeps stdio on its normal path.
     if (fd < 1024 && g_fdTable !is null && g_fdTable[cast(int)fd].type == FileType.FD_CONSOLE) {
         const uint c = cast(uint)cmd;
-        if (c == 0x5401 /*TCGETS*/) {
-            // struct termios is 36 bytes + c_cc[19]; zeroing it is a valid "raw-ish" answer and
-            // is all isatty() needs (it only checks for success).
-            if (arg != 0) { smapBegin(); auto p = cast(ubyte*)arg; foreach (i; 0 .. 60) p[i] = 0; smapEnd(); }
+        if (c == 0x5401 /*TCGETS*/ || c == 0x5405 /*TCGETA*/ || c == 0x542a /*TCGETS2*/) {
+            // The console is a terminal (isatty() only checks for success); answer with the
+            // request's exact struct -- see termiosPut.
+            if (arg != 0) {
+                smapBegin();
+                termiosPut(arg, c, 0x0500, 0x0005, 0x04bf, 0x8a3b, g_ttyDefaultCc.ptr);
+                smapEnd();
+            }
             return 0;
         }
         if (c == 0x5402 || c == 0x5403 || c == 0x5404) return 0;   // TCSETS/TCSETSW/TCSETSF
@@ -12601,7 +12612,7 @@ private ssize_t inetSendTo(LocalSocket* s, const(void)* buf, size_t len,
     auto ip = IPv4Address(cast(ubyte)(dip & 0xFF), cast(ubyte)((dip >> 8) & 0xFF),
                           cast(ubyte)((dip >> 16) & 0xFF), cast(ubyte)((dip >> 24) & 0xFF));
     import network.loopback : NETIF_LOOPBACK;
-    const bool loop = ip.bytes[0] == 127;          // this machine: the loopback interface
+    const bool loop = ip.bytes[0] == 127 || inetIsOwnAddr(dip);   // this machine: the loopback interface
     const int nif = loop ? NETIF_LOOPBACK : inetRouteIf();
     if (nif < 0) return negErrno(ENETUNREACH);
     MACAddress mac;
@@ -12791,6 +12802,22 @@ private int inetRouteIf() @nogc nothrow {
     return dom == 0 ? 0 : vnetIfForDomain(dom);
 }
 
+// Is `addr` (as in sockaddr_in) this machine's own address on the interface the caller routes
+// through?  Linux delivers traffic for a local address over loopback.  Sent out the NIC it never comes
+// back: a Go program that listens on all addresses and dials its own interface address (the AXON link
+// tests do) retransmitted SYNs to itself until it gave up.
+private bool inetIsOwnAddr(uint addr) @nogc nothrow {
+    import network.vnet : g_netIf;
+    import network.ipv4 : getLocalIP;
+    const int prev = g_netIf;
+    g_netIf = inetRouteIf();
+    IPv4Address me;
+    getLocalIP(&me);
+    g_netIf = prev;
+    const uint mine = me.bytes[0] | (me.bytes[1] << 8) | (me.bytes[2] << 16) | (cast(uint)me.bytes[3] << 24);
+    return mine != 0 && mine == addr;
+}
+
 private int netPolicyGate(uint dst) @nogc nothrow {
     // Routed through a gateway VM: that firewall is the policy enforcement point for this
     // domain's traffic (its VPN/Tor/allow rules), so the host-side identity policy stands aside.
@@ -12885,7 +12912,7 @@ private int inetTcpConnect(LocalSocket* s, File* f, const(sockaddr)* addr, uint 
     // 127.0.0.0/8: the loopback interface (network/loopback.d) -- local, so no domain network
     // policy applies; the listener side decides whether this domain may reach it.  Every 127.x
     // is this machine; 127.0.0.1 is the one address the connection then answers on.
-    const bool loop = first == 127;
+    const bool loop = first == 127 || inetIsOwnAddr(sin.sin_addr);   // ... and so is our own address
     uint dst = loop ? 0x0100007F : sin.sin_addr;
     if (!loop) { const int pol = netPolicyGate(sin.sin_addr); if (pol != 0) return pol; }
     if (s.inetLocalPort == 0) {
@@ -13725,29 +13752,40 @@ public long linux_sys_rt_sigaction(ulong signum, ulong act, ulong oldact, ulong 
     // default terminate, which is what keeps interactive apps alive on ^C.
     const int tid = cast(int)g_current_task_id;
     if (signum < 64 && tid >= 0 && tid < MAX_TASKS) {
-        if (oldact != 0 && signum < 64) {
-            // Report the previously-installed handler (zsh queries this).
-            *cast(ulong*)oldact = g_sigHandler[tid][signum];
+        // Dispositions are the PROCESS's (CLONE_SIGHAND): kept at the process leader, so every
+        // thread sees the handler whichever one installed it.
+        const int proc = sigProc(tid);
+        if (oldact != 0) {
+            // x86-64 kernel sigaction: sa_handler(+0), sa_flags(+8), sa_restorer(+16), sa_mask(+24).
+            const bool custom = (g_taskSigCustom[proc] & (1UL << signum)) != 0;
+            *cast(ulong*)(oldact + 0)  = g_sigHandler[proc][signum] != 0 ? g_sigHandler[proc][signum]
+                                         : (custom ? 1 /*SIG_IGN*/ : 0);
+            *cast(ulong*)(oldact + 8)  = g_sigFlags[proc][signum];
+            *cast(ulong*)(oldact + 16) = g_sigRestorer[proc][signum];
+            *cast(ulong*)(oldact + 24) = 0;
         }
         if (act != 0) {
-            // x86-64 kernel sigaction layout: sa_handler(+0), sa_flags(+8), sa_restorer(+16).
             const ulong handler  = *cast(ulong*)(act + 0);
             const ulong flags    = *cast(ulong*)(act + 8);
             const ulong restorer = *cast(ulong*)(act + 16);
             // SIG_DFL = 0 → default; SIG_IGN = 1 or any handler → custom (suppress kill)
-            if (handler == 0) g_taskSigCustom[tid] &= ~(1UL << signum);
-            else              g_taskSigCustom[tid] |=  (1UL << signum);
-            // Z1: store the real handler so the run loop can invoke it (SIGCHLD).  A real
-            // function pointer (not SIG_DFL/SIG_IGN = 0/1) with SA_RESTORER's trampoline is
-            // what we can build a frame for; otherwise clear it (default/ignore handling).
+            if (handler == 0) g_taskSigCustom[proc] &= ~(1UL << signum);
+            else              g_taskSigCustom[proc] |=  (1UL << signum);
+            g_sigFlags[proc][signum] = flags;
+            // Z1: store the real handler so the run loop can invoke it.  A real function pointer
+            // (not SIG_DFL/SIG_IGN = 0/1) with SA_RESTORER's trampoline is what we can build a
+            // frame for; otherwise clear it (default/ignore handling).
             enum ulong SA_RESTORER = 0x04000000;
             if (handler > 1 && (flags & SA_RESTORER) && restorer != 0) {
-                g_sigHandler[tid][signum]  = handler;
-                g_sigRestorer[tid][signum] = restorer;
+                g_sigHandler[proc][signum]  = handler;
+                g_sigRestorer[proc][signum] = restorer;
             } else {
-                g_sigHandler[tid][signum]  = 0;
-                g_sigRestorer[tid][signum] = 0;
+                g_sigHandler[proc][signum]  = 0;
+                g_sigRestorer[proc][signum] = 0;
             }
+            // A pending signal the new disposition ignores is discarded (POSIX).
+            if (sigIgnored(tid, cast(int)signum) && g_taskPendingSig[tid] == cast(int)signum)
+                g_taskPendingSig[tid] = 0;
         }
     }
     return 0;
@@ -14102,15 +14140,45 @@ public long linux_sys_umask(ulong mask) {
 
 // --- Signal mask / return (stubs sufficient for musl startup) ---
 public long linux_sys_rt_sigprocmask(ulong how, ulong nset, ulong oldset, ulong sigsetsize) {
-    if (oldset != 0) {
-        auto p = cast(ulong*)oldset;
-        for (ulong i = 0; i < (sigsetsize + 7) / 8; ++i)
-            p[i] = 0;
-    }
+    // Linux accepts only its own sigset_t size; anything else is EINVAL, and must not become a
+    // write of `sigsetsize` bytes into the caller's (possibly 8-byte) oldset.
+    if (sigsetsize != 8) return negErrno(EINVAL);
+    if (oldset != 0) *cast(ulong*)oldset = 0;
     return 0;
 }
 public long linux_sys_rt_sigreturn() { return 0; }
-public long linux_sys_sigaltstack(ulong ss, ulong old_ss) { return 0; }
+// sigaltstack: the calling THREAD's signal stack.  stack_t: ss_sp(+0), ss_flags(+8, int),
+// ss_size(+16).  It was a stub that returned 0 and left old_ss untouched, so Go -- which asks
+// for the current stack, then sets its own and checks it inside every handler -- read garbage
+// and ran its signal handler on a stack that did not exist.
+public long linux_sys_sigaltstack(ulong ss, ulong old_ss) {
+    enum int SS_ONSTACK = 1, SS_DISABLE = 2, MINSIGSTKSZ = 2048;
+    const int tid = cast(int)g_current_task_id;
+    if (tid < 0 || tid >= MAX_TASKS) return negErrno(EINVAL);
+    import core.task : REG_RSP;
+    const ulong rsp = g_tasks[tid].regs[REG_RSP];
+    const bool onAlt = g_sigAltOn[tid] && rsp > g_sigAltSp[tid] && rsp <= g_sigAltSp[tid] + g_sigAltSize[tid];
+    if (old_ss != 0) {
+        *cast(ulong*)(old_ss + 0)  = g_sigAltOn[tid] ? g_sigAltSp[tid] : 0;
+        *cast(int*)(old_ss + 8)    = g_sigAltOn[tid] ? (onAlt ? SS_ONSTACK : 0) : SS_DISABLE;
+        *cast(int*)(old_ss + 12)   = 0;
+        *cast(ulong*)(old_ss + 16) = g_sigAltOn[tid] ? g_sigAltSize[tid] : 0;
+    }
+    if (ss != 0) {
+        if (onAlt) return negErrno(EPERM);                 // cannot change it while running on it
+        const ulong sp    = *cast(ulong*)(ss + 0);
+        const int   flags = *cast(int*)(ss + 8);
+        const ulong size  = *cast(ulong*)(ss + 16);
+        if (flags & SS_DISABLE) {
+            g_sigAltOn[tid] = false; g_sigAltSp[tid] = 0; g_sigAltSize[tid] = 0;
+        } else {
+            if ((flags & ~SS_ONSTACK) != 0) return negErrno(EINVAL);
+            if (size < MINSIGSTKSZ) return negErrno(ENOMEM);
+            g_sigAltOn[tid] = true; g_sigAltSp[tid] = sp; g_sigAltSize[tid] = size;
+        }
+    }
+    return 0;
+}
 
 // --- Kill / tgkill ---
 // POSIX kill(pid, 0) is an *existence probe* (no signal sent): it must return -ESRCH once the
@@ -15556,11 +15624,15 @@ public long linux_sys_ppoll(ulong fds, ulong nfds, ulong tmo, ulong sig, ulong s
 // returning the total ready count.  Previously select/pselect6 just `return 0` immediately (no scan,
 // no park), so a caller like zsh's ZLE that select()s on its tty spun in USERSPACE (~73% cpu) re-running
 // select->0 forever.  Now select is real (scan like poll) + the dispatcher parks it (kernel_main.d).
+// The sets are rewritten ONLY when something is ready: on 0 the dispatcher parks and re-runs select
+// on the same sets, so emptying them here made every re-run scan nothing (NULL timeout: hang forever;
+// finite: return 0 even after an fd became ready).  A real 0 return clears them via selectClearFds.
 private long selectScanFds(ulong n, ulong inp, ulong outp, ulong exp) {
     long nfds = cast(long)n; if (nfds < 0) nfds = 0; if (nfds > 1024) nfds = 1024;
     int ready = 0;
     int words = cast(int)((nfds + 63) / 64);
     ulong* rd = cast(ulong*)inp, wr = cast(ulong*)outp, ex = cast(ulong*)exp;
+    ulong[16] routs, wouts;                 // 1024 fds / 64
     for (int w = 0; w < words; w++) {
         ulong rin = rd ? rd[w] : 0;
         ulong win = wr ? wr[w] : 0;
@@ -15574,11 +15646,28 @@ private long selectScanFds(ulong n, ulong inp, ulong outp, ulong exp) {
                 if ((win & bit) && fd >= 0 && fd < 1024 && fdWritable(cast(int)fd)) { wout |= bit; ready++; }
             }
         }
-        if (rd) rd[w] = rout;
-        if (wr) wr[w] = wout;
+        routs[w] = rout;
+        wouts[w] = wout;
+    }
+    if (ready == 0) return 0;
+    for (int w = 0; w < words; w++) {
+        if (rd) rd[w] = routs[w];
+        if (wr) wr[w] = wouts[w];
         if (ex) ex[w] = 0;   // no exception conditions are ever ready here
     }
     return cast(long)ready;
+}
+// select/pselect6 returning 0 for real (non-blocking, or the timeout expired): no fd is ready, so
+// every set comes back empty, as on Linux.
+public void selectClearFds(ulong n, ulong inp, ulong outp, ulong exp) {
+    long nfds = cast(long)n; if (nfds < 0) nfds = 0; if (nfds > 1024) nfds = 1024;
+    const int words = cast(int)((nfds + 63) / 64);
+    ulong* rd = cast(ulong*)inp, wr = cast(ulong*)outp, ex = cast(ulong*)exp;
+    for (int w = 0; w < words; w++) {
+        if (rd) rd[w] = 0;
+        if (wr) wr[w] = 0;
+        if (ex) ex[w] = 0;
+    }
 }
 public long linux_sys_select(ulong n, ulong i, ulong o, ulong e, ulong tv) { return selectScanFds(n, i, o, e); }
 public long linux_sys_pselect6(ulong n, ulong i, ulong o, ulong e, ulong tv, ulong sig) { return selectScanFds(n, i, o, e); }
@@ -15587,18 +15676,22 @@ public long linux_sys_pselect6(ulong n, ulong i, ulong o, ulong e, ulong tv, ulo
 public long linux_sys_getrusage(ulong who, ulong usage) {
     if (!usage) return negErrno(EFAULT);
     auto p = cast(ubyte*)usage;
-    for (int i = 0; i < 136; ++i) p[i] = 0;
+    for (int i = 0; i < 144; ++i) p[i] = 0;     // struct rusage: 2 timevals + 14 longs
     return 0;
 }
 public long linux_sys_times(ulong tbuf) {
     if (tbuf) { auto p = cast(long*)tbuf; p[0] = p[1] = p[2] = p[3] = 0; }
     return 0;
 }
+// Linux x86_64 `struct sysinfo` is 112 bytes: its tail pad is char[20 - 2*sizeof(long) - 4], which is
+// ZERO on a 64-bit kernel.  This was char[20] (128 bytes), so every sysinfo() wrote 16 bytes past the
+// caller's struct -- over a Go program's stack, which then returned to 0xffff... (the AXON tests).
 private struct linux_sysinfo {
     long uptime; ulong[3] loads; ulong totalram; ulong freeram;
     ulong sharedram; ulong bufferram; ulong totalswap; ulong freeswap;
-    ushort procs; ulong totalhigh; ulong freehigh; uint mem_unit; char[20] _f;
+    ushort procs; ushort pad; ulong totalhigh; ulong freehigh; uint mem_unit;
 }
+static assert(linux_sysinfo.sizeof == 112);
 public long linux_sys_sysinfo(ulong info) {
     if (!info) return negErrno(EFAULT);
     auto s = cast(linux_sysinfo*)info; *s = linux_sysinfo.init;
@@ -15925,11 +16018,76 @@ public uint memfdVmoObj(ulong fd) {
     return ensureMemfdVmo(mid);
 }
 
+// ftruncate on an rtfs file.  A database grows its file this way before writing pages into the new
+// space (bbolt: "file resize error: truncate ...: invalid argument" was the dendritic node's first
+// fatal error in the OS).  Growing zero-fills; shrinking only moves the size -- the capacity stays,
+// so a shared mapping of the old tail keeps valid frames, and a later regrow zeroes them again.
+private long rtfsTruncate(File* f, ulong length) {
+    const int idx = cast(int)cast(size_t)f.backend;
+    if (idx < 0 || idx >= g_rtNodes || g_rt[idx].kind != RT_REG) return negErrno(EBADF);
+    if ((f.flags & 3) == O_RDONLY) return negErrno(EINVAL);     // not open for writing
+    if (diskFileFor(idx) !is null) return negErrno(EROFS);       // a partition-backed file has a fixed size
+    if (length > 0xFFFF_F000UL) return negErrno(27);   // EFBIG
+    auto n = &g_rt[idx];
+    const uint len = cast(uint)length;
+    if (len > n.size) {
+        if (!rtEnsureCap(*n, len)) return negErrno(ENOSPC);
+        // Bytes between the old size and the capacity may be left from an earlier shrink.
+        foreach (i; n.size .. len) n.data[i] = 0;
+    }
+    n.size = len;
+    f.fileSize = len;
+    inotifyNotify(idx, IN_MODIFY_F, null, 0);
+    inotifyNotify(n.parent, IN_MODIFY_F, n.name.ptr, n.nameLen);
+    if (rtUnderPersistRoot(idx)) g_fsDirty = true;
+    return 0;
+}
+
+// MAP_SHARED of an rtfs file: the mapping must SEE later writes, and it may extend past EOF into
+// space the file grows into afterwards (bbolt maps 32 KiB of a 16 KiB file, then ftruncates and
+// pwrites into the rest, and reads it all back through the map).  That needs the file's frames to
+// keep their identity forever, which a contiguous payload does not -- it is copied to a bigger
+// block when it grows.  A scattered payload never moves its pages, only its kernel window, so the
+// file is made scattered here and its capacity extended to cover the mapping; the size is untouched.
+// Returns false when the fd is not an in-memory regular rtfs file or the pages are not available.
+public bool rtfsSharedMapPrepare(int fd, ulong off, ulong len) {
+    if (fd < 0 || fd >= 1024) return false;
+    File* f = &g_fdTable[fd];
+    if (f.type != FileType.FD_RTFILE) return false;
+    const int idx = cast(int)cast(size_t)f.backend;
+    if (idx <= 0 || idx >= g_rtNodes || g_rt[idx].kind != RT_REG) return false;
+    if (diskFileFor(idx) !is null) return false;
+    const ulong end = off + len;
+    if (end > 0xFFFF_F000UL || (off & 0xFFF) != 0) return false;
+    auto n = &g_rt[idx];
+    uint need = cast(uint)end;
+    if (need < n.cap) need = n.cap;
+    if (need == 0) need = 4096;
+    if (n.vres == 0 || need > n.cap) {
+        if (!rtEnsureCapScattered(*n, need)) return false;
+    }
+    return n.vres != 0;
+}
+
+// The physical frame of byte `off` of a file prepared by rtfsSharedMapPrepare (0 if none).
+public ulong rtfsSharedPagePhys(int fd, ulong off) {
+    import core.addrspace : activeVirtToPhys;
+    if (fd < 0 || fd >= 1024 || (off & 0xFFF) != 0) return 0;
+    File* f = &g_fdTable[fd];
+    if (f.type != FileType.FD_RTFILE) return 0;
+    const int idx = cast(int)cast(size_t)f.backend;
+    if (idx <= 0 || idx >= g_rtNodes || g_rt[idx].kind != RT_REG || g_rt[idx].data is null) return 0;
+    if (g_rt[idx].vres == 0 || off + 4096 > g_rt[idx].cap) return 0;
+    const ulong ph = activeVirtToPhys(cast(ulong)(g_rt[idx].data + off));
+    return (ph & 0xFFF) == 0 ? ph : 0;
+}
+
 public long linux_sys_ftruncate(ulong fd, ulong length) {
     initFdTable();
     int ifd = cast(int)fd;
     if (ifd < 0 || ifd >= 1024) return negErrno(EBADF);
     File* f = &g_fdTable[ifd];
+    if (f.type == FileType.FD_RTFILE) return rtfsTruncate(f, length);
     if (f.type != FileType.FD_MEMFD) return negErrno(EINVAL);
     int mid = cast(int)cast(size_t)f.backend;
     if (mid < 0 || mid >= g_memfdCap || !memfdAt(mid).inUse) return negErrno(EBADF);
@@ -16846,12 +17004,33 @@ private uint epollWatchReport(ref EpollWatch w, bool commit) @nogc nothrow {
     uint report = ready;
     if (w.events & EPOLLET_F) {
         const ulong gen = fdEventGen(w.watchFd);
+        const ulong wgen = fdWriteGen(w.watchFd);
         report = ready & ~w.lastReady;
         if (gen != w.lastGen) report |= ready & EPOLLIN_F;
-        if (commit) { w.lastReady = ready; w.lastGen = gen; }
+        if (wgen != w.lastWrGen) report |= ready & EPOLLOUT_F;   // writable again after an EAGAIN
+        if (commit) { w.lastReady = ready; w.lastGen = gen; w.lastWrGen = wgen; }
     }
     if (report && commit && (w.events & EPOLLONESHOT_F)) w.disarmed = true;
     return report;
+}
+
+// A counter that changes whenever a write to `fd` is refused (EAGAIN), for EPOLLET's EPOLLOUT: see
+// network/tcp.d tcpWriteGen.  0 where no counter is kept.
+private ulong fdWriteGen(int fd) @nogc nothrow {
+    if (fd < 0 || fd >= 1024) return 0;
+    auto f = &g_fdTable[fd];
+    if (f.type == FileType.FD_PIPE_WRITE) {          // room appears only when the reader consumes
+        auto p = getPipe(cast(size_t)pipeIdFromFd(f));
+        return p is null ? 0 : cast(ulong)p.tail;
+    }
+    if (f.type != FileType.FD_SOCKET) return 0;
+    auto sock = fileSocket(f);
+    if (sock is null) return 0;
+    if (sock.domain == AF_INET && sock.inetTcp >= 0) {
+        import network.tcp : tcpWriteGen;
+        return tcpWriteGen(sock.inetTcp);
+    }
+    return sock.wrBlockGen;
 }
 
 // A counter that changes whenever new input arrives on `fd` (or its writer goes away), for
@@ -17648,8 +17827,43 @@ public long linux_sys_mremap(ulong old_addr, ulong old_sz, ulong new_sz, ulong f
 }
 
 // --- sendmmsg / recvmmsg (GIO/GSocket; return ENOSYS so callers use sendmsg) ---
-public long linux_sys_sendmmsg(ulong sockfd, ulong msgvec, ulong vlen, ulong fl) { return negErrno(ENOSYS); }
-public long linux_sys_recvmmsg(ulong sockfd, ulong msgvec, ulong vlen, ulong fl, ulong timeout) { return negErrno(ENOSYS); }
+// sendmmsg / recvmmsg: several datagrams per call.  quic-go reads every packet with recvmmsg (x/net's
+// ReadBatch) and writes batches with sendmmsg, so while these were ENOSYS no QUIC connection could
+// receive anything -- the AXON link layer's QUIC transport failed in the OS on that alone.  Both are
+// loops over the single-message calls: struct mmsghdr is a msghdr (56 bytes) then msg_len (u32),
+// padded to 64.  The first message is an ordinary call -- its EAGAIN is the caller's, and a blocking
+// caller is parked exactly as for recvmsg -- and the rest are taken only while more are ready.
+private enum ulong MMSGHDR_SIZE = 64, MMSG_LEN_OFF = 56, MMSG_VLEN_MAX = 1024;   // UIO_MAXIOV
+private enum ulong MSG_DONTWAIT_F = 0x40;
+
+public long linux_sys_sendmmsg(ulong sockfd, ulong msgvec, ulong vlen, ulong fl) {
+    if (msgvec == 0) return negErrno(EFAULT);
+    if (vlen > MMSG_VLEN_MAX) vlen = MMSG_VLEN_MAX;
+    ulong n = 0;
+    for (; n < vlen; ++n) {
+        const ulong m = msgvec + n * MMSGHDR_SIZE;
+        const long r = linux_sys_sendmsg(sockfd, m, n == 0 ? fl : (fl | MSG_DONTWAIT_F));
+        if (r < 0) { if (n == 0) return r; break; }
+        *cast(uint*)(m + MMSG_LEN_OFF) = cast(uint)r;
+    }
+    return cast(long)n;
+}
+
+public long linux_sys_recvmmsg(ulong sockfd, ulong msgvec, ulong vlen, ulong fl, ulong timeout) {
+    if (msgvec == 0) return negErrno(EFAULT);
+    if (vlen > MMSG_VLEN_MAX) vlen = MMSG_VLEN_MAX;
+    enum ulong MSG_WAITFORONE = 0x10000;
+    ulong n = 0;
+    for (; n < vlen; ++n) {
+        const ulong m = msgvec + n * MMSGHDR_SIZE;
+        ulong f = fl & ~MSG_WAITFORONE;
+        if (n > 0) f |= MSG_DONTWAIT_F;
+        const long r = linux_sys_recvmsg(sockfd, m, f);
+        if (r < 0) { if (n == 0) return r; break; }
+        *cast(uint*)(m + MMSG_LEN_OFF) = cast(uint)r;
+    }
+    return cast(long)n;
+}
 
 // --- copy_file_range (GIO optimistic path; fall back to read+write) ---
 public long linux_sys_copy_file_range(ulong fd_in, ulong off_in, ulong fd_out, ulong off_out, ulong len, ulong fl) {
@@ -19786,7 +20000,9 @@ private long handleVirtgpuIoctl(uint nr, ulong arg) {
         else if (param == 4) val = gpuBlobEnabled() ? 1 : 0; // B5: VIRTGPU_PARAM_HOST_VISIBLE (flips Mesa supports_coherent)
         // NB: do NOT advertise PARAM_CONTEXT_INIT(6) — it makes Mesa take the capset context-init path
         // that our no-op CONTEXT_INIT doesn't fully set up, and the virgl screen falls back to softpipe.
-        if (valuePtr != 0) userWrite!ulong(valuePtr, val);
+        // sizeof(int), as Linux copies: Mesa's virgl winsys points `value` at an int, so 8 bytes
+        // overran it into its neighbour on the stack.
+        if (valuePtr != 0) userWrite!uint(valuePtr, cast(uint)val);
         return 0;
     }
     case 0x49: { // DRM_VIRTGPU_GET_CAPS { cap_set_id; cap_set_ver; u64 addr; size; pad }
@@ -20645,10 +20861,19 @@ public long linux_sys_renameat(ulong olddir, ulong oldpath,
 }
 
 public long linux_sys_sched_setparam(ulong pid, ulong param) { return 0; }
-public long linux_sys_sched_getparam(ulong pid, ulong param) { return 0; }
+// struct sched_param { int sched_priority; }: SCHED_OTHER's priority is always 0.  The caller's
+// struct must be filled, not left as whatever was on its stack.
+public long linux_sys_sched_getparam(ulong pid, ulong param) {
+    if (param == 0) return negErrno(EINVAL);
+    userWrite!int(param, 0);
+    return 0;
+}
 
 public long linux_sys_setreuid(ulong ruid, ulong euid) {
     return linux_sys_setresuid(ruid, euid, ulong.max);
+}
+public long linux_sys_setregid(ulong rgid, ulong egid) {
+    return linux_sys_setresgid(rgid, egid, ulong.max);
 }
 
 public long linux_sys_userfaultfd(ulong flags) { return negErrno(ENOSYS); }

@@ -60,6 +60,7 @@ private struct TcpConn {
     bool        used;
     bool        owned;       // a socket fd / kernel client still holds it
     bool        started;     // a connect or listen was issued (distinguishes "never" from "died")
+    uint        wrBlockGen;  // bumped on every write refused for a full send ring (tcpWriteGen)
     TCPState    st;
     IPv4Address rip;
     ushort      lport, rport;
@@ -604,10 +605,24 @@ export extern(C) void tcpHandlePacket(const(ubyte)* data, size_t len,
 // loopback-only and never answers the network.  Over loopback, a listener is reached only from its
 // own domain or by a trusted caller (unconfined infrastructure / System): otherwise any confined app
 // could drive another domain's local services -- the dendritic node's operator API, for one.
+// Is `lip` this machine's own address on the interface the listener's domain uses?  A connect to
+// our own address travels over loopback (posix.d inetIsOwnAddr) with its destination normalised to
+// 127.0.0.1, so a listener bound to that address must still take it.
+private bool lipIsOwn(uint lip, uint dom) @nogc nothrow {
+    import network.vnet : vnetIfForDomain;
+    const int prev = g_netIf;
+    g_netIf = dom == 0 ? 0 : vnetIfForDomain(dom);
+    IPv4Address me;
+    getLocalIP(&me);
+    g_netIf = prev;
+    const uint mine = me.bytes[0] | (me.bytes[1] << 8) | (me.bytes[2] << 16) | (cast(uint)me.bytes[3] << 24);
+    return mine != 0 && mine == lip;
+}
+
 private bool listenerTakes(ref const TcpConn l) @nogc nothrow {
     const bool lipLoop = (l.lip & 0xFF) == 127;
     if (g_netIf == NETIF_LOOPBACK) {
-        if (l.lip != 0 && !lipLoop) return false;
+        if (l.lip != 0 && !lipLoop && !lipIsOwn(l.lip, l.dom)) return false;
         return g_loopSrcTrusted || g_loopSrcDom == l.dom;
     }
     return !lipLoop;
@@ -828,7 +843,7 @@ export extern(C) long tcpWrite(int id, const(ubyte)* buf, size_t len) @nogc noth
     if ((c.st != TCPState.ESTABLISHED && c.st != TCPState.CLOSE_WAIT) || c.finPending) return -TCP_EPIPE;
     if (len == 0) return 0;
     const size_t room = TCP_TXBUF - c.txLen;
-    if (room == 0) return -TCP_EAGAIN;
+    if (room == 0) { ++c.wrBlockGen; return -TCP_EAGAIN; }
     const size_t n = len < room ? len : room;
     size_t pos = (c.txHead + c.txLen) & (TCP_TXBUF - 1);
     foreach (i; 0 .. n) { c.tx[pos] = buf[i]; pos = (pos + 1) & (TCP_TXBUF - 1); }
@@ -907,6 +922,16 @@ export extern(C) ulong tcpEventGen(int id) @nogc nothrow {
     auto c = &g_tcp[id];
     return (cast(ulong)c.rcvNxt << 16) ^ (cast(ulong)c.aqLen << 4) ^ (c.peerFin ? 2 : 0) ^ (c.err != 0 ? 1 : 0)
          ^ (cast(ulong)c.st << 8);
+}
+
+/// Changes whenever a write is refused for a full send ring -- the EPOLLOUT edge counter.  After
+/// such a refusal the next writability IS an edge, even if epoll never saw the socket unwritable:
+/// the ring can drain between the refused write and the writer's next epoll_wait, and an edge test
+/// on readiness alone then reports nothing and the writer (Go's netpoller is edge-triggered) sleeps
+/// forever.  The AXON link tests stalled exactly so, after ~200 KB over loopback.
+export extern(C) ulong tcpWriteGen(int id) @nogc nothrow {
+    if (!validId(id)) return 0;
+    return g_tcp[id].wrBlockGen;
 }
 
 /// Writable for poll(): room in the send ring on a connected socket, or a result to report

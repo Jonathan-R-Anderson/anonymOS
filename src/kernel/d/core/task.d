@@ -239,6 +239,44 @@ __gshared int[MAX_TASKS]   g_childExitLinuxPid;
 // unused).  0 = no handler (default / SIG_IGN).
 __gshared ulong[64][MAX_TASKS] g_sigHandler;
 __gshared ulong[64][MAX_TASKS] g_sigRestorer;
+__gshared ulong[64][MAX_TASKS] g_sigFlags;      // sa_flags (SA_ONSTACK, SA_SIGINFO, ...)
+
+// Signal dispositions belong to the PROCESS, not the thread (CLONE_SIGHAND): every table above is
+// indexed by the process leader, so a handler installed on one thread runs on any of them.  They
+// used to be per thread, and clone() did not copy them, so a signal meeting any thread but the one
+// that installed the handlers took the default action -- for a Go program, every M but the first.
+public int sigProc(int tid) {
+    if (tid < 0 || tid >= MAX_TASKS) return tid;
+    const int l = g_tasks[tid].processLeaderTid;
+    return (l > 0 && l < MAX_TASKS && g_tasks[l].active) ? l : tid;
+}
+
+// Signals whose default action is to IGNORE them.  With no handler they are dropped when they are
+// raised (POSIX), never queued -- a queued SIGCHLD used to be "delivered" by terminating the task.
+public bool sigDefaultIgnores(int sig) {
+    return sig == 17 /*SIGCHLD*/ || sig == 18 /*SIGCONT*/ || sig == 23 /*SIGURG*/ || sig == 28 /*SIGWINCH*/;
+}
+
+// Does `tid`'s process have a handler installed for `sig` (not SIG_DFL, not SIG_IGN)?
+public bool sigHasHandler(int tid, int sig) {
+    if (sig <= 0 || sig >= 64) return false;
+    const int p = sigProc(tid);
+    return (g_taskSigCustom[p] & (1UL << sig)) != 0 && g_sigHandler[p][sig] != 0;
+}
+
+// Does `tid`'s process ignore `sig` (SIG_IGN, or SIG_DFL for a default-ignore signal)?
+public bool sigIgnored(int tid, int sig) {
+    if (sig <= 0 || sig >= 64) return true;
+    const int p = sigProc(tid);
+    const bool custom = (g_taskSigCustom[p] & (1UL << sig)) != 0;
+    if (custom) return g_sigHandler[p][sig] == 0;        // SIG_IGN
+    return sigDefaultIgnores(sig);
+}
+
+// sigaltstack, per THREAD (each thread has its own signal stack).  flags: SS_DISABLE = 2.
+__gshared ulong[MAX_TASKS] g_sigAltSp;
+__gshared ulong[MAX_TASKS] g_sigAltSize;
+__gshared bool[MAX_TASKS]  g_sigAltOn;
 
 // A4: per-task program name (basename of the exec'd binary), for /proc/<pid> comm.
 // Set by execveTask / forkTask in kernel_main.d; read by posix.d's procfs.
@@ -283,7 +321,7 @@ public int deliverSignalToGroup(int pgid, int sig) {
         // Z3: a task WITH a handler (e.g. zsh's SIGINT) now gets the signal pending too —
         // the run loop invokes its handler (Z1 delivery) instead of terminating it.  A
         // default-disposition task still gets the default terminate.
-        if ((g_taskSigCustom[t] & (1UL << sig)) && g_sigHandler[t][sig] == 0) continue;
+        if (sigIgnored(t, sig)) continue;
         g_taskPendingSig[t] = sig;
         g_tasks[t].waiting  = false;                        // wake a blocked victim
         ++n;
@@ -570,6 +608,11 @@ public void objReleaseUntyped(int tid) {
 // Allocate a task slot (id > 0 reserved for non-init tasks)
 private int initTaskSlot(int i) {
     g_tasks[i] = Task.init;
+    // A new task has no signal stack (a new thread starts with it disabled; fork copies the
+    // parent's afterwards).  A reused slot kept its last occupant's, and a thread whose stack
+    // happened to lie in that stale range got EPERM from sigaltstack -- which Go answers by
+    // crashing on purpose.
+    g_sigAltOn[i] = false; g_sigAltSp[i] = 0; g_sigAltSize[i] = 0;
     // appgate: a fresh slot runs no image yet.  execveTask reads the PREVIOUS image as the launcher
     // (the app grid's children are restricted), so a kernel spawn must not inherit the name of
     // whatever last occupied this slot.
@@ -585,10 +628,22 @@ private int initTaskSlot(int i) {
     return i;
 }
 
+// Slots are handed out round-robin from just past the last one, not lowest-free-first.  The slot is
+// the Linux PID (linuxPidForTask), and lowest-free-first gave an exiting process's PID to the very
+// next one: busybox `timeout`'s watchdog polls kill(pid, 0) to see whether its command is still
+// running, kept seeing the NEW occupant of the slot, and SIGTERMed it (it killed a Go test binary that
+// started after the node it was guarding had long exited).  Linux allocates PIDs incrementally for
+// the same reason; with 256 slots a PID now comes back only after the others have been used.
+private __gshared int g_taskNextSlot = 1;
+
 int allocTask() {
-    for (int i = 1; i < MAX_TASKS; i++)
-        if (!g_tasks[i].active)
+    foreach (k; 0 .. MAX_TASKS - 1) {
+        const int i = 1 + (g_taskNextSlot - 1 + k) % (MAX_TASKS - 1);
+        if (!g_tasks[i].active) {
+            g_taskNextSlot = i + 1 >= MAX_TASKS ? 1 : i + 1;
             return initTaskSlot(i);
+        }
+    }
     // NOTE: a dead-thread-slot reclaim was tried here but faulted on real hardware (triggers only when
     // the table is full, which QEMU never reached) — reverted.  The task-slot thread leak is a known
     // latent issue; 256 slots + the light diagnostics are enough that it isn't hit in practice.

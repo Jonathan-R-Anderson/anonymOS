@@ -301,7 +301,9 @@ long kvmSystemIoctl(int tid, ulong cmd, ulong arg) {
         }
         case KVM_GET_MSR_INDEX_LIST: {
             // Minimal honest list: the MSRs our SET/GET_MSRS cache understands.
-            if (!kvmUserOk(tid, arg, 8, true)) return E_FAULT;
+            // struct kvm_msr_list { u32 nmsrs; u32 indices[]; } -- no pad: indices start at +4
+            // (unlike kvm_cpuid2/kvm_msrs, which do carry one).
+            if (!kvmUserOk(tid, arg, 4, true)) return E_FAULT;
             uint nent = kvmUserRead!uint(arg);
             enum uint PROVIDE = 8;
             static immutable uint[8] idx = [
@@ -312,17 +314,16 @@ long kvmSystemIoctl(int tid, ulong cmd, ulong arg) {
                 0xC0000080, // IA32_EFER
                 0xC0000081, // IA32_STAR
                 0xC0000082, // IA32_LSTAR
-                0xC0000083, // IA32_FMASK
+                0xC0000083, // IA32_CSTAR
             ];
             if (nent < PROVIDE) {
                 kvmUserWrite!uint(arg, PROVIDE);
                 return E_BIG;
             }
-            if (!kvmUserOk(tid, arg, 8 + PROVIDE * 4, true)) return E_FAULT;
+            if (!kvmUserOk(tid, arg, 4 + PROVIDE * 4, true)) return E_FAULT;
             kvmUserWrite!uint(arg, PROVIDE);
-            kvmUserWrite!uint(arg + 4, 0);
             foreach (i; 0 .. PROVIDE)
-                kvmUserWrite!uint(arg + 8 + i*4, idx[i]);
+                kvmUserWrite!uint(arg + 4 + i*4, idx[i]);
             return 0;
         }
         default:

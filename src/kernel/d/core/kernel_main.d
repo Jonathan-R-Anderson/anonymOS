@@ -1070,8 +1070,12 @@ private int forkTask(int parentTid) {
         g_taskPgid[childTid]      = g_taskPgid[parentTid];
         g_taskSigCustom[childTid] = g_taskSigCustom[parentTid];
         g_taskPendingSig[childTid] = 0;
-        g_sigHandler[childTid]  = g_sigHandler[parentTid];    // Z1: inherit signal handlers
-        g_sigRestorer[childTid] = g_sigRestorer[parentTid];
+        g_sigHandler[childTid]  = g_sigHandler[sigProc(parentTid)];    // Z1: inherit the process's handlers
+        g_sigRestorer[childTid] = g_sigRestorer[sigProc(parentTid)];
+        g_sigFlags[childTid]    = g_sigFlags[sigProc(parentTid)];
+        g_taskSigCustom[childTid] = g_taskSigCustom[sigProc(parentTid)];
+        g_sigAltOn[childTid] = g_sigAltOn[parentTid];                   // fork keeps the signal stack
+        g_sigAltSp[childTid] = g_sigAltSp[parentTid]; g_sigAltSize[childTid] = g_sigAltSize[parentTid];
     }
 
     klog("[fork] parent="); klog_hex(parentTid);
@@ -1505,6 +1509,8 @@ private long execveTask(int tid, ulong pathPtr, ulong argvPtr, ulong envpPtr) {
         g_taskSigCustom[tid]   = 0;
         g_taskPendingSig[tid]  = 0;
         g_sigHandler[tid][] = 0; g_sigRestorer[tid][] = 0;   // Z1: exec resets handlers to default
+        g_sigFlags[tid][] = 0;
+        g_sigAltOn[tid] = false; g_sigAltSp[tid] = 0; g_sigAltSize[tid] = 0;   // and the signal stack
         itimerClear(tid);   // POSIX: execve disarms ITIMER_REAL, so a recycled slot cannot
                             // inherit a stale alarm and SIGALRM an unrelated program.
     }
@@ -3659,16 +3665,32 @@ private long wait4Task(int tid, int waitPid, ulong statusPtr, ulong options) {
 private bool deliverUserSignal(int tid, int sig) {
     if (tid < 0 || tid >= MAX_TASKS || sig <= 0 || sig >= 64) return false;
     auto task = &g_tasks[tid];
-    const ulong handler  = g_sigHandler[tid][sig];
-    const ulong restorer = g_sigRestorer[tid][sig];
+    const int proc = sigProc(tid);                 // dispositions are the process's
+    const ulong handler  = g_sigHandler[proc][sig];
+    const ulong restorer = g_sigRestorer[proc][sig];
     if (handler == 0 || restorer == 0) return false;
 
     // Carve the frame from the user stack below the 128-byte red zone; 16-align then -8 so
-    // the handler sees the ABI's post-`call` alignment (RSP % 16 == 8 at entry).
+    // the handler sees the ABI's post-`call` alignment (RSP % 16 == 8 at entry).  With
+    // SA_ONSTACK and a signal stack set (sigaltstack) that the thread is not already on, the
+    // frame goes on that stack instead -- Go runs every handler on its gsignal stack and
+    // checks that it is there.
     enum ulong FRAME = 512;
     enum ulong GREGS = 48;          // pretcode(8) + offsetof(ucontext,uc_mcontext)=40
+    enum ulong FPPTR = GREGS + 23 * 8;   // uc_mcontext.fpstate, after gregs[0..22] (sigcontext)
+    enum ulong SA_ONSTACK = 0x08000000;
     ulong sp = task.regs[REG_RSP];
+    const bool onAlt = g_sigAltOn[tid] && sp > g_sigAltSp[tid] && sp <= g_sigAltSp[tid] + g_sigAltSize[tid];
+    if ((g_sigFlags[proc][sig] & SA_ONSTACK) && g_sigAltOn[tid] && !onAlt)
+        sp = g_sigAltSp[tid] + g_sigAltSize[tid];
     sp -= 128;
+    // The interrupted FPU/SSE state (fxsave image) goes ABOVE the frame, 64-aligned, where
+    // Linux's get_sigframe puts it; uc_mcontext.fpstate points at it.  Without it a handler
+    // clobbered the interrupted code's XMM/x87/MXCSR -- fatal to Go, whose SIGURG preemption
+    // lands anywhere and whose ABIInternal keeps X15 as a zero register.
+    sp -= 512;
+    sp &= ~63UL;
+    const ulong fpstate = sp;
     sp -= FRAME;
     sp &= ~15UL;
     sp -= 8;
@@ -3687,8 +3709,29 @@ private bool deliverUserSignal(int tid, int sig) {
         g[9]=task.regs[REG_RSI]; g[10]=task.regs[REG_RBP];g[11]=task.regs[REG_RBX];
         g[12]=task.regs[REG_RDX];g[13]=task.regs[REG_RAX];g[14]=task.regs[REG_RCX];
         g[15]=task.regs[REG_RSP];g[16]=task.regs[REG_RIP];g[17]=task.regs[REG_RFLAGS];
+        // uc_stack: the signal stack, as the handler may ask (Go compares it with its own).
+        *cast(ulong*)(frame + 24) = g_sigAltOn[tid] ? g_sigAltSp[tid] : 0;
+        *cast(uint*)(frame + 32)  = g_sigAltOn[tid] ? (onAlt ? 1u /*SS_ONSTACK*/ : 0u) : 2u /*SS_DISABLE*/;
+        *cast(ulong*)(frame + 40) = g_sigAltOn[tid] ? g_sigAltSize[tid] : 0;
+        // siginfo: si_signo (si_code 0 = SI_USER).  It used to be all zero.
+        *cast(int*)(frame + 312) = sig;
+        // task.sseState, not the live registers: syscall entry fxsave'd the user's state there,
+        // and kernel code since may have used SSE.  Bytes 464..511 (sw_reserved) stay zero --
+        // no FP_XSTATE_MAGIC1, so userspace reads it as a plain fxsave image.
+        auto fp = cast(ubyte*)fpstate;
+        foreach (i; 0 .. 464) fp[i] = task.sseState[i];
+        foreach (i; 464 .. 512) fp[i] = 0;
+        *cast(ulong*)(frame + FPPTR) = fpstate;
     }
     x64WriteCR3(savedCr3);
+    // The handler starts from the FPU init state, as on Linux (fpu__clear_user_states).
+    taskFpuInit(task);
+    if (g_sigDeliverLogN < 32) {
+        ++g_sigDeliverLogN;
+        klog("[sig] deliver "); klog_dec(cast(ulong)sig); klog(" to t"); klog_dec(cast(ulong)tid);
+        klog(" handler="); klog_hex(handler); klog(" frame="); klog_hex(frame);
+        klog(g_sigAltOn[tid] ? " altstack\n" : "\n");
+    }
 
     task.regs[REG_RIP] = handler;
     task.regs[REG_RSP] = frame;
@@ -3698,6 +3741,16 @@ private bool deliverUserSignal(int tid, int sig) {
     task.regs[REG_RAX] = 0;
     task.regs[REG_RFLAGS] &= ~(0x100UL | 0x400UL);   // clear TF, DF for the handler
     return true;
+}
+
+private __gshared uint g_sigDeliverLogN = 0;
+private __gshared uint g_sigFpBadLogN = 0;
+
+// The FPU/SSE init state (FINIT + default MXCSR): every register zero, all exceptions masked.
+private void taskFpuInit(Task* task) {
+    foreach (i; 0 .. 512) task.sseState[i] = 0;
+    *cast(ushort*)(task.sseState.ptr + 0) = 0x037F;   // x87 control word
+    *cast(uint*)(task.sseState.ptr + 24)  = 0x1F80;   // MXCSR
 }
 
 // rt_sigreturn: restore the context deliverUserSignal saved.  The restorer was reached by
@@ -3714,7 +3767,47 @@ private void sigreturnTask(int tid) {
     task.regs[REG_R14]=g[6];  task.regs[REG_R15]=g[7];  task.regs[REG_RDI]=g[8];
     task.regs[REG_RSI]=g[9];  task.regs[REG_RBP]=g[10]; task.regs[REG_RBX]=g[11];
     task.regs[REG_RDX]=g[12]; task.regs[REG_RAX]=g[13]; task.regs[REG_RCX]=g[14];
-    task.regs[REG_RSP]=g[15]; task.regs[REG_RIP]=g[16]; task.regs[REG_RFLAGS]=g[17];
+    task.regs[REG_RSP]=g[15]; task.regs[REG_RIP]=g[16];
+    // RFLAGS comes from user memory and the return to ring 3 is an iretq at CPL0, which loads IOPL
+    // from it: unmasked, a process could write IOPL=3 into its own signal frame and get raw port I/O
+    // past every capability check.  Keep only what Linux's FIX_EFLAGS lets userspace set (CF PF AF
+    // ZF SF TF DF OF RF AC ID) and force IF on.
+    task.regs[REG_RFLAGS] = (g[17] & 0x50DD5UL) | 0x202UL;
+    // A non-canonical RIP would #GP the iretq in kernel mode.  Linux kills the task with SIGSEGV;
+    // aim it at an unmapped address instead so the fault is the task's own.
+    {
+        const ulong rip = task.regs[REG_RIP];
+        if (rip >= 0x0000_8000_0000_0000UL) task.regs[REG_RIP] = 0;
+        const ulong rsp = task.regs[REG_RSP];
+        if (rsp >= 0x0000_8000_0000_0000UL) task.regs[REG_RSP] = 0;
+    }
+
+    // FPU/SSE: reload the image at uc_mcontext.fpstate (g[23]) into task.sseState, which the
+    // return to ring 3 fxrstor's.  NULL means the init state, as on Linux; so does a pointer
+    // that is not mapped user memory (Linux would SIGSEGV) -- never fault the kernel on it.
+    const ulong fpstate = g[23];
+    // MXCSR is user-supplied: a bit this CPU does not implement would #GP the fxrstor on the
+    // way out -- in the kernel.  Keep only MXCSR_MASK's bits, read from this syscall's entry
+    // fxsave (0 there means the architectural default, 0xFFBF).
+    uint mxcsrMask = *cast(uint*)(task.sseState.ptr + 28);
+    if (mxcsrMask == 0) mxcsrMask = 0xFFBF;
+    bool fpOk = fpstate >= 0x1000 && fpstate <= 0x0000_8000_0000_0000UL - 512;
+    if (fpOk && !userPageMapped(tid, fpstate))
+        fpOk = handlePageFault(tid, fpstate, false) && userPageMapped(tid, fpstate);
+    if (fpOk && !userPageMapped(tid, fpstate + 511))
+        fpOk = handlePageFault(tid, fpstate + 511, false) && userPageMapped(tid, fpstate + 511);
+    if (fpOk) {
+        auto fp = cast(const(ubyte)*)fpstate;
+        foreach (i; 0 .. 512) task.sseState[i] = fp[i];
+        *cast(uint*)(task.sseState.ptr + 24) &= mxcsrMask;
+    } else {
+        if (fpstate != 0 && g_sigFpBadLogN < 8) {
+            ++g_sigFpBadLogN;
+            klog("[sig] sigreturn: bad fpstate "); klog_hex(fpstate);
+            klog(" t="); klog_dec(cast(ulong)tid); klog(" -- FPU reset\n");
+        }
+        taskFpuInit(task);
+    }
 }
 
 // rt_sigsuspend (Z1): zsh waits for a foreground job here, temporarily unblocking SIGCHLD.
@@ -3729,8 +3822,7 @@ private long sigsuspendTask(int tid) {
     if (tid < 0 || tid >= MAX_TASKS) return cast(long)(-4); // -EINTR
     auto task = &g_tasks[tid];
     enum int SIGCHLD = 17;
-    const bool hasHandler = (g_taskSigCustom[tid] & (1UL << SIGCHLD)) != 0 &&
-                            g_sigHandler[tid][SIGCHLD] != 0;
+    const bool hasHandler = sigHasHandler(tid, SIGCHLD);
     if (hasHandler) {
         // A child has already exited → deliver the handler now.  Arrange that, after the
         // handler returns (rt_sigreturn), sigsuspend itself returns -EINTR so zsh's
@@ -4667,7 +4759,33 @@ private void dispatchSyscall(int tid) {
             // A read-only private map of an installed file shares the file's own frames (copy-on-write)
             // instead of copying them: every Firefox process used to carry its own ~130 MB libxul.
             const bool shareFile = useFile && (rdx & 2) == 0;
+            // MAP_SHARED of an rtfs file maps the file's OWN frames, past EOF too, so later writes and
+            // growth are visible through the map (rtfsSharedMapPrepare says why).  Writable maps write
+            // the file; read-only ones stay copy-on-write.  A file that cannot be prepared falls back
+            // to the snapshot copy below, as before.
+            enum MAP_SHARED = 0x01;
+            bool sharedFile = false;
+            if (useFile && (mflags & MAP_SHARED) != 0) {
+                import core.syscalls.posix : rtfsSharedMapPrepare;
+                sharedFile = rtfsSharedMapPrepare(cast(int)mfd, moffset, alignedLen);
+            }
             for (ulong pg = 0; pg < numPgs; pg++) {
+                if (sharedFile) {
+                    import core.syscalls.posix : rtfsSharedPagePhys;
+                    import core.addrspace : mapSharedCowPage;
+                    import memory.mm : physPageRefInc;
+                    const ulong sp = rtfsSharedPagePhys(cast(int)mfd, moffset + pg * 4096);
+                    if (sp != 0) {
+                        if (rdx & 2) {
+                            physPageRefInc(sp);   // the mapping holds the frame; munmap drops it
+                            map_page_hhdm(sp, vaddr + pg * 4096, PTE_PRESENT | PTE_RW | PTE_USER, &alloc_phys_page);
+                        } else {
+                            mapSharedCowPage(sp, vaddr + pg * 4096);
+                        }
+                        ++mappedPgs;
+                        continue;
+                    }
+                }
                 if (shareFile) {
                     import core.syscalls.posix : rtfsMmapPagePhys;
                     import core.addrspace : mapSharedCowPage;
@@ -4784,9 +4902,19 @@ private void dispatchSyscall(int tid) {
             // task sharing this address space, running on the supplied stack.
             if (rdi & CLONE_VM) {
                 ret = cast(long)cloneThread(tid, rdi, rsi, rdx, r10, r8);
-                if (ret > 0)
+                if (ret > 0) {
                     task.regs[REG_RAX] = cast(ulong)linuxTidForTask(cast(int)ret);
-                else {
+                    if (g_cloneTraceN < 64) {   // bounded: parent and child state as they leave clone
+                        auto ch = &g_tasks[cast(int)ret];
+                        klog("[clone] ret parent t"); klog_dec(cast(ulong)tid);
+                        klog(" rip="); klog_hex(task.regs[REG_RIP]); klog(" rsp="); klog_hex(task.regs[REG_RSP]);
+                        klog(" rax="); klog_hex(task.regs[REG_RAX]);
+                        klog(" | child t"); klog_dec(cast(ulong)ret);
+                        klog(" rip="); klog_hex(ch.regs[REG_RIP]); klog(" rsp="); klog_hex(ch.regs[REG_RSP]);
+                        klog(" r12="); klog_hex(ch.regs[REG_R12]); klog(" fs="); klog_hex(g_task_fsbase[cast(int)ret]);
+                        klog(" cur="); klog_dec(g_current_task_id); klog("\n");
+                    }
+                } else {
                     task.regs[REG_RAX] = cast(ulong)ret; // negative errno
                     return;
                 }
@@ -4916,6 +5044,12 @@ private void dispatchSyscall(int tid) {
             // Blocking: rewind RIP so the task transparently re-runs wait4 on wake
             // (the child's exit clears `waiting`), instead of returning EINTR.
             if (ret == -4) { task.regs[REG_RIP] -= 2; scheduleNext(); return; }
+            // struct rusage (144 bytes) at r10: no per-child accounting, so report zero usage
+            // rather than leave the caller reading its own stack garbage.
+            if (ret > 0 && r10 != 0) {
+                auto ru = cast(ubyte*)r10;
+                foreach (i; 0 .. 144) ru[i] = 0;
+            }
             break;
 
         // kill — liveness/ESRCH semantics from linux_sys_kill, then ACTUAL delivery:
@@ -4930,9 +5064,8 @@ private void dispatchSyscall(int tid) {
                 int sigTarget = taskIdFromLinuxPid(cast(int)cast(long)rdi);
                 if (sigTarget > 0 && sigTarget < MAX_TASKS &&
                     g_tasks[sigTarget].active && !g_tasks[sigTarget].exited) {
-                    // custom disposition with no handler = SIG_IGN → drop
-                    if (!((g_taskSigCustom[sigTarget] & (1UL << cast(int)rsi)) &&
-                          g_sigHandler[sigTarget][cast(int)rsi] == 0)) {
+                    // SIG_IGN, or SIG_DFL for a default-ignore signal (SIGCHLD, SIGURG, ...) → drop
+                    if (!sigIgnored(sigTarget, cast(int)rsi)) {
                         // Freeze probe: remember the last kill() so the overlay can name a stray-killer.
                         g_lastSigSig = cast(int)rsi; g_lastSigFrom = tid; g_lastSigTo = sigTarget; g_lastSigMs = pitMs();
                         g_taskPendingSig[sigTarget] = cast(int)rsi;
@@ -4946,11 +5079,9 @@ private void dispatchSyscall(int tid) {
             }
             break;
 
-        // waitpid (via wait4 with NULL rusage)
-        case 114:
-            ret = wait4Task(tid, cast(int)rdi, rsi, rdx);
-            if (ret == -4) { task.regs[REG_RIP] -= 2; scheduleNext(); return; }
-            break;
+        // (114 is setregid on x86_64 -- the i386 wait4 number.  It used to be caught here and run
+        // wait4, so setregid(-1, gid) wrote a status int to address `gid` and reaped a child.
+        // It now falls through to the Linux table.)
 
         // mprotect
         case 10:
@@ -5182,8 +5313,7 @@ private void dispatchSyscall(int tid) {
         // after rt_sigreturn the read has returned EINTR and zsh's ZLE re-checks its abort
         // flag instead of swallowing the keystroke.  Else: rewind + yield (normal block).
         int psig = g_taskPendingSig[tid];
-        if (psig > 0 && psig < 64 && (g_taskSigCustom[tid] & (1UL << psig)) &&
-            g_sigHandler[tid][psig] != 0) {
+        if (psig > 0 && psig < 64 && sigHasHandler(tid, psig)) {
             g_taskPendingSig[tid] = 0;
             task.regs[REG_RAX] = cast(ulong)(-4);   // the read returns -EINTR after the handler
             if (deliverUserSignal(tid, psig)) return;
@@ -5253,13 +5383,13 @@ private void dispatchSyscall(int tid) {
     // the poll when this task is next scheduled, after others have had a turn.
     //   poll(7):   fds=rdi nfds=rsi timeout_ms=rdx (0 = non-blocking, else wait)
     //   ppoll(271):fds=rdi nfds=rsi timeout_ts=rdx (NULL = infinite)
-    // Both scan fd readiness (ppoll fixed below); select/pselect are excluded
-    // since they don't scan and would yield forever.
+    // Both scan fd readiness and park in the poll block below; select/pselect6 park in
+    // their own block further down.
     //   epoll_pwait(281): handled below without RIP rewind. Hyprland's
     //     wl_event_loop must see timeout returns to fire timers, but other tasks
     //     still need a turn before Hyprland immediately re-enters epoll.
-    // ppoll(271) / epoll_pwait2(441): timeout is a userspace timespec we don't parse
-    // here, so keep the original rewind/return-0 yield (re-runs each round-robin turn).
+    // epoll_pwait2(441): timeout is a userspace timespec we don't parse here, so keep
+    // the original return-0 yield.
     //
     // A real signal must interrupt every blocking fd wait, not only read().  In particular,
     // wpa_supplicant's eloop sleeps in poll(); hos-wpa-agent sends it SIGHUP after replacing
@@ -5270,20 +5400,13 @@ private void dispatchSyscall(int tid) {
     if (ret == 0 && (rax == 7 || rax == 271 || rax == 232 || rax == 281 ||
                      rax == 441 || rax == 23 || rax == 270 || rax == 35 || rax == 230)) {
         int psig = g_taskPendingSig[tid];
-        if (psig > 0 && psig < 64 && (g_taskSigCustom[tid] & (1UL << psig)) &&
-            g_sigHandler[tid][psig] != 0) {
+        if (psig > 0 && psig < 64 && sigHasHandler(tid, psig)) {
             g_taskPendingSig[tid] = 0;
             g_pollBlocked[tid] = false;
             g_pollDeadline[tid] = 0;
             task.regs[REG_RAX] = cast(ulong)(-4);   // poll/select returns -EINTR after handler
             if (deliverUserSignal(tid, psig)) return;
         }
-    }
-    if (ret == 0 && rax == 271) {
-        task.regs[REG_RIP] -= 2;
-        bootProgressEventHex("yield", rax, g_yieldScreenTrace);
-        scheduleNext();
-        return;
     }
     if (ret == 0 && rax == 441) {
         task.regs[REG_RAX] = 0;
@@ -5292,15 +5415,32 @@ private void dispatchSyscall(int tid) {
         return;
     }
 
-    // poll(7) + epoll_wait/pwait(232/281): PARK the task until an fd is ready or the
+    // poll(7)/ppoll(271) + epoll_wait/pwait(232/281): PARK the task until an fd is ready or the
     // timeout expires, instead of returning 0 immediately (which busy-spins the
     // single core).  Woken by wakePollers() on the PIT tick + input IRQs.
     //   poll(7) timeout_ms = rdx ; epoll timeout_ms = r10 ; 0 = nonblock, <0 = infinite.
+    //   ppoll(271) timeout = timespec* in rdx ; NULL = infinite, {0,0} = nonblock.  It used to
+    //   rewind+yield on every 0 regardless, so {0,0} never returned and no timeout ever expired.
     {
-        const bool isPoll  = (rax == 7);
+        const bool isPoll  = (rax == 7 || rax == 271);
         const bool isEpoll = (rax == 232 || rax == 281);
         if (ret == 0 && (isPoll || isEpoll)) {
-            const long tmo = isPoll ? cast(long)rdx : cast(long)r10;
+            long tmo = (rax == 7) ? cast(long)rdx : cast(long)r10;
+            if (rax == 271) {
+                if (rdx == 0) tmo = -1;
+                else {
+                    const long sec  = *cast(long*)rdx;
+                    const long nsec = *cast(long*)(rdx + 8);
+                    if (sec < 0 || nsec < 0 || nsec >= 1_000_000_000) {
+                        g_pollBlocked[tid] = false;
+                        task.regs[REG_RAX] = cast(ulong)(-22);   // EINVAL, as Linux
+                        return;
+                    }
+                    // Round a sub-ms remainder UP so a short wait is not taken as non-blocking;
+                    // a deadline past ~292M years is simply infinite (and cannot overflow).
+                    tmo = (sec > long.max / 1000 - 1) ? -1 : sec * 1000 + (nsec + 999_999) / 1_000_000;
+                }
+            }
             if (tmo != 0) {
                 if (g_pollBlocked[tid]) {
                     const ulong dl = g_pollDeadline[tid];
@@ -5411,17 +5551,22 @@ private void dispatchSyscall(int tid) {
                 const long subMs = (rax == 23) ? (sub / 1000) : (sub / 1000000);
                 tmo = sec * 1000 + subMs;
             }
+            // The scan leaves the sets untouched when nothing is ready (the re-run needs them), so a
+            // real 0 return -- non-blocking, or the timeout expired -- empties them here.
+            if (tmo == 0) selectClearFds(rdi, rsi, rdx, r10);
             if (tmo != 0) {
                 if (g_pollBlocked[tid]) {
                     const ulong dl = g_pollDeadline[tid];
                     if (dl != 0 && pitMs() >= dl) {
                         g_pollBlocked[tid] = false;
-                        task.regs[REG_RAX] = 0;     // timed out → 0 fds ready (sets already cleared by scan)
+                        selectClearFds(rdi, rsi, rdx, r10);
+                        task.regs[REG_RAX] = 0;     // timed out → 0 fds ready
                         return;
                     }
                 } else {
                     g_pollBlocked[tid]  = true;
                     g_pollDeadline[tid] = (tmo < 0) ? 0 : (pitMs() + cast(ulong)tmo);
+                    g_pollEpfd[tid]     = -1;       // fd sets live in userspace: take the tick backstop, never a stale epfd
                 }
                 task.waiting = true;
                 task.regs[REG_RIP] -= 2;
@@ -5766,6 +5911,7 @@ private long dispatchLinuxSyscallCall(ulong n, ulong a, ulong b, ulong c,
         case 111: return linux_sys_getpgrp();
         case 112: return linux_sys_setsid();
         case 113: return linux_sys_setreuid(a, b);
+        case 114: return linux_sys_setregid(a, b);
         case 116: return linux_sys_setgroups(a, b);
         case 117: return linux_sys_setresuid(a, b, c);
         case 118: return linux_sys_getresuid(a, b, c);
@@ -5776,8 +5922,9 @@ private long dispatchLinuxSyscallCall(ulong n, ulong a, ulong b, ulong c,
         case 131: return linux_sys_sigaltstack(a, b);
         case 137: return linux_sys_statfs(a, b);
         case 138: return linux_sys_fstatfs(a, b);     // Z1: zsh probes the cwd filesystem
-        case 154: return linux_sys_sched_setparam(a, b);
-        case 155: return linux_sys_sched_getparam(a, b);
+        // x86_64: 142/143 -- 154/155 (where these used to sit) are modify_ldt/pivot_root.
+        case 142: return linux_sys_sched_setparam(a, b);
+        case 143: return linux_sys_sched_getparam(a, b);
         case 140: return linux_sys_getpriority(a, b);        // no-op: priority is moot on the
         case 141: return linux_sys_setpriority(a, b, c);     // cooperative scheduler (zsh nice's bg jobs)
         case 157: return linux_sys_prctl(a, b, c, d, e);
@@ -6370,13 +6517,14 @@ private void kernelLoop() {
         }
         if (g_taskPendingSig[tid] != 0) {
             int psig = g_taskPendingSig[tid];
-            if (psig > 0 && psig < 64 && (g_taskSigCustom[tid] & (1UL << psig)) &&
-                g_sigHandler[tid][psig] != 0) {
+            if (psig > 0 && psig < 64 && sigHasHandler(tid, psig)) {
                 // Z3: the task has a real handler (e.g. zsh's SIGINT for ^C).  Leave the
                 // signal pending and run the task — it will be delivered at its next
                 // blocking syscall (the read/pause yield below), where it interrupts that
                 // syscall with EINTR so userspace (zsh's ZLE) re-checks its interrupt flag.
                 // Delivering it async here would resume the rewound read and never EINTR.
+            } else if (sigIgnored(tid, psig)) {
+                g_taskPendingSig[tid] = 0;   // SIG_IGN, or a default-ignore signal: dropped
             } else {
                 g_taskPendingSig[tid] = 0;
                 exitTask(tid, 128 + psig);   // default action: 128+signo (killed job)
@@ -6579,6 +6727,8 @@ private void kernelLoop() {
                 klog(" rip="); klog_hex(task.regs[REG_RIP]);
                 klog(" rsp="); klog_hex(task.regs[REG_RSP]);
                 faultRegsLog(task.regs);
+                klog("[kernel] fault context: last syscall="); klog_dec(g_lastSysNr[tid]);
+                klog(" fs="); klog_hex(g_task_fsbase[tid]); klog(" leader="); klog_dec(cast(ulong)task.processLeaderTid); klog("\n");
                 // For a fault on the first instruction of a leaf like strlen(),
                 // [rsp] holds the return address into the caller — log it (and a
                 // few stack slots) to locate the offending call site.

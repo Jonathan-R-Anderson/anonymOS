@@ -33,7 +33,7 @@ anonymOS has none of binder, ashmem, cgroups, or the `CLONE_NEW*` namespace flag
 | **A3 — binder objects & handles** (done; fd deferred to A3b) | Flat-object translation (BINDER_TYPE_BINDER/HANDLE), per-proc handle tables, node table + ref counting, synchronous reply routing via a transaction stack, death notifications, the thread pool (`BC_REGISTER_LOOPER`). | Two processes pass a binder reference across a transaction, a reply routes back to the caller, and a crash fires a death notification. **Done: node/handle tables + BINDER↔HANDLE translation + `BC_REPLY`→`BR_REPLY` routing + `BC_REQUEST_DEATH_NOTIFICATION`→`BR_DEAD_BINDER`; `[binder] selftest PASS (A1+A2+A3 …)`.** |
 | **A3b — fd passing** (done) | `BINDER_TYPE_FD` translation: install the sender's fd into the target's fd table across a transaction, via a cross-table dup that mirrors `fork`'s fd-table copy (shares the open file description, bumps the shared backend's refcount, publishes the capability). | A fd object carried in a transaction is dup'd into the receiver's fd table and rewritten to the receiver's new fd. **Done: `binderFdInstall` in posix.d + `BINDER_TYPE_FD` case in `translateObject`; `[binder] selftest PASS (… fd passing …)` + `[binder] fd-pass selftest PASS`.** |
 | **A4 — binderfs + hw/vnd binder** (done) | Independent binder *contexts* (each its own context manager + handle-0 + node namespace), the three well-known devices `/dev/binder` / `/dev/hwbinder` / `/dev/vndbinder`, and binderfs: `/dev/binderfs/binder-control` with `BINDER_CTL_ADD` creating named devices, opened at `/dev/binderfs/<name>`. | Two contexts each register their own context manager without EBUSY-ing the other, and handle 0 in each routes to that context's manager. **Done: context table in binder.d + name→context map + binder-control in posix.d; `[binder] selftest PASS (… independent contexts)`.** |
-| **A5 — ashmem / memfd seals** | `/dev/ashmem` ioctls (SET_NAME/SET_SIZE/PIN/UNPIN) and/or `memfd_create` with `F_SEAL_*`. | Android's `libcutils` ashmem path allocates and maps a region. |
+| **A5 — ashmem / memfd seals** (done) | `memfd_create` with `F_SEAL_*` (already present) **and** `/dev/ashmem` ioctls (SET/GET NAME, SET/GET SIZE, SET/GET PROT_MASK, PIN/UNPIN, GET_PIN_STATUS, PURGE_ALL_CACHES), backed by the memfd machinery so mmap/fstat/dup reuse that path. | Android's `libcutils` ashmem path allocates and maps a region. **Done: `/dev/ashmem` in posix.d (memfd-backed) + the memfd+seals path; `[ashmem] selftest PASS`.** |
 | **A6 — cgroups v2** | A cgroup2 mount, the controllers Android/LXC require, and the clone/attach plumbing. | `lxc-start` creates and enters a cgroup without error. |
 | **A7 — namespaces** | `CLONE_NEWNS/NEWPID/NEWNET/NEWIPC/NEWUTS/NEWUSER`, `unshare`, `setns`, `pivot_root` (the last is stubbed today). | A process unshares a mount+pid namespace and `pivot_root`s into an image. |
 | **A8 — LXC** | The container runtime Waydroid drives (`lxc` + liblxc), or a built-in equivalent that satisfies Waydroid's container contract. | `waydroid init` lays down the container config; `waydroid session start` gets Android's `init` to run. |
@@ -66,12 +66,16 @@ already dispatches `waydroid app …`). None of A2–A9 is a flag: each is a sub
   `/dev/binderfs/<name>` (`posix.d`). The self-test proves two contexts register managers
   independently, a second manager in one context is refused (EBUSY), and handle 0 routes per
   context: `[binder] selftest PASS (… independent contexts)`.
-- **Everything from A5 on is not started.** `hos-waydroid` reports Waydroid-not-installed until the
-  stack can start a session, so nothing pretends to run. The binder-context engine is boot-proven;
-  a full `servicemanager`/`hwservicemanager` coming up on its context additionally needs the
-  userspace binder client (not present yet).
+- **A5 shared memory: implemented and self-tested** — `memfd_create` with the full `F_SEAL_*` set
+  was already present (the path modern Android prefers); `/dev/ashmem` is now added for the legacy
+  path, backed by the memfd machinery (an ashmem fd is an `FD_MEMFD` under the hood, so mmap, fstat
+  and dup reuse that code) with the ashmem ioctl surface (name, size, prot mask, pin) and freed on
+  last close. `[ashmem] selftest PASS` drives the libcutils create sequence and proves the region is
+  named, sized and backed by real mappable memory.
+- **Everything from A6 on is not started.** `hos-waydroid` reports Waydroid-not-installed until the
+  stack can start a session, so nothing pretends to run.
 
-This is the honest state: the binder IPC subsystem — the part nothing in Android starts without —
-is complete and proven (device, mmap buffers, object/handle translation, reply routing, fd passing,
-death notifications, and now independent contexts); shared memory, cgroups, namespaces, LXC and the
-Android image are not built.
+This is the honest state: the binder IPC subsystem and Android's shared-memory surface are complete
+and proven (binder: device, mmap buffers, object/handle translation, reply routing, fd passing,
+death notifications, independent contexts; shared memory: memfd+seals and /dev/ashmem). cgroups,
+namespaces, LXC and the Android image are not built.

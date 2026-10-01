@@ -4429,6 +4429,12 @@ public int sys_open(const(char)* path, int flags) {
         }
     }
 
+    // /dev/ashmem -- Android's anonymous shared memory (A5).  Backed by the memfd machinery; the
+    // ashmem ioctls are served in linux_sys_ioctl.  Per-process memory, so ungated like /dev/null.
+    if (cstrEq(path, "/dev/ashmem")) {
+        return ashmemOpen(fd, flags);
+    }
+
     // /dev/dri/card0, /dev/dri/renderD128 → DRM/KMS device
     if (cstrEq(path, "/dev/dri/card0") || cstrEq(path, "/dev/dri/renderD128")) {
         g_fdTable[fd].type    = FileType.FD_DRM;
@@ -5145,6 +5151,20 @@ private long fileObjClose(ObjHeader* oh) {
             memfdAt(mid).vmoObjId   = 0;
             memfdAt(mid).aliased    = false;
             memfdAt(mid).vgemHandle = 0;  // R3: clear the virgl-alias mark on reuse
+        } else if (mid >= 0 && mid < g_memfdCap && memfdAt(mid).inUse) {
+            // A5: an ashmem region is freed on last close (unlike a plain owner memfd, whose pages
+            // are intentionally left as-is).  Only ashmem-backed memfds carry a side record.
+            const int asi = ashmemSideForMid(mid);
+            if (asi >= 0) {
+                if (memfdAt(mid).physBase != 0) {
+                    import memory.mm : free_phys_pages;
+                    free_phys_pages(memfdAt(mid).physBase, cast(size_t)(memfdAt(mid).size / 4096));
+                }
+                if (memfdAt(mid).vmoObjId != 0 && objGet(memfdAt(mid).vmoObjId) !is null)
+                    objRelease(memfdAt(mid).vmoObjId);
+                memfdAt(mid) = MemFdRec.init;
+                g_ashmem[asi].used = false;
+            }
         }
     }
 
@@ -12040,6 +12060,10 @@ public long linux_sys_ioctl(ulong fd, ulong cmd, ulong arg) {
     if (fd < 1024 && g_fdTable !is null && g_fdTable[cast(int)fd].type == FileType.FD_BINDER_CTL) {
         return binderCtlIoctl(cast(uint)cmd, arg);   // A4: binderfs BINDER_CTL_ADD
     }
+    if (fd < 1024 && g_fdTable !is null && g_fdTable[cast(int)fd].type == FileType.FD_MEMFD &&
+        ((cast(uint)cmd >> 8) & 0xFF) == ASHMEM_MAGIC) {
+        return ashmemIoctl(cast(int)cast(size_t)g_fdTable[cast(int)fd].backend, cast(uint)cmd, arg); // A5
+    }
     ObjHeader* oh = fdObjectByIndexWithRights(cast(int)fd, CAP_RIGHT_IOCTL);
     if (oh is null) return negErrno(EBADF);
     auto iop = g_objOps[oh.type].ioctl;
@@ -17931,6 +17955,183 @@ public long linux_sys_memfd_create(ulong name, ulong flags) {
     ensureMemfdVmo(mid);
     return publishActiveFdReturn(fd);
 }
+// ── A5: /dev/ashmem ───────────────────────────────────────────────────────────────────────────
+// Android's legacy anonymous shared memory.  libcutils ashmem_create_region() opens /dev/ashmem,
+// ASHMEM_SET_NAME + ASHMEM_SET_SIZE, then mmaps the fd.  An ashmem region is, mechanically, a named
+// sized mmap-able anonymous physical region -- exactly a memfd -- so anonymOS backs it with the memfd
+// machinery (the fd is an FD_MEMFD under the hood: mmap, fstat, fork/dup refcounting all reuse that
+// path) and adds here only the ashmem ioctl surface and the name/prot/pin side-state.  The modern
+// path (memfd_create + F_SEAL_*) is already implemented; this is the fallback older code still uses.
+enum int ASHMEM_NAME_LEN = 256;
+private enum uint ASHMEM_MAGIC            = 0x77;         // __ASHMEMIOC (the ioctl type byte)
+private enum uint ASHMEM_SET_NAME         = 0x4100_7701;  // _IOW(0x77,1,char[256])
+private enum uint ASHMEM_GET_NAME         = 0x8100_7702;  // _IOR(0x77,2,char[256])
+private enum uint ASHMEM_SET_SIZE         = 0x4008_7703;  // _IOW(0x77,3,size_t)
+private enum uint ASHMEM_GET_SIZE         = 0x0000_7704;  // _IO(0x77,4)
+private enum uint ASHMEM_SET_PROT_MASK    = 0x4008_7705;  // _IOW(0x77,5,unsigned long)
+private enum uint ASHMEM_GET_PROT_MASK    = 0x0000_7706;  // _IO(0x77,6)
+private enum uint ASHMEM_PIN              = 0x4008_7707;  // _IOW(0x77,7,ashmem_pin)
+private enum uint ASHMEM_UNPIN            = 0x4008_7708;  // _IOW(0x77,8,ashmem_pin)
+private enum uint ASHMEM_GET_PIN_STATUS   = 0x0000_7709;  // _IO(0x77,9)
+private enum uint ASHMEM_PURGE_ALL_CACHES = 0x0000_770A;  // _IO(0x77,10)
+private enum int ASHMEM_NOT_PURGED = 0;   // PIN/UNPIN result: nothing was purged
+private enum int ASHMEM_IS_PINNED  = 0;   // GET_PIN_STATUS: 0 = pinned (we never purge)
+
+private struct AshmemSide {
+    bool  used;
+    int   mid;        // the backing memfd record index
+    uint  protMask;   // future-mmap prot restriction (default: all bits allowed)
+    ubyte nameLen;
+    char[ASHMEM_NAME_LEN] name;
+}
+private enum int ASHMEM_MAX = 128;
+__gshared AshmemSide[ASHMEM_MAX] g_ashmem;
+
+private int ashmemSideForMid(int mid) @nogc nothrow {
+    foreach (i; 0 .. ASHMEM_MAX) if (g_ashmem[i].used && g_ashmem[i].mid == mid) return i;
+    return -1;
+}
+
+// Create the backing memfd + an ashmem side record; returns the side index, or -1 on exhaustion.
+private int ashmemCreate() {
+    const int mid = memfdFreeSlot();
+    if (mid < 0) return -1;
+    int si = -1;
+    foreach (i; 0 .. ASHMEM_MAX) if (!g_ashmem[i].used) { si = i; break; }
+    if (si < 0) return -1;
+    memfdAt(mid).inUse    = true;
+    memfdAt(mid).refs     = 1;
+    memfdAt(mid).physBase = 0;
+    memfdAt(mid).size     = 0;
+    memfdAt(mid).exactLen = 0;
+    memfdAt(mid).seals    = 0;
+    memfdAt(mid).vmoObjId = 0;
+    g_ashmem[si]          = AshmemSide.init;
+    g_ashmem[si].used     = true;
+    g_ashmem[si].mid      = mid;
+    g_ashmem[si].protMask = 0xFFFF_FFFF;
+    g_ashmem[si].nameLen  = 0;
+    ensureMemfdVmo(mid);
+    return si;
+}
+
+// Allocate an ashmem region's backing of `size` bytes (ashmem has no ftruncate step), mirroring the
+// memfd fresh-allocation path so mmap, owner-tracking and the VMO all behave identically.
+private long ashmemSetSize(int mid, ulong size) {
+    if (memfdAt(mid).physBase != 0) return negErrno(EINVAL);   // size is fixed once backed
+    const ulong aligned = (size + 0xFFF) & ~0xFFFUL;
+    if (aligned == 0) { memfdAt(mid).size = 0; memfdAt(mid).exactLen = 0; return 0; }
+    const size_t pages = cast(size_t)(aligned >> 12);
+    const ulong phys = alloc_phys_pages(pages);
+    if (phys == 0) return negErrno(ENOMEM);
+    const uint vmo = ensureMemfdVmo(mid);
+    memfdAt(mid).physBase = phys;
+    memfdAt(mid).size     = aligned;
+    memfdAt(mid).exactLen = size;
+    physPagesSetOwner(phys, pages, 0, vmo);
+    return 0;
+}
+
+// The ashmem ioctl surface, served on an FD_MEMFD fd whose mid has an ashmem side record.
+private long ashmemIoctl(int mid, uint cmd, ulong arg) {
+    if (mid < 0 || mid >= g_memfdCap || !memfdAt(mid).inUse) return negErrno(EBADF);
+    const int si = ashmemSideForMid(mid);
+    if (si < 0) return negErrno(EINVAL);   // an ordinary memfd, not an ashmem region
+    switch (cmd) {
+        case ASHMEM_SET_NAME: {
+            if (arg == 0) return negErrno(EFAULT);
+            smapBegin();
+            auto src = cast(const(char)*)arg;
+            ulong n = 0;
+            while (n < ASHMEM_NAME_LEN - 1 && src[n] != '\0') { g_ashmem[si].name[n] = src[n]; ++n; }
+            smapEnd();
+            g_ashmem[si].nameLen = cast(ubyte)n;
+            return 0;
+        }
+        case ASHMEM_GET_NAME: {
+            if (arg == 0) return negErrno(EFAULT);
+            smapBegin();
+            auto dst = cast(char*)arg;
+            ulong n = 0;
+            for (; n < g_ashmem[si].nameLen; ++n) dst[n] = g_ashmem[si].name[n];
+            dst[n] = '\0';
+            smapEnd();
+            return 0;
+        }
+        case ASHMEM_SET_SIZE:   return ashmemSetSize(mid, arg);
+        case ASHMEM_GET_SIZE:   return cast(long)memfdAt(mid).exactLen;
+        case ASHMEM_SET_PROT_MASK:
+            g_ashmem[si].protMask &= cast(uint)arg;   // prot can only be narrowed
+            return 0;
+        case ASHMEM_GET_PROT_MASK: return cast(long)g_ashmem[si].protMask;
+        case ASHMEM_PIN: case ASHMEM_UNPIN: return ASHMEM_NOT_PURGED;  // advisory; we never purge
+        case ASHMEM_GET_PIN_STATUS:        return ASHMEM_IS_PINNED;
+        case ASHMEM_PURGE_ALL_CACHES:      return 0;
+        default: return negErrno(EINVAL);
+    }
+}
+
+// open("/dev/ashmem"): bind a fresh ashmem region to the already-allocated fd `fd`.
+private int ashmemOpen(int fd, ulong flags) {
+    const int si = ashmemCreate();
+    if (si < 0) return negErrno(ENOMEM);
+    const int mid = g_ashmem[si].mid;
+    g_fdTable[fd].type     = FileType.FD_MEMFD;
+    g_fdTable[fd].backend  = cast(void*)cast(size_t)mid;
+    g_fdTable[fd].fileSize = 0;
+    g_fdTable[fd].offset   = 0;
+    deviceNoteOpen("/dev/ashmem");
+    return publishActiveFdReturn(fd);
+}
+
+// Boot self-test: drive the libcutils ashmem_create_region sequence (set name, set size) and prove
+// the region is named, sized, really backed by mappable memory, and that prot/pin behave.
+public void ashmemSelfTest() {
+    bool ok = true;
+    const int si = ashmemCreate();
+    if (si < 0) { klog("[ashmem] selftest FAIL (create)\n"); return; }
+    const int mid = g_ashmem[si].mid;
+
+    // set + get the name
+    static immutable char[16] wantName = "ashmem-selftest\0";
+    ok = ok && (ashmemIoctl(mid, ASHMEM_SET_NAME, cast(ulong)wantName.ptr) == 0);
+    char[ASHMEM_NAME_LEN] gotName = '\0';
+    ok = ok && (ashmemIoctl(mid, ASHMEM_GET_NAME, cast(ulong)gotName.ptr) == 0);
+    foreach (i; 0 .. 15) if (gotName[i] != wantName[i]) ok = false;
+
+    // set + get the size; the backing must be real, writable memory
+    ok = ok && (ashmemIoctl(mid, ASHMEM_SET_SIZE, 4096) == 0);
+    ok = ok && (ashmemIoctl(mid, ASHMEM_GET_SIZE, 0) == 4096);
+    ok = ok && (memfdAt(mid).physBase != 0) && (memfdAt(mid).size == 4096);
+    if (memfdAt(mid).physBase != 0) {
+        auto p = cast(ubyte*)phys_to_virt(memfdAt(mid).physBase);
+        p[0] = 0xA5; p[4095] = 0x5A;
+        ok = ok && (p[0] == 0xA5) && (p[4095] == 0x5A);
+    } else ok = false;
+    // a second SET_SIZE after it is backed is refused
+    ok = ok && (ashmemIoctl(mid, ASHMEM_SET_SIZE, 8192) != 0);
+
+    // prot mask narrows (default all -> RW) and never widens back
+    ok = ok && (ashmemIoctl(mid, ASHMEM_GET_PROT_MASK, 0) == cast(long)0xFFFF_FFFFU);
+    ok = ok && (ashmemIoctl(mid, ASHMEM_SET_PROT_MASK, 0x3) == 0);   // PROT_READ|PROT_WRITE
+    ok = ok && (ashmemIoctl(mid, ASHMEM_GET_PROT_MASK, 0) == 0x3);
+    // pin status is "pinned, not purged"
+    ok = ok && (ashmemIoctl(mid, ASHMEM_GET_PIN_STATUS, 0) == ASHMEM_IS_PINNED);
+
+    // clean up (the self-test holds no fd)
+    if (memfdAt(mid).physBase != 0) {
+        import memory.mm : free_phys_pages;
+        free_phys_pages(memfdAt(mid).physBase, cast(size_t)(memfdAt(mid).size / 4096));
+    }
+    if (memfdAt(mid).vmoObjId != 0 && objGet(memfdAt(mid).vmoObjId) !is null)
+        objRelease(memfdAt(mid).vmoObjId);
+    memfdAt(mid) = MemFdRec.init;
+    g_ashmem[si].used = false;
+
+    klog(ok ? "[ashmem] selftest PASS (/dev/ashmem: name, size, mappable backing, prot mask, pin)\n"
+            : "[ashmem] selftest FAIL\n");
+}
+
 public long linux_sys_seccomp(ulong op, ulong f, ulong a) { return negErrno(EINVAL); }
 public long linux_sys_bpf(ulong cmd, ulong attr, ulong sz)  { return negErrno(ENOSYS); }
 public long linux_sys_io_uring_setup(ulong e, ulong p) { return negErrno(ENOSYS); }

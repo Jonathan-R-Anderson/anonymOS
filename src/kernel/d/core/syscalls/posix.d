@@ -173,7 +173,8 @@ enum FileType {
     FD_KVM_VCPU,   // vCPU fd; fileSize = packed (vcpuObjId, vcpuGen)
     // Virtual network: /dev/net/tun.  backend = the vnet TAP port index (0 until TUNSETIFF).
     FD_TUN,
-    FD_BINDER,           // /dev/binder -- Android IPC (core/android/binder.d, phase A1)
+    FD_BINDER,           // /dev/binder|hwbinder|vndbinder + binderfs nodes -- Android IPC (A1-A4)
+    FD_BINDER_CTL,       // /dev/binderfs/binder-control -- BINDER_CTL_ADD creates named contexts (A4)
 }
 
 struct File {
@@ -4380,24 +4381,52 @@ public int sys_open(const(char)* path, int flags) {
         return publishActiveFdReturn(fd);
     }
 
-    // /dev/binder -- Android's IPC driver (core/android/binder.d, docs/hw-bringup/ANDROID.md).
-    // Each open is a binder "proc"; its index rides in backend.  ioctl-only (plus mmap in phase A2).
-    if (cstrEq(path, "/dev/binder")) {
-        import core.android.binder : binderAlloc, binderSetProcTab, binderSetFdDup;
-        const int bp = binderAlloc();
-        if (bp < 0) return negErrno(ENOMEM);
-        g_fdTable[fd].type     = FileType.FD_BINDER;
-        g_fdTable[fd].flags    = flags;
-        g_fdTable[fd].offset   = 0;
-        g_fdTable[fd].backend  = cast(void*)cast(size_t)bp;
-        g_fdTable[fd].fileSize = 0;
-        g_fdTable[fd].objId    = 0;
-        // A3b: remember which process this binder proc belongs to, and register the cross-process
-        // fd installer once, so a TYPE_FD object sent over a transaction lands in the right table.
-        binderSetProcTab(bp, g_activeFdTabId);
-        if (!g_binderFdDupRegistered) { binderSetFdDup(&binderFdInstall); g_binderFdDupRegistered = true; }
-        deviceNoteOpen(path);
-        return publishActiveFdReturn(fd);
+    // Android's IPC driver (core/android/binder.d, docs/hw-bringup/ANDROID.md).  Each open is a
+    // binder "proc"; its index rides in backend.  A4: there are three well-known contexts --
+    // /dev/binder, /dev/hwbinder, /dev/vndbinder -- plus binderfs: /dev/binderfs/binder-control
+    // (BINDER_CTL_ADD creates named contexts) and /dev/binderfs/<name> (a previously-added one).
+    {
+        const(char)* bname = null; ulong bnlen = 0;
+        bool isDev = false, isCtl = false, binderfs = false;
+        if      (cstrEq(path, "/dev/binder"))    { bname = "binder".ptr;    bnlen = 6; isDev = true; }
+        else if (cstrEq(path, "/dev/hwbinder"))  { bname = "hwbinder".ptr;  bnlen = 8; isDev = true; }
+        else if (cstrEq(path, "/dev/vndbinder")) { bname = "vndbinder".ptr; bnlen = 9; isDev = true; }
+        else if (cstrEq(path, "/dev/binderfs/binder-control")) { isCtl = true; }
+        else if (cstrEqPrefix(path, "/dev/binderfs/")) {
+            bname = path + 14; bnlen = cstrNLen(bname, 32); isDev = true; binderfs = true;
+        }
+        if (isCtl) {
+            // binder-control: a tiny control node.  BINDER_CTL_ADD is served in ioctl.
+            g_fdTable[fd].type     = FileType.FD_BINDER_CTL;
+            g_fdTable[fd].flags    = flags;
+            g_fdTable[fd].offset   = 0;
+            g_fdTable[fd].backend  = null;
+            g_fdTable[fd].fileSize = 0;
+            g_fdTable[fd].objId    = 0;
+            deviceNoteOpen(path);
+            return publishActiveFdReturn(fd);
+        }
+        if (isDev) {
+            import core.android.binder : binderAlloc, binderSetProcTab, binderSetFdDup;
+            // The three well-known devices auto-create their context; a binderfs node must have been
+            // added through binder-control first.
+            const int ctx = binderCtxForName(bname, bnlen, /*create=*/!binderfs);
+            if (ctx < 0) return negErrno(ENOENT);
+            const int bp = binderAlloc(ctx);
+            if (bp < 0) return negErrno(ENOMEM);
+            g_fdTable[fd].type     = FileType.FD_BINDER;
+            g_fdTable[fd].flags    = flags;
+            g_fdTable[fd].offset   = 0;
+            g_fdTable[fd].backend  = cast(void*)cast(size_t)bp;
+            g_fdTable[fd].fileSize = 0;
+            g_fdTable[fd].objId    = 0;
+            // A3b: remember which process this binder proc belongs to, and register the cross-process
+            // fd installer once, so a TYPE_FD object sent over a transaction lands in the right table.
+            binderSetProcTab(bp, g_activeFdTabId);
+            if (!g_binderFdDupRegistered) { binderSetFdDup(&binderFdInstall); g_binderFdDupRegistered = true; }
+            deviceNoteOpen(path);
+            return publishActiveFdReturn(fd);
+        }
     }
 
     // /dev/dri/card0, /dev/dri/renderD128 → DRM/KMS device
@@ -12008,6 +12037,9 @@ public long linux_sys_ioctl(ulong fd, ulong cmd, ulong arg) {
     if (fd < 1024 && g_fdTable !is null && g_fdTable[cast(int)fd].type == FileType.FD_BINDER) {
         return binderIoctl(cast(int)cast(size_t)g_fdTable[cast(int)fd].backend, cast(uint)cmd, arg);
     }
+    if (fd < 1024 && g_fdTable !is null && g_fdTable[cast(int)fd].type == FileType.FD_BINDER_CTL) {
+        return binderCtlIoctl(cast(uint)cmd, arg);   // A4: binderfs BINDER_CTL_ADD
+    }
     ObjHeader* oh = fdObjectByIndexWithRights(cast(int)fd, CAP_RIGHT_IOCTL);
     if (oh is null) return negErrno(EBADF);
     auto iop = g_objOps[oh.type].ioctl;
@@ -12151,6 +12183,66 @@ public void binderFdPassSelfTest() {
 
     klog(ok ? "[binder] fd-pass selftest PASS (fd dup'd across fd tables)\n"
             : "[binder] fd-pass selftest FAIL\n");
+}
+
+// ── binder A4: named contexts (binderfs) ─────────────────────────────────────────────────────────
+// Each binder device NAME is one independent context (binder.d numbers them).  binder/hwbinder/
+// vndbinder auto-create on first open; binderfs's binder-control adds more by name.
+private struct BinderCtxName { bool used; ubyte nameLen; char[32] name; int ctx; }
+private enum int BINDER_CTX_NAMES = 16;
+__gshared BinderCtxName[BINDER_CTX_NAMES] g_binderCtxNames;
+
+private ulong cstrNLen(const(char)* s, ulong cap) @nogc nothrow {
+    ulong n = 0; while (n < cap && s[n] != '\0') ++n; return n;
+}
+
+// Resolve a binder device name to its context id, creating the context on first use when `create`.
+int binderCtxForName(const(char)* name, ulong nlen, bool create) @nogc nothrow {
+    import core.android.binder : binderCtxCreate;
+    if (nlen == 0 || nlen > 31) return -1;
+    foreach (ref e; g_binderCtxNames)
+        if (e.used && e.nameLen == nlen) {
+            bool same = true;
+            foreach (i; 0 .. nlen) if (e.name[i] != name[i]) { same = false; break; }
+            if (same) return e.ctx;
+        }
+    if (!create) return -1;
+    const int ctx = binderCtxCreate();
+    if (ctx < 0) return -1;
+    foreach (ref e; g_binderCtxNames)
+        if (!e.used) {
+            e.used = true; e.ctx = ctx; e.nameLen = cast(ubyte)nlen;
+            foreach (i; 0 .. nlen) e.name[i] = name[i];
+            return ctx;
+        }
+    return -1;
+}
+
+// binder-control ioctl: BINDER_CTL_ADD creates a named binder device (a context).  struct
+// binderfs_device { char name[256]; __u32 major; __u32 minor; } (264 bytes); the kernel reads the
+// name and fills in major/minor (synthetic -- we have no device-number space, binderfs nodes are
+// opened by path).
+private enum uint BINDER_CTL_ADD = 0xC108_6201;   // _IOWR('b', 1, struct binderfs_device)
+private __gshared uint g_binderfsNextMinor = 0;
+
+private long binderCtlIoctl(uint cmd, ulong arg) {
+    if (cmd != BINDER_CTL_ADD) return negErrno(EINVAL);
+    if (arg == 0) return negErrno(EFAULT);
+    char[32] nm = '\0';
+    ulong nlen = 0;
+    smapBegin();
+    auto src = cast(const(char)*)arg;        // name[] is at offset 0
+    while (nlen < 31 && src[nlen] != '\0') { nm[nlen] = src[nlen]; ++nlen; }
+    smapEnd();
+    if (nlen == 0) return negErrno(EINVAL);
+    const int ctx = binderCtxForName(nm.ptr, nlen, /*create=*/true);
+    if (ctx < 0) return negErrno(ENOMEM);
+    // Report synthetic major/minor back into the struct (offsets 256 and 260).
+    smapBegin();
+    *cast(uint*)(arg + 256) = 511;                       // a fixed "binderfs" major
+    *cast(uint*)(arg + 260) = g_binderfsNextMinor++;     // a unique minor per device
+    smapEnd();
+    return 0;
 }
 
 public long linuxSyscallCapPrecheck(ulong n, ulong a, ulong b, ulong c,

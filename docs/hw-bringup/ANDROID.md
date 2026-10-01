@@ -32,7 +32,7 @@ anonymOS has none of binder, ashmem, cgroups, or the `CLONE_NEW*` namespace flag
 | **A2 — binder mmap + buffers** (done) | mmap the receive buffer; the kernel allocates transaction buffers from it and writes transaction data there; `BC_FREE_BUFFER` reclaims. | libbinder (`servicemanager`) opens, mmaps, and blocks in its read loop without error. **Done: `/dev/binder` mmap + bump allocator + data carried into the target's region (copy-in under SMAP) + free; `[binder] selftest PASS (A1+A2 …)`.** |
 | **A3 — binder objects & handles** (done; fd deferred to A3b) | Flat-object translation (BINDER_TYPE_BINDER/HANDLE), per-proc handle tables, node table + ref counting, synchronous reply routing via a transaction stack, death notifications, the thread pool (`BC_REGISTER_LOOPER`). | Two processes pass a binder reference across a transaction, a reply routes back to the caller, and a crash fires a death notification. **Done: node/handle tables + BINDER↔HANDLE translation + `BC_REPLY`→`BR_REPLY` routing + `BC_REQUEST_DEATH_NOTIFICATION`→`BR_DEAD_BINDER`; `[binder] selftest PASS (A1+A2+A3 …)`.** |
 | **A3b — fd passing** (done) | `BINDER_TYPE_FD` translation: install the sender's fd into the target's fd table across a transaction, via a cross-table dup that mirrors `fork`'s fd-table copy (shares the open file description, bumps the shared backend's refcount, publishes the capability). | A fd object carried in a transaction is dup'd into the receiver's fd table and rewritten to the receiver's new fd. **Done: `binderFdInstall` in posix.d + `BINDER_TYPE_FD` case in `translateObject`; `[binder] selftest PASS (… fd passing …)` + `[binder] fd-pass selftest PASS`.** |
-| **A4 — binderfs + hw/vnd binder** | `/dev/binderfs` with `binder-control`; the `hwbinder` and `vndbinder` contexts Android needs. | `servicemanager` and a `hwservicemanager` come up on their own contexts. |
+| **A4 — binderfs + hw/vnd binder** (done) | Independent binder *contexts* (each its own context manager + handle-0 + node namespace), the three well-known devices `/dev/binder` / `/dev/hwbinder` / `/dev/vndbinder`, and binderfs: `/dev/binderfs/binder-control` with `BINDER_CTL_ADD` creating named devices, opened at `/dev/binderfs/<name>`. | Two contexts each register their own context manager without EBUSY-ing the other, and handle 0 in each routes to that context's manager. **Done: context table in binder.d + name→context map + binder-control in posix.d; `[binder] selftest PASS (… independent contexts)`.** |
 | **A5 — ashmem / memfd seals** | `/dev/ashmem` ioctls (SET_NAME/SET_SIZE/PIN/UNPIN) and/or `memfd_create` with `F_SEAL_*`. | Android's `libcutils` ashmem path allocates and maps a region. |
 | **A6 — cgroups v2** | A cgroup2 mount, the controllers Android/LXC require, and the clone/attach plumbing. | `lxc-start` creates and enters a cgroup without error. |
 | **A7 — namespaces** | `CLONE_NEWNS/NEWPID/NEWNET/NEWIPC/NEWUTS/NEWUSER`, `unshare`, `setns`, `pivot_root` (the last is stubbed today). | A process unshares a mount+pid namespace and `pivot_root`s into an image. |
@@ -59,11 +59,19 @@ already dispatches `waydroid app …`). None of A2–A9 is a flag: each is a sub
   through `binderSetFdDup`/`binderSetProcTab`), mirroring `fork`'s per-entry fd-table copy. The
   binder self-test proves the translation path (with a stub installer); a second boot self-test
   (`[binder] fd-pass selftest PASS`) proves the real cross-table dup.
-- **Everything from A4 on is not started.** `hos-waydroid` reports Waydroid-not-installed until the
-  stack can start a session, so nothing pretends to run. End-to-end fd passing between two *real*
-  processes awaits a userspace binder client, which does not exist yet; the mechanism is proven in
-  isolation.
+- **A4 binderfs + contexts: implemented and self-tested** — binder is no longer a single global
+  context. `binder.d` has a context table; `/dev/binder`, `/dev/hwbinder` and `/dev/vndbinder` are
+  three independent contexts, each with its own context manager and handle-0 node namespace, and
+  `/dev/binderfs/binder-control` (`BINDER_CTL_ADD`) creates more named contexts openable at
+  `/dev/binderfs/<name>` (`posix.d`). The self-test proves two contexts register managers
+  independently, a second manager in one context is refused (EBUSY), and handle 0 routes per
+  context: `[binder] selftest PASS (… independent contexts)`.
+- **Everything from A5 on is not started.** `hos-waydroid` reports Waydroid-not-installed until the
+  stack can start a session, so nothing pretends to run. The binder-context engine is boot-proven;
+  a full `servicemanager`/`hwservicemanager` coming up on its context additionally needs the
+  userspace binder client (not present yet).
 
-This is the honest state: the IPC core — the part nothing in Android starts without — is in and
-proven, references and fds cross it; binderfs, shared memory, cgroups, namespaces, LXC and the
-image are not built.
+This is the honest state: the binder IPC subsystem — the part nothing in Android starts without —
+is complete and proven (device, mmap buffers, object/handle translation, reply routing, fd passing,
+death notifications, and now independent contexts); shared memory, cgroups, namespaces, LXC and the
+Android image are not built.

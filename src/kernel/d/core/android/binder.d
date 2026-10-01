@@ -138,13 +138,36 @@ private struct BinderProc {
     // A3b: the fd-table id of the task that opened this /dev/binder, so a TYPE_FD object can be
     // installed into the right process's fd table.  -1 until posix.d records it (binderSetProcTab).
     int  ownerTab = -1;
+    // A4: which binder CONTEXT this proc belongs to.  Android runs three independent contexts --
+    // binder (framework), hwbinder (HALs), vndbinder (vendor) -- each with its own context manager
+    // and handle-0; binderfs can add more.  A proc only ever reaches procs in its own context.
+    int  ctx;
 }
 
 // BINDER_VM_MAX caps a proc's receive region.  libbinder uses ~1 MiB by default and at most 4 MiB.
 private enum uint BINDER_VM_MAX = 4 * 1024 * 1024;
 
 private __gshared BinderProc[MAX_PROCS] g_procs;
-private __gshared int g_contextMgr = -1;   // the proc index registered as handle 0, or -1
+
+// ---- A4: binder contexts ---------------------------------------------------------------------
+// Each context is an independent binder world: its own context manager (handle 0) and, through it,
+// its own node/handle namespace.  /dev/binder, /dev/hwbinder, /dev/vndbinder and any binderfs device
+// map to one context each.  posix.d owns the name->context mapping; binder.d just numbers them.
+private enum int MAX_CONTEXTS = 8;
+private struct BinderContext {
+    bool used;
+    int  contextMgr = -1;   // the proc registered as this context's handle 0, or -1
+    int  ctxMgrNode = -1;   // the node every proc in this context reaches as handle 0, or -1
+}
+private __gshared BinderContext[MAX_CONTEXTS] g_ctx;
+
+/// Create a fresh binder context; returns its id, or -1 when the table is full.  posix.d calls this
+/// for each named device (binder/hwbinder/vndbinder and binderfs additions).
+public int binderCtxCreate() {
+    foreach (i; 0 .. MAX_CONTEXTS)
+        if (!g_ctx[i].used) { g_ctx[i] = BinderContext.init; g_ctx[i].used = true; return i; }
+    return -1;
+}
 
 // ---- A3: the binder node table ---------------------------------------------------------------
 // A node is a binder object living in its owner proc.  Other procs reach it through a handle in
@@ -165,16 +188,18 @@ private struct Node {
 }
 
 private __gshared Node[MAX_NODES] g_nodes;
-private __gshared int g_ctxMgrNode = -1;   // the node every proc reaches as handle 0, or -1
 
 // ---- lifecycle -------------------------------------------------------------------------------
 
-/// Allocate a binder proc for a new /dev/binder fd; -1 when the table is full.
-public int binderAlloc() {
+/// Allocate a binder proc in context `ctx` for a new binder-device fd; -1 when the table is full or
+/// the context is invalid.
+public int binderAlloc(int ctx) {
+    if (ctx < 0 || ctx >= MAX_CONTEXTS || !g_ctx[ctx].used) return -1;
     foreach (i; 0 .. MAX_PROCS) {
         if (!g_procs[i].used) {
             g_procs[i] = BinderProc.init;
             g_procs[i].used = true;
+            g_procs[i].ctx  = ctx;
             return i;
         }
     }
@@ -196,7 +221,10 @@ public void binderFree(int id) {
         }
         g_nodes[n] = Node.init;   // the owner is gone; outstanding handles to it are now dead
     }
-    if (g_contextMgr == id) { g_contextMgr = -1; g_ctxMgrNode = -1; }
+    {
+        auto c = &g_ctx[g_procs[id].ctx];
+        if (c.contextMgr == id) { c.contextMgr = -1; c.ctxMgrNode = -1; }
+    }
     if (g_procs[id].regionPhys != 0)
         free_phys_pages(g_procs[id].regionPhys, g_procs[id].regionSize / 4096);
     g_procs[id] = BinderProc.init;
@@ -222,15 +250,17 @@ public void binderSetMaxThreads(int id, uint n) {
     if (id >= 0 && id < MAX_PROCS && g_procs[id].used) g_procs[id].maxThreads = n;
 }
 
-/// Register `id` as the context manager (handle 0).  EBUSY if one is already set, EINVAL on a bad id.
-/// A3: the context manager gets a node, so every proc reaches it as handle 0 and can subscribe to
-/// its death like any other object.
+/// Register `id` as the context manager (handle 0) OF ITS OWN CONTEXT.  EBUSY if that context
+/// already has a different manager, EINVAL on a bad id.  A3: the manager gets a node, so every proc
+/// in the context reaches it as handle 0 and can subscribe to its death like any other object.
+/// A4: the check is per-context, so binder/hwbinder/vndbinder each have an independent manager.
 public long binderSetContextMgr(int id) {
     if (id < 0 || id >= MAX_PROCS || !g_procs[id].used) return -22; // EINVAL
-    if (g_contextMgr >= 0 && g_contextMgr != id) return -16;        // EBUSY
-    g_contextMgr = id;
-    if (g_ctxMgrNode < 0) g_ctxMgrNode = nodeFindOrCreate(id, 0, 0);
-    else                  g_nodes[g_ctxMgrNode].owner = id;
+    auto c = &g_ctx[g_procs[id].ctx];
+    if (c.contextMgr >= 0 && c.contextMgr != id) return -16;        // EBUSY
+    c.contextMgr = id;
+    if (c.ctxMgrNode < 0) c.ctxMgrNode = nodeFindOrCreate(id, 0, 0);
+    else                  g_nodes[c.ctxMgrNode].owner = id;
     return 0;
 }
 
@@ -321,9 +351,10 @@ private int handleForNode(int proc, int nidx) {
     return -1;
 }
 
-// Resolve a handle in `proc` to a node index; handle 0 is the context manager.  -1 if unknown.
+// Resolve a handle in `proc` to a node index; handle 0 is the manager of the proc's context.
+// -1 if unknown.
 private int handleResolve(int proc, uint handle) {
-    if (handle == 0) return g_ctxMgrNode;
+    if (handle == 0) return g_ctx[g_procs[proc].ctx].ctxMgrNode;
     if (handle >= MAX_HANDLES) return -1;
     return g_procs[proc].handleNode[handle];
 }
@@ -556,7 +587,7 @@ public long binderWriteRead(int id, const(ubyte)* wbuf, ulong wsize, ulong* wcon
                 // Route by target: handle 0 is the context manager; any other handle resolves
                 // through this proc's handle table to the owning proc (A3).
                 int tgt = -1;
-                if (tx.target == 0) tgt = g_contextMgr;
+                if (tx.target == 0) tgt = g_ctx[g_procs[id].ctx].contextMgr;
                 else {
                     const int nidx = handleResolve(id, cast(uint)tx.target);
                     if (nidx >= 0) tgt = g_nodes[nidx].owner;
@@ -698,9 +729,10 @@ private long testFdDup(int fromTab, uint fromFd, int toTab) @nogc nothrow {
 ///      (binderFree), and the server must read BR_DEAD_BINDER carrying the cookie.
 private bool binderSelfTestA3() {
     bool ok = true;
-    const int sv = binderAlloc();           // the service / context manager
-    const int cl = binderAlloc();           // the client
-    ok = ok && (sv >= 0) && (cl >= 0);
+    const int ctx = binderCtxCreate();
+    const int sv = binderAlloc(ctx);        // the service / context manager
+    const int cl = binderAlloc(ctx);        // the client (same context)
+    ok = ok && (ctx >= 0) && (sv >= 0) && (cl >= 0);
     ok = ok && (binderSetContextMgr(sv) == 0);
     const ulong svPhys = binderMmapAlloc(sv, 64 * 1024);
     const ulong clPhys = binderMmapAlloc(cl, 64 * 1024);
@@ -817,7 +849,40 @@ private bool binderSelfTestA3() {
     ok = ok && testFindDead(rbDrd.ptr, rcDrd, deadCookie) && (deadCookie == 0xDEAD_BEEF_F00DUL);
 
     binderFree(sv);
-    ok = ok && (g_contextMgr == -1);
+    ok = ok && (g_ctx[ctx].contextMgr == -1);
+    return ok;
+}
+
+/// A4 proof: two independent contexts (as /dev/binder and /dev/hwbinder are).  Each gets its own
+/// context manager without EBUSY-ing the other; a second manager in the SAME context IS refused;
+/// and a transaction to handle 0 in each context routes to that context's own manager.
+private bool binderSelfTestA4() {
+    bool ok = true;
+    const int cA = binderCtxCreate();
+    const int cB = binderCtxCreate();
+    ok = ok && (cA >= 0) && (cB >= 0) && (cA != cB);
+    const int mgrA = binderAlloc(cA);
+    const int mgrB = binderAlloc(cB);
+    const int cliA = binderAlloc(cA);   // a second proc in context A, to be refused as manager
+    ok = ok && (mgrA >= 0) && (mgrB >= 0) && (cliA >= 0);
+
+    // Each context's manager registers independently -- no cross-context EBUSY.
+    ok = ok && (binderSetContextMgr(mgrA) == 0);
+    ok = ok && (binderSetContextMgr(mgrB) == 0);
+    // A different proc in context A cannot also be its manager.
+    ok = ok && (binderSetContextMgr(cliA) == -16);   // EBUSY within the context
+    // handle 0 resolves to each context's own manager node (distinct nodes, right owners).
+    const int nA = handleResolve(cliA, 0);
+    const int nB = handleResolve(mgrB, 0);
+    ok = ok && (nA >= 0) && (nB >= 0) && (nA != nB);
+    ok = ok && (g_nodes[nA].owner == mgrA) && (g_nodes[nB].owner == mgrB);
+
+    // Tearing down context A's manager clears A's handle 0 but leaves B untouched.
+    binderFree(mgrA);
+    ok = ok && (g_ctx[cA].contextMgr == -1) && (g_ctx[cB].contextMgr == mgrB);
+    binderFree(cliA);
+    binderFree(mgrB);
+    ok = ok && (g_ctx[cB].contextMgr == -1);
     return ok;
 }
 
@@ -827,8 +892,9 @@ private bool binderSelfTestA3() {
 /// a BR_TRANSACTION whose buffer lies in the region and holds the bytes sent, then BC_FREE_BUFFER it.
 public void binderSelfTest() {
     bool ok = true;
-    const int a = binderAlloc();
-    ok = ok && (a >= 0);
+    const int ctx0 = binderCtxCreate();
+    const int a = binderAlloc(ctx0);
+    ok = ok && (ctx0 >= 0) && (a >= 0);
     ok = ok && (binderVersion() == 8);
     binderSetMaxThreads(a, 15);
     ok = ok && (g_procs[a].maxThreads == 15);
@@ -890,11 +956,14 @@ public void binderSelfTest() {
     ok = ok && (g_procs[a].allocCount == 0) && (g_procs[a].bumpUsed == 0);   // freed + reclaimed
 
     binderFree(a);
-    ok = ok && (g_contextMgr == -1);
+    ok = ok && (g_ctx[ctx0].contextMgr == -1);
 
     // A3: objects/handles, reply routing, death notifications (two procs).
     ok = ok && binderSelfTestA3();
 
-    if (ok) klog("[binder] selftest PASS (A1+A2+A3+A3b: version 8, context-mgr, mmap region, data round-trip, handle translation, reply routing, fd passing, death notify)\n");
+    // A4: independent binder contexts (binder/hwbinder/vndbinder style).
+    ok = ok && binderSelfTestA4();
+
+    if (ok) klog("[binder] selftest PASS (A1+A2+A3+A3b+A4: version 8, mmap region, data round-trip, handle translation, reply routing, fd passing, death notify, independent contexts)\n");
     else    klog("[binder] selftest FAIL\n");
 }

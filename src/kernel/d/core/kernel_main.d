@@ -4878,9 +4878,51 @@ private void dispatchSyscall(int tid) {
             if (mrNewSz == 0) { ret = -22; break; }              // EINVAL
             ulong mrOldAligned = (mrOldSz + 0xFFF) & ~0xFFFUL;
             ulong mrNewAligned = (mrNewSz + 0xFFF) & ~0xFFFUL;
+            enum MREMAP_FIXED = 2;
+            ulong mrNewAddr = r8;
             auto mrR = findRegion(*task, mrOld);
-            if (mrR is null || mrR.vmoObjId == 0 ||
-                mrR.type != RegionType.Mapped) { ret = -38; break; }  // ENOSYS
+            if (mrR is null || mrR.type != RegionType.Mapped) { ret = -38; break; }  // ENOSYS
+            // A9.3f: a general move/resize for private mappings -- Android's linker CFI shadow
+            // (bionic linker_cfi.cpp ShadowWrite) mremaps an anonymous writable region to a FIXED
+            // shadow address, and the memfd fast-path below does not cover it.  Handle any non-memfd
+            // Mapped region here by moving its pages to the destination (fresh reservation for
+            // MAYMOVE, or the given address for MREMAP_FIXED, replacing whatever is there).
+            if (mrR.vmoObjId == 0 || memfdPhysByVmo(mrR.vmoObjId, null) == 0) {
+                const ulong gStart = mrR.start, gEnd = mrR.end;
+                ulong gDst;
+                if (mrFlags & MREMAP_FIXED) {
+                    if (mrNewAddr == 0 || (mrNewAddr & 0xFFF) != 0) { ret = -22; break; }
+                    gDst = mrNewAddr;
+                    sys_munmap(gDst, mrNewAligned, false);           // FIXED replaces the destination
+                    removeRegion(*task, gDst, gDst + mrNewAligned);
+                } else if (mrFlags & MREMAP_MAYMOVE) {
+                    gDst = asMmapReserve(tid, mrNewAligned);
+                } else if (mrNewAligned <= (gEnd - gStart)) {
+                    ret = cast(long)mrOld; break;                    // in-place shrink: keep as is
+                } else { ret = -12; break; }                         // ENOMEM: cannot grow in place
+                if (x64ReadCR3() != task.pml4Phys) x64WriteCR3(task.pml4Phys);
+                auto gNew = addRegion(*task, gDst, gDst + mrNewAligned,
+                                      RegionType.Mapped, RegionPerms.ReadWrite, 0, true);
+                if (gNew is null) { ret = -12; break; }
+                const ulong moveBytes = (mrOldAligned < mrNewAligned) ? mrOldAligned : mrNewAligned;
+                for (ulong pg = 0; pg < (moveBytes >> 12); pg++) {
+                    const ulong ph = unmap_page_hhdm(mrOld + pg * 4096);     // steal the old page
+                    const ulong ph2 = (ph != 0) ? ph : alloc_phys_page();
+                    if (ph2 == 0) { ret = -12; break; }
+                    map_page_hhdm(ph2, gDst + pg * 4096, PTE_PRESENT | PTE_RW | PTE_USER, &alloc_phys_page);
+                    physPageSetOwner(ph2, gNew.objId, gNew.vmoObjId);
+                }
+                for (ulong pg = (moveBytes >> 12); pg < (mrNewAligned >> 12); pg++) {
+                    const ulong ph = alloc_phys_page();
+                    if (ph == 0) { ret = -12; break; }
+                    map_page_hhdm(ph, gDst + pg * 4096, PTE_PRESENT | PTE_RW | PTE_USER, &alloc_phys_page);
+                    physPageSetOwner(ph, gNew.objId, gNew.vmoObjId);
+                }
+                sys_munmap(gStart, gEnd - gStart, false);
+                removeRegion(*task, gStart, gEnd);
+                ret = cast(long)gDst;
+                break;
+            }
             // Capture region fields before any addRegion/removeRegion churns the
             // table (swap-remove would invalidate the pointer).
             ulong mrStart = mrR.start;

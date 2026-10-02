@@ -236,5 +236,5 @@ func (h *Hub) HubHoldings() Amount { return 0 }
 
 // HashOf is the condition derivation for hub reservations.
 func HashOf(secret Preimage) Hash {
-	return Hash(derive("syndichan/hub/condition/v1", secret[:]))
+	return Hash(derive("rabbiit/hub/condition/v1", secret[:]))
 }

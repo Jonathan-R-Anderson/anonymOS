@@ -14,7 +14,7 @@ import (
 	"fmt"
 	"io"
 
-	"github.com/syndichan/maniwani/storage-client/internal/axon/params"
+	"github.com/rabbiit/maniwani/storage-client/internal/axon/params"
 )
 
 // Wire layout of a cell (section 8.1). Every cell is exactly params.CellSize

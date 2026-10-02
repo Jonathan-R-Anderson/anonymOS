@@ -18,7 +18,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/syndichan/maniwani/storage-client/internal/config"
+	"github.com/rabbiit/maniwani/storage-client/internal/config"
 )
 
 func offeringConfig() config.Config {

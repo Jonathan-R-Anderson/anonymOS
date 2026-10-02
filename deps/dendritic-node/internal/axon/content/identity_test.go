@@ -4,7 +4,7 @@ import (
 	"errors"
 	"testing"
 
-	"github.com/syndichan/maniwani/storage-client/internal/axon/name"
+	"github.com/rabbiit/maniwani/storage-client/internal/axon/name"
 )
 
 func mustName(t *testing.T, s string) name.Name {

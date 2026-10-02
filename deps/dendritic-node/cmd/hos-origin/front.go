@@ -7,8 +7,8 @@ import (
 	"net/http"
 	"sync"
 
-	"github.com/syndichan/maniwani/storage-client/internal/axon/session"
-	"github.com/syndichan/maniwani/storage-client/internal/axon/swarm"
+	"github.com/rabbiit/maniwani/storage-client/internal/axon/session"
+	"github.com/rabbiit/maniwani/storage-client/internal/axon/swarm"
 )
 
 // Front is the origin's door on the dendritic network. Every client reaches it

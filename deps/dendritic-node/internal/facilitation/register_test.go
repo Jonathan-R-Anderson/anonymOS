@@ -19,7 +19,7 @@ func TestProofMessageBytesMatchTheServer(t *testing.T) {
 
 	// Mirrors the server's join order and lowercasing exactly.
 	want := strings.Join([]string{
-		"syndichan-pof-register:v1",
+		"rabbiit-pof-register:v1",
 		"0xb2b36aad18d7be5d4016267bc4ccec2f12a64b6e",
 		"5",
 		"0xaabbcc0000000000000000000000000000000000000000000000000000000000",
@@ -47,7 +47,7 @@ func TestProofIsBoundToTheWallet(t *testing.T) {
 
 	// The same signature offered for an attacker's wallet must not verify.
 	attackerMsg := strings.Join([]string{
-		"syndichan-pof-register:v1",
+		"rabbiit-pof-register:v1",
 		"0xbbbb000000000000000000000000000000000000",
 		"1", commitment, "1",
 	}, "\n")
@@ -84,7 +84,7 @@ func TestBuildRegistrationRequestCarriesBothSignatures(t *testing.T) {
 	}
 	// And the proof must verify against what the server will rebuild.
 	msg := strings.Join([]string{
-		"syndichan-pof-register:v1", req.Wallet, "4",
+		"rabbiit-pof-register:v1", req.Wallet, "4",
 		strings.ToLower(intent.EndpointCommitment), "42",
 	}, "\n")
 	sig, _ := hex.DecodeString(req.P2PProof)

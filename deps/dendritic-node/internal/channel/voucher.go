@@ -77,7 +77,7 @@ type Session struct {
 	closed bool
 }
 
-const domainVoucher = "syndichan/voucher/commit/v1"
+const domainVoucher = "rabbiit/voucher/commit/v1"
 
 // NewSession opens a receiving session against a prepaid deposit.
 func NewSession(id SessionID, deposit Amount) (*Session, error) {

@@ -12,7 +12,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/syndichan/maniwani/storage-client/internal/channel"
+	"github.com/rabbiit/maniwani/storage-client/internal/channel"
 )
 
 // writeEvents builds an observer log. Depth and spacing are explicit so a test

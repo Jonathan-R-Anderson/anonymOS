@@ -1,6 +1,6 @@
 # Distributed Container Service (DCS)
 
-An optional capability of `syndichan-node` that lets peers run Docker
+An optional capability of `rabbiit-node` that lets peers run Docker
 containers for one another over I2P. No coordinator, no registry server, no
 Swarm, no Kubernetes.
 
@@ -154,7 +154,7 @@ no other node can.
 
 ### 3.1 Record
 
-DHT key: `/syndichan-dcs-worker/<node-id>`
+DHT key: `/rabbiit-dcs-worker/<node-id>`
 
 ```go
 type WorkerRecord struct {
@@ -406,7 +406,7 @@ problem, never a correctness one.
 
 ## 6. Image registry
 
-DHT key: `/syndichan-dcs-image/<sha256-of-canonical-name>`
+DHT key: `/rabbiit-dcs-image/<sha256-of-canonical-name>`
 
 ```go
 type ImageRecord struct {
@@ -453,11 +453,11 @@ useful.
 p2pctl deploy nginx --replicas 3
    │
    ▼
-[1] Resolve image ──── DHT GetValue(/syndichan-dcs-image/…) ──► digest + layers
+[1] Resolve image ──── DHT GetValue(/rabbiit-dcs-image/…) ──► digest + layers
    │
 [2] Build DeploymentSpec, sign it, assign deployment ID
    │
-[3] Scheduler: read /syndichan-dcs-worker/* → filter → score → shortlist
+[3] Scheduler: read /rabbiit-dcs-worker/* → filter → score → shortlist
    │
 [4] for each replica:
    │      Reserve(spec)          ──RPC──►  worker   ──► ACCEPT(reservation, ttl)
@@ -468,9 +468,9 @@ p2pctl deploy nginx --replicas 3
    │                                       └ health probe until Running
    │      ◄── LaunchResult(container_id, i2p_destination) ───
    │
-[5] Publish /syndichan-dcs-deploy/<deployment-id>   (owner-signed)
+[5] Publish /rabbiit-dcs-deploy/<deployment-id>   (owner-signed)
    │
-[6] Publish /syndichan-dcs-service/<owner>/<service> (if service ports declared)
+[6] Publish /rabbiit-dcs-service/<owner>/<service> (if service ports declared)
    │
 [7] Manager enters reconciliation loop (§13)
    │
@@ -491,7 +491,7 @@ and timeouts are common.
 
 ## 8. Remote management RPCs
 
-One protocol: `/syndichan/dcs/1.0.0`. All operations are request/response except
+One protocol: `/rabbiit/dcs/1.0.0`. All operations are request/response except
 the four streaming ones.
 
 | RPC | Streams | Notes |

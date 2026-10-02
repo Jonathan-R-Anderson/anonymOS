@@ -130,7 +130,7 @@ func TestBootstrapDocumentVerifies(t *testing.T) {
 	c, coordPub := newCoord(t)
 	srv := httptest.NewServer(func() http.Handler { m := http.NewServeMux(); c.Register(m); return m }())
 	defer srv.Close()
-	resp, err := http.Get(srv.URL + "/.well-known/syndichan/storage-node.json")
+	resp, err := http.Get(srv.URL + "/.well-known/rabbiit/storage-node.json")
 	if err != nil {
 		t.Fatal(err)
 	}

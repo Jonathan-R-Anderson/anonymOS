@@ -2,12 +2,12 @@ package ui
 
 import (
 	"crypto/subtle"
-	"github.com/syndichan/maniwani/storage-client/internal/compute"
+	"github.com/rabbiit/maniwani/storage-client/internal/compute"
 	"net/http"
 	"strconv"
 	"strings"
 
-	"github.com/syndichan/maniwani/storage-client/internal/config"
+	"github.com/rabbiit/maniwani/storage-client/internal/config"
 )
 
 // This file makes the management page the single place a node is configured:

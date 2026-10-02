@@ -14,7 +14,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/syndichan/maniwani/storage-client/internal/compute"
+	"github.com/rabbiit/maniwani/storage-client/internal/compute"
 )
 
 // fakeRuntime is a Docker daemon that remembers what it was asked to do.
@@ -367,7 +367,7 @@ func TestAnEmptyCatalogueIsSatisfied(t *testing.T) {
 // staging 190 MB in RAM on a Raspberry Pi is how this feature would earn a
 // reputation for killing the machines that volunteer for it.
 func TestScratchDirIsUnderTheDataDir(t *testing.T) {
-	if got := ScratchDirFor("/var/lib/syndichan"); got != filepath.Join("/var/lib/syndichan", "compute-images") {
+	if got := ScratchDirFor("/var/lib/rabbiit"); got != filepath.Join("/var/lib/rabbiit", "compute-images") {
 		t.Fatalf("unexpected scratch dir %q", got)
 	}
 	if got := ScratchDirFor(""); got != "" {

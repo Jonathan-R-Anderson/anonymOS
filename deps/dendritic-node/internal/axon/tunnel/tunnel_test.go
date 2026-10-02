@@ -6,7 +6,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/syndichan/maniwani/storage-client/internal/axon/params"
+	"github.com/rabbiit/maniwani/storage-client/internal/axon/params"
 )
 
 func rid(n byte) RelayID { var r RelayID; r[0] = n; return r }

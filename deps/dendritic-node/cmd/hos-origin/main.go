@@ -27,7 +27,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/syndichan/maniwani/storage-client/internal/axon/swarm"
+	"github.com/rabbiit/maniwani/storage-client/internal/axon/swarm"
 )
 
 func main() {

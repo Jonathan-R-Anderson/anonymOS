@@ -17,7 +17,7 @@ import (
 
 	"github.com/libp2p/go-libp2p/core/peer"
 
-	"github.com/syndichan/maniwani/storage-client/internal/store"
+	"github.com/rabbiit/maniwani/storage-client/internal/store"
 )
 
 // The delete verb is the one operation on this protocol that DESTROYS data, so

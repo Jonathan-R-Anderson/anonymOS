@@ -60,7 +60,7 @@ func newWatcher(t *testing.T, wallet string, sources ...string) (*Watcher, *Stor
 
 func TestAdoptsAVerifiedDirective(t *testing.T) {
 	key, _ := secp256k1.GeneratePrivateKey()
-	d := &Directive{Kind: KindMove, Sequence: 3, OriginDomain: "syndichan.net",
+	d := &Directive{Kind: KindMove, Sequence: 3, OriginDomain: "rabbiit.net",
 		NotBefore: 1_000_000_000}
 	server := serve(t, key, d)
 	defer server.Close()
@@ -73,7 +73,7 @@ func TestAdoptsAVerifiedDirective(t *testing.T) {
 	if adopted == nil || adopted.Sequence != 3 {
 		t.Fatalf("did not adopt: %+v", adopted)
 	}
-	if store.Held() == nil || store.Held().OriginDomain != "syndichan.net" {
+	if store.Held() == nil || store.Held().OriginDomain != "rabbiit.net" {
 		t.Fatalf("not stored: %+v", store.Held())
 	}
 }
@@ -102,7 +102,7 @@ func TestWaitsUntilEffective(t *testing.T) {
 	// did not issue. A watcher that ignores it removes the only defence there
 	// is against a stolen wallet.
 	key, _ := secp256k1.GeneratePrivateKey()
-	d := &Directive{Kind: KindMove, Sequence: 3, OriginDomain: "syndichan.net",
+	d := &Directive{Kind: KindMove, Sequence: 3, OriginDomain: "rabbiit.net",
 		NotBefore: 2_000_000_600}
 	server := serve(t, key, d)
 	defer server.Close()
@@ -119,7 +119,7 @@ func TestWaitsUntilEffective(t *testing.T) {
 
 func TestEmergencyIsAdoptedImmediatelyAndLoudly(t *testing.T) {
 	key, _ := secp256k1.GeneratePrivateKey()
-	d := &Directive{Kind: KindMove, Sequence: 4, OriginDomain: "syndichan.net",
+	d := &Directive{Kind: KindMove, Sequence: 4, OriginDomain: "rabbiit.net",
 		NotBefore: 2_000_000_000, Emergency: true}
 	server := serve(t, key, d)
 	defer server.Close()
@@ -207,7 +207,7 @@ func TestFallsThroughToASecondSource(t *testing.T) {
 		http.Error(w, "gone", http.StatusServiceUnavailable)
 	}))
 	defer dead.Close()
-	d := &Directive{Kind: KindMove, Sequence: 3, OriginDomain: "syndichan.net",
+	d := &Directive{Kind: KindMove, Sequence: 3, OriginDomain: "rabbiit.net",
 		NotBefore: 1_000_000_000}
 	alive := serve(t, key, d)
 	defer alive.Close()
@@ -220,16 +220,16 @@ func TestFallsThroughToASecondSource(t *testing.T) {
 }
 
 func TestOriginBase(t *testing.T) {
-	if got := OriginBase(nil, "https://syndichan.org"); got != "https://syndichan.org" {
+	if got := OriginBase(nil, "https://rabbiit.io"); got != "https://rabbiit.io" {
 		t.Fatalf("no directive should keep the configured origin, got %s", got)
 	}
-	held := &Directive{Kind: KindMove, OriginDomain: "syndichan.net"}
-	if got := OriginBase(held, "https://syndichan.org"); got != "https://syndichan.net" {
+	held := &Directive{Kind: KindMove, OriginDomain: "rabbiit.net"}
+	if got := OriginBase(held, "https://rabbiit.io"); got != "https://rabbiit.net" {
 		t.Fatalf("got %s", got)
 	}
 	// A freeze pins where we are; it must not be read as a move to nowhere.
 	frozen := &Directive{Kind: KindFreeze}
-	if got := OriginBase(frozen, "https://syndichan.org"); got != "https://syndichan.org" {
+	if got := OriginBase(frozen, "https://rabbiit.io"); got != "https://rabbiit.io" {
 		t.Fatalf("a freeze changed the origin: %s", got)
 	}
 }

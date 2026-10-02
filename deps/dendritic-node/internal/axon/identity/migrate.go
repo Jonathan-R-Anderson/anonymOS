@@ -5,13 +5,13 @@ import (
 	"fmt"
 	"os"
 
-	"github.com/syndichan/maniwani/storage-client/internal/facilitation"
+	"github.com/rabbiit/maniwani/storage-client/internal/facilitation"
 )
 
 // Migration from the existing node's p2p.key.
 //
 // The requirement that shapes this file, from P1's exit criterion E1.1: a node
-// started from an existing syndichan-node data directory must report a Proof of
+// started from an existing rabbiit-node data directory must report a Proof of
 // Facilitation nodeId identical to its pre-migration value, byte for byte. The
 // nodeId is bonded on-chain. A migration that silently mints a new one abandons
 // the bond, and the failure is invisible until a payout does not arrive.

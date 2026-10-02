@@ -8,7 +8,7 @@ import (
 	"net/http/httptest"
 	"testing"
 
-	"github.com/syndichan/maniwani/storage-client/internal/dcs"
+	"github.com/rabbiit/maniwani/storage-client/internal/dcs"
 )
 
 // memBlobs is the smallest BlobStore that exercises the handler. The real one

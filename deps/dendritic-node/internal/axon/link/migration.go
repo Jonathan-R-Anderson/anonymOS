@@ -8,7 +8,7 @@ import (
 
 	"github.com/quic-go/quic-go"
 
-	"github.com/syndichan/maniwani/storage-client/internal/axon/params"
+	"github.com/rabbiit/maniwani/storage-client/internal/axon/params"
 )
 
 // F4 — connection migration with CID rotation (§6.2, §6.6, INVARIANT L1-3).

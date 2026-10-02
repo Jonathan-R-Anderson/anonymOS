@@ -803,7 +803,7 @@ func composeProjectName(deploymentID string) string {
 // ---------------------------------------------------------------------------
 
 // Transport sends a signed envelope to a worker and returns its reply envelope.
-// A libp2p-stream implementation opens /syndichan/dcs/1.0.0 to the worker's
+// A libp2p-stream implementation opens /rabbiit/dcs/1.0.0 to the worker's
 // destination; the interface keeps the deploy flow testable without I2P.
 type Transport interface {
 	RoundTrip(ctx context.Context, worker WorkerRecord, env Envelope) ([]byte, error)

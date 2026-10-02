@@ -38,9 +38,9 @@ import (
 )
 
 const (
-	domainInvoice   = "syndichan/invoice/id/v1"
-	domainEndpoint  = "syndichan/invoice/endpoint/v1"
-	domainInvCommit = "syndichan/invoice/commit/v1"
+	domainInvoice   = "rabbiit/invoice/id/v1"
+	domainEndpoint  = "rabbiit/invoice/endpoint/v1"
+	domainInvCommit = "rabbiit/invoice/commit/v1"
 )
 
 var (

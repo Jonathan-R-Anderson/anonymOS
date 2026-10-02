@@ -4,8 +4,8 @@ import (
 	"sort"
 	"time"
 
-	"github.com/syndichan/maniwani/storage-client/internal/heartbeat"
-	"github.com/syndichan/maniwani/storage-client/internal/store"
+	"github.com/rabbiit/maniwani/storage-client/internal/heartbeat"
+	"github.com/rabbiit/maniwani/storage-client/internal/store"
 )
 
 // Whether dispersal is WORKING, as opposed to what this node HOLDS.

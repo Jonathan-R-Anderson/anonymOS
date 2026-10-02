@@ -1,7 +1,7 @@
 dist/
-/syndichan-node
+/rabbiit-node
 # Built Go component binaries (phase-12 outputs) — artifacts, not source, like
-# syndichan-node above.  ~37 MB of ELF; rebuilt from cmd/ + internal/.
+# rabbiit-node above.  ~37 MB of ELF; rebuilt from cmd/ + internal/.
 /p12-deploy
 /p12-failover
 /p12-evidence

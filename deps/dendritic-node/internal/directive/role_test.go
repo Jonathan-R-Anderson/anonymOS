@@ -12,9 +12,9 @@ func TestAddressBeatsDomain(t *testing.T) {
 	// concluding it is the origin because it recognises the DOMAIN would have
 	// two of them both believing it.
 	held := &Directive{Kind: KindMove, Sequence: 5,
-		OriginDomain: "syndichan.net", OriginAddress: "203.0.113.9:443"}
+		OriginDomain: "rabbiit.net", OriginAddress: "203.0.113.9:443"}
 
-	if got := RoleFor(held, self("syndichan.net", "198.51.100.7:443")); got != RoleGateway {
+	if got := RoleFor(held, self("rabbiit.net", "198.51.100.7:443")); got != RoleGateway {
 		t.Fatalf("a node answering for the domain but at another address: %s", got)
 	}
 	if got := RoleFor(held, self("", "203.0.113.9:443")); got != RoleOrigin {
@@ -43,11 +43,11 @@ func TestIPv6IsNotMangled(t *testing.T) {
 }
 
 func TestDomainOnlyDirectives(t *testing.T) {
-	held := &Directive{Kind: KindMove, Sequence: 5, OriginDomain: "syndichan.net"}
-	if got := RoleFor(held, self("syndichan.net")); got != RoleOrigin {
+	held := &Directive{Kind: KindMove, Sequence: 5, OriginDomain: "rabbiit.net"}
+	if got := RoleFor(held, self("rabbiit.net")); got != RoleOrigin {
 		t.Fatalf("got %s", got)
 	}
-	if got := RoleFor(held, self("gw3.syndichan.net")); got != RoleGateway {
+	if got := RoleFor(held, self("gw3.rabbiit.net")); got != RoleGateway {
 		t.Fatalf("a gateway subdomain claimed origin: %s", got)
 	}
 }
@@ -61,7 +61,7 @@ func TestUnknownIsNotGateway(t *testing.T) {
 		{Kind: KindFreeze, Sequence: 3},
 		{Kind: KindMove, Sequence: 3}, // a move naming neither
 	} {
-		if got := RoleFor(held, self("syndichan.net", "203.0.113.9")); got != RoleUnknown {
+		if got := RoleFor(held, self("rabbiit.net", "203.0.113.9")); got != RoleUnknown {
 			t.Fatalf("%+v gave %s", held, got)
 		}
 	}

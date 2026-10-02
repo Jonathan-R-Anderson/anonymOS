@@ -8,7 +8,7 @@ import (
 	"sort"
 	"sync"
 
-	"github.com/syndichan/maniwani/storage-client/internal/axon/params"
+	"github.com/rabbiit/maniwani/storage-client/internal/axon/params"
 )
 
 // Routing table, admission caps, and the sibling list (§7.2, §7.3).

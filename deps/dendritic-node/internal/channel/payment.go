@@ -57,7 +57,7 @@ type Plan struct {
 // substitution is the binding — per payment (via ephemeral), per hop (via the
 // node id), and not derivable by an observer (via the seed).
 func HopSharedSecret(seed, ephemeral [32]byte, node NodeID) [32]byte {
-	return derive("syndichan/payment/hopsecret/v2", seed[:], ephemeral[:], []byte(node))
+	return derive("rabbiit/payment/hopsecret/v2", seed[:], ephemeral[:], []byte(node))
 }
 
 // PlanRequest is what a caller supplies.
@@ -129,7 +129,7 @@ func PlanPayment(req PlanRequest) (*Plan, error) {
 			// receives is bound to the lock it must satisfy. Derived from both
 			// coordinates: X alone has two valid Y values, and committing to
 			// half a point commits to two of them.
-			OutgoingCommitment: Commitment(derive("syndichan/payment/hopcommit/v1",
+			OutgoingCommitment: Commitment(derive("rabbiit/payment/hopcommit/v1",
 				locks.Locks[i].X.Bytes(), locks.Locks[i].Y.Bytes())),
 			OutgoingExpiry: base - uint64(i*60),
 		}
@@ -175,7 +175,7 @@ func PlanPayment(req PlanRequest) (*Plan, error) {
 	//
 	// The seed stays in the derivation so the secret is not computable by
 	// somebody who merely observes the packet.
-	ephemeral := derive("syndichan/payment/ephemeral/v1", req.Seed[:], z.Bytes())
+	ephemeral := derive("rabbiit/payment/ephemeral/v1", req.Seed[:], z.Bytes())
 
 	secrets := make([][32]byte, len(route))
 	for i, c := range route {

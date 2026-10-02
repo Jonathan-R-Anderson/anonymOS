@@ -4,7 +4,7 @@ import (
 	"encoding/binary"
 	"fmt"
 
-	"github.com/syndichan/maniwani/storage-client/internal/axon/circuit"
+	"github.com/rabbiit/maniwani/storage-client/internal/axon/circuit"
 )
 
 // Wire bodies for the §9.5 L5 command set.

@@ -33,8 +33,8 @@ import (
 )
 
 const (
-	domainChannelKey   = "syndichan/channel/signing-key/v1"
-	domainBalanceProof = "syndichan/channel/balance-proof/v1"
+	domainChannelKey   = "rabbiit/channel/signing-key/v1"
+	domainBalanceProof = "rabbiit/channel/balance-proof/v1"
 )
 
 var (

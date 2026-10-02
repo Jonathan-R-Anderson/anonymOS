@@ -15,7 +15,7 @@ import (
 	"fmt"
 	"os"
 
-	"github.com/syndichan/maniwani/storage-client/internal/axon/name"
+	"github.com/rabbiit/maniwani/storage-client/internal/axon/name"
 )
 
 type corpusFile struct {

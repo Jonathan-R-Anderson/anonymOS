@@ -26,9 +26,9 @@ func newFixture(t *testing.T, version string) *fixture {
 		t.Fatal(err)
 	}
 	files := map[string][]byte{
-		"syndichan-node-linux-amd64":  bytes.Repeat([]byte{0xAA}, 4096),
-		"syndichan-node-linux-arm64":  bytes.Repeat([]byte{0xBB}, 2048),
-		"syndichan-node-darwin-arm64": bytes.Repeat([]byte{0xCC}, 3072),
+		"rabbiit-node-linux-amd64":  bytes.Repeat([]byte{0xAA}, 4096),
+		"rabbiit-node-linux-arm64":  bytes.Repeat([]byte{0xBB}, 2048),
+		"rabbiit-node-darwin-arm64": bytes.Repeat([]byte{0xCC}, 3072),
 	}
 	m := Manifest{Version: version, BuiltAt: "2026-08-16T12:00:00Z"}
 	for name, b := range files {
@@ -159,7 +159,7 @@ func TestT161UpdaterFailsClosed(t *testing.T) {
 		{
 			name: "a BINARY replaced, manifest untouched",
 			mutate: func(_ *testing.T, f *fixture) {
-				f.files["syndichan-node-linux-amd64"] = bytes.Repeat([]byte{0xEE}, 4096)
+				f.files["rabbiit-node-linux-amd64"] = bytes.Repeat([]byte{0xEE}, 4096)
 			},
 			want:    ErrArtifactCorrupt,
 			explain: "the attack the whole package exists for: same size, different bytes",
@@ -167,21 +167,21 @@ func TestT161UpdaterFailsClosed(t *testing.T) {
 		{
 			name: "a binary truncated",
 			mutate: func(_ *testing.T, f *fixture) {
-				f.files["syndichan-node-linux-arm64"] = []byte{0xBB}
+				f.files["rabbiit-node-linux-arm64"] = []byte{0xBB}
 			},
 			want: ErrArtifactCorrupt,
 		},
 		{
 			name: "a signed artifact removed from the release",
 			mutate: func(_ *testing.T, f *fixture) {
-				delete(f.files, "syndichan-node-darwin-arm64")
+				delete(f.files, "rabbiit-node-darwin-arm64")
 			},
 			want: ErrArtifactMissing,
 		},
 		{
 			name: "an UNSIGNED artifact added to the release",
 			mutate: func(_ *testing.T, f *fixture) {
-				f.files["syndichan-node-linux-amd64-backdoor"] = []byte("payload")
+				f.files["rabbiit-node-linux-amd64-backdoor"] = []byte("payload")
 			},
 			want:    ErrArtifactExtra,
 			explain: "an extra file in a release is a file nobody signed; an installer that picks by name would take it",

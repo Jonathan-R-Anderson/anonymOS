@@ -35,11 +35,11 @@ import (
 	"net/http"
 	"time"
 
-	"github.com/syndichan/maniwani/storage-client/internal/compute"
-	"github.com/syndichan/maniwani/storage-client/internal/computeimage"
-	"github.com/syndichan/maniwani/storage-client/internal/config"
-	"github.com/syndichan/maniwani/storage-client/internal/dcs"
-	"github.com/syndichan/maniwani/storage-client/internal/p2p"
+	"github.com/rabbiit/maniwani/storage-client/internal/compute"
+	"github.com/rabbiit/maniwani/storage-client/internal/computeimage"
+	"github.com/rabbiit/maniwani/storage-client/internal/config"
+	"github.com/rabbiit/maniwani/storage-client/internal/dcs"
+	"github.com/rabbiit/maniwani/storage-client/internal/p2p"
 )
 
 // catalogueSweepInterval is how often a node re-checks that it still holds

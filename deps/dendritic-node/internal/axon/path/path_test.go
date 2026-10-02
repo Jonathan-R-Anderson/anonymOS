@@ -9,9 +9,9 @@ import (
 	"testing"
 	"time"
 
-	"github.com/syndichan/maniwani/storage-client/internal/axon/params"
-	"github.com/syndichan/maniwani/storage-client/internal/axon/peer"
-	"github.com/syndichan/maniwani/storage-client/internal/axon/profile"
+	"github.com/rabbiit/maniwani/storage-client/internal/axon/params"
+	"github.com/rabbiit/maniwani/storage-client/internal/axon/peer"
+	"github.com/rabbiit/maniwani/storage-client/internal/axon/profile"
 )
 
 // relayAt places a relay at 10.b1.b2.b3 with an explicit ASN.

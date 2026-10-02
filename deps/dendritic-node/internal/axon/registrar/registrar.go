@@ -52,9 +52,9 @@ import (
 	"math/big"
 	"strings"
 
-	"github.com/syndichan/maniwani/storage-client/internal/axon/name"
-	"github.com/syndichan/maniwani/storage-client/internal/axon/registry"
-	"github.com/syndichan/maniwani/storage-client/internal/ethproof"
+	"github.com/rabbiit/maniwani/storage-client/internal/axon/name"
+	"github.com/rabbiit/maniwani/storage-client/internal/axon/registry"
+	"github.com/rabbiit/maniwani/storage-client/internal/ethproof"
 )
 
 var (

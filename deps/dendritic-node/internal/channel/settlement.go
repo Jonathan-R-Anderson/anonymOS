@@ -37,8 +37,8 @@ import (
 )
 
 const (
-	domainSettlePseudonym = "syndichan/settle/pseudonym/v1"
-	domainSettleCommit    = "syndichan/settle/commitment/v1"
+	domainSettlePseudonym = "rabbiit/settle/pseudonym/v1"
+	domainSettleCommit    = "rabbiit/settle/commitment/v1"
 )
 
 // SettlementMode says how a receipt was paid, so a verifier knows which rules

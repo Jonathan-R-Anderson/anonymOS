@@ -1,4 +1,4 @@
-// Package heartbeat sends the node's signed presence beacon to the Syndichan
+// Package heartbeat sends the node's signed presence beacon to the Rabbiit
 // frontend.
 //
 // It is deliberately the one connection that does not go through I2P: the
@@ -24,17 +24,17 @@ import (
 	"runtime"
 	"time"
 
-	"github.com/syndichan/maniwani/storage-client/internal/gateway"
+	"github.com/rabbiit/maniwani/storage-client/internal/gateway"
 )
 
 const (
 	// UserAgent identifies the client to the frontend, which rejects anything
 	// else on the heartbeat endpoint.
-	UserAgent = "Syndichan-Storage-Client/1.0"
+	UserAgent = "Rabbiit-Storage-Client/1.0"
 	// Interval matches the five-minute presence window the frontend documents.
 	Interval = 5 * time.Minute
 	// Endpoint is the production presence endpoint.
-	Endpoint = "https://syndichan.org/api/v1/storage/nodes/heartbeat"
+	Endpoint = "https://rabbiit.io/api/v1/storage/nodes/heartbeat"
 
 	maxResponseBytes = 64 << 10
 )
@@ -327,8 +327,8 @@ func (c *Client) Send(ctx context.Context) {
 	req.Header.Set("User-Agent", UserAgent)
 	req.Header.Set("Content-Type", "application/json")
 	req.Header.Set("Accept", "application/json")
-	req.Header.Set("X-Syndichan-Node", payload.NodeID)
-	req.Header.Set("X-Syndichan-Signature", base64.RawStdEncoding.EncodeToString(signature))
+	req.Header.Set("X-Rabbiit-Node", payload.NodeID)
+	req.Header.Set("X-Rabbiit-Signature", base64.RawStdEncoding.EncodeToString(signature))
 	client := c.HTTP
 	if client == nil {
 		client = DirectHTTPClient()

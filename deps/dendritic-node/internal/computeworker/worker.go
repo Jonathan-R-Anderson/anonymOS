@@ -48,8 +48,8 @@ import (
 	"sync"
 	"time"
 
-	"github.com/syndichan/maniwani/storage-client/internal/compute"
-	"github.com/syndichan/maniwani/storage-client/internal/dcs"
+	"github.com/rabbiit/maniwani/storage-client/internal/compute"
+	"github.com/rabbiit/maniwani/storage-client/internal/dcs"
 )
 
 // Runtime is the container surface this needs. An interface so the worker is
@@ -268,7 +268,7 @@ func (w *Worker) Run(ctx context.Context, job Job) (Result, error) {
 		Image:            job.Image,
 		Cmd:              job.Cmd,
 		Env:              job.Env,
-		Labels:           map[string]string{"syndichan.compute": "1"},
+		Labels:           map[string]string{"rabbiit.compute": "1"},
 		MemoryLimitBytes: job.MemoryLimit,
 		// Memory-backed scratch, so nothing a program writes there survives the
 		// container. A submitted program needs somewhere to work; it does not

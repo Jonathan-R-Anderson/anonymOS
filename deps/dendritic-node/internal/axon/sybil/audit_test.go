@@ -131,14 +131,14 @@ func TestE143EveryProvisionalParameterStatesItsDerivation(t *testing.T) {
 // TestT144NoCoordinatorInTheAdmissionPath is T14.4's structural half.
 //
 // "Storage admission works with no coordinator reachable — falsified by any
-// dependence on syndichan.org."
+// dependence on rabbiit.io."
 //
 // The behavioural half is in sybil_test.go: AdmitStore is a pure function of
 // its request, so there is nothing for it to reach. This half forbids the
 // dependence from being reintroduced — the failure mode is not a deliberate
 // call to a coordinator but an innocuous-looking "just check the lease first".
 func TestT144NoCoordinatorInTheAdmissionPath(t *testing.T) {
-	banned := regexp.MustCompile(`(?i)syndichan\.org|coordinator|lease|http\.|net/http`)
+	banned := regexp.MustCompile(`(?i)rabbiit\.org|coordinator|lease|http\.|net/http`)
 	fset := token.NewFileSet()
 	var files []string
 	err := filepath.WalkDir(".", func(path string, d os.DirEntry, err error) error {

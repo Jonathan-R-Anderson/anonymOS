@@ -51,13 +51,13 @@ import (
 )
 
 // ProtocolID is the stream protocol a node uses to hand a blob to a peer.
-const ProtocolID = "/syndichan/blobplace/1.0.0"
+const ProtocolID = "/rabbiit/blobplace/1.0.0"
 
 // RendezvousSeed is hashed into the CID nodes advertise storage capacity at.
 // Separate from the DCS worker rendezvous because the two answer different
 // questions: "who can run a container" and "who can hold bytes" are not the
 // same set, and a storage-only node should not appear as a deploy target.
-const RendezvousSeed = "syndichan-storage-capacity-rendezvous/1"
+const RendezvousSeed = "rabbiit-storage-capacity-rendezvous/1"
 
 // MaxBlobBytes bounds a single placement. Matches the build-context ceiling —
 // this exists to move build contexts and object shards, not arbitrary uploads,

@@ -1,4 +1,4 @@
-module github.com/syndichan/maniwani/storage-client
+module github.com/rabbiit/maniwani/storage-client
 
 go 1.25.12
 

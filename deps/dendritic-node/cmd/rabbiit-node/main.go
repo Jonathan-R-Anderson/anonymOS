@@ -8,7 +8,7 @@ import (
 	"errors"
 	"flag"
 	"fmt"
-	"github.com/syndichan/maniwani/storage-client/internal/compute"
+	"github.com/rabbiit/maniwani/storage-client/internal/compute"
 	"log"
 	"net"
 	"net/http"
@@ -22,18 +22,18 @@ import (
 	"syscall"
 	"time"
 
-	"github.com/syndichan/maniwani/storage-client/internal/bootstrap"
-	"github.com/syndichan/maniwani/storage-client/internal/config"
-	"github.com/syndichan/maniwani/storage-client/internal/directive"
-	"github.com/syndichan/maniwani/storage-client/internal/gateway"
-	gatewayfrontend "github.com/syndichan/maniwani/storage-client/internal/gateway/frontend"
-	"github.com/syndichan/maniwani/storage-client/internal/heartbeat"
-	"github.com/syndichan/maniwani/storage-client/internal/monitor"
-	"github.com/syndichan/maniwani/storage-client/internal/p2p"
-	"github.com/syndichan/maniwani/storage-client/internal/s3api"
-	"github.com/syndichan/maniwani/storage-client/internal/store"
-	"github.com/syndichan/maniwani/storage-client/internal/traffic"
-	"github.com/syndichan/maniwani/storage-client/internal/ui"
+	"github.com/rabbiit/maniwani/storage-client/internal/bootstrap"
+	"github.com/rabbiit/maniwani/storage-client/internal/config"
+	"github.com/rabbiit/maniwani/storage-client/internal/directive"
+	"github.com/rabbiit/maniwani/storage-client/internal/gateway"
+	gatewayfrontend "github.com/rabbiit/maniwani/storage-client/internal/gateway/frontend"
+	"github.com/rabbiit/maniwani/storage-client/internal/heartbeat"
+	"github.com/rabbiit/maniwani/storage-client/internal/monitor"
+	"github.com/rabbiit/maniwani/storage-client/internal/p2p"
+	"github.com/rabbiit/maniwani/storage-client/internal/s3api"
+	"github.com/rabbiit/maniwani/storage-client/internal/store"
+	"github.com/rabbiit/maniwani/storage-client/internal/traffic"
+	"github.com/rabbiit/maniwani/storage-client/internal/ui"
 )
 
 var runTray func(context.Context, string, *log.Logger, func())
@@ -51,7 +51,7 @@ func main() {
 	headless := registerHeadlessFlags()
 	flag.Parse()
 
-	logger := log.New(os.Stderr, "syndichan-node ", log.LstdFlags|log.LUTC)
+	logger := log.New(os.Stderr, "rabbiit-node ", log.LstdFlags|log.LUTC)
 
 	// One meter for the whole process. Everything that serves bytes to somebody
 	// else adds to it; exactly ONE place drains it (the heartbeat), because
@@ -86,9 +86,15 @@ func main() {
 	// Before anything sends a beacon: a node deployed on a non-default origin
 	// must not keep heartbeating the compiled-in domain, which fails silently
 	// (logged, retried) and leaves the node invisible to its own network.
+	// Leases, revocations and bootstrap follow it to the same domain, and must
+	// be set before the p2p node is built, since it copies the bootstrap URL.
 	if cfg.HeartbeatEndpoint != "" {
-		p2p.SetHeartbeatEndpoint(cfg.HeartbeatEndpoint)
-		logger.Printf("presence endpoint overridden by config: %s", cfg.HeartbeatEndpoint)
+		if err := p2p.SetCoordinatorEndpoints(cfg.HeartbeatEndpoint); err != nil {
+			logger.Fatal(err)
+		}
+		lease, revocation, boot := p2p.CoordinatorEndpoints()
+		logger.Printf("coordinator overridden by config: presence %s, leases %s, revocations %s, bootstrap %s",
+			cfg.HeartbeatEndpoint, lease, revocation, boot)
 	}
 	logger.Printf("runtime role: %s (%s)", role, role.Description())
 	logger.Print(headlessSummary(cfg, path))
@@ -125,7 +131,7 @@ func main() {
 			logger.Fatal(err)
 		}
 		defer storageNode.Close()
-		if err := storageNode.CleanupObjectPrefix(".syndichan-multipart/"); err != nil {
+		if err := storageNode.CleanupObjectPrefix(".rabbiit-multipart/"); err != nil {
 			logger.Fatal("clean interrupted multipart uploads: ", err)
 		}
 	}
@@ -410,7 +416,7 @@ func main() {
 		logger.Printf("network directive: no wallet pinned in %s "+
 			"(network_directive.wallet), so this node will NOT learn if the "+
 			"origin moves to a new domain or server. Set it to the address "+
-			"published at /.well-known/syndichan/network.json to enable this.",
+			"published at /.well-known/rabbiit/network.json to enable this.",
 			path)
 	} else {
 		store, storeErr := directive.OpenStore(cfg.DataDir)
@@ -467,7 +473,7 @@ func main() {
 	if cfg.Gateway.Validator.Enabled {
 		originURL := cfg.Gateway.Validator.OriginURL
 		if originURL == "" {
-			originURL = "https://syndichan.org"
+			originURL = "https://rabbiit.io"
 		}
 		validator := gateway.NewValidator(signer, originURL, logger,
 			time.Now().UnixNano())
@@ -658,7 +664,7 @@ func main() {
 	// gateway role is on. external_verification only decides HOW the address
 	// is proven: by a peer probe quorum, or by the controller's own
 	// independent connect-back alone.
-	// Registering puts this host's IP into the PUBLIC syndichan.org answer set.
+	// Registering puts this host's IP into the PUBLIC rabbiit.io answer set.
 	// Without the SNI frontend this process serves only its own gw-<id>
 	// hostname, so a visitor whose DNS lands here gets a completed TCP connect
 	// and then a failed TLS handshake ("host not configured in HostWhitelist").
@@ -871,7 +877,8 @@ func main() {
 		runTray(ctx, "http://"+cfg.UIListen, logger, cancel)
 	}
 	if node != nil {
-		logger.Printf("node %s started on %s; bootstrap=%s", signer.ID(), config.PlatformLabel(), config.BootstrapURL)
+		_, _, boot := p2p.CoordinatorEndpoints()
+		logger.Printf("node %s started on %s; bootstrap=%s", signer.ID(), config.PlatformLabel(), boot)
 	} else {
 		logger.Printf("node %s started on %s", signer.ID(), config.PlatformLabel())
 	}

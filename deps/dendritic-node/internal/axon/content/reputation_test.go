@@ -6,7 +6,7 @@ import (
 	"net/netip"
 	"testing"
 
-	"github.com/syndichan/maniwani/storage-client/internal/axon/peer"
+	"github.com/rabbiit/maniwani/storage-client/internal/axon/peer"
 )
 
 // perfect is the strongest reporter the system can describe: maximum

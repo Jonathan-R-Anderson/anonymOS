@@ -10,13 +10,13 @@ import (
 	"strings"
 	"time"
 
-	"github.com/syndichan/maniwani/storage-client/internal/compute"
-	"github.com/syndichan/maniwani/storage-client/internal/config"
-	"github.com/syndichan/maniwani/storage-client/internal/dcs"
-	syndii2p "github.com/syndichan/maniwani/storage-client/internal/i2p"
-	"github.com/syndichan/maniwani/storage-client/internal/p2p"
-	"github.com/syndichan/maniwani/storage-client/internal/place"
-	"github.com/syndichan/maniwani/storage-client/internal/store"
+	"github.com/rabbiit/maniwani/storage-client/internal/compute"
+	"github.com/rabbiit/maniwani/storage-client/internal/config"
+	"github.com/rabbiit/maniwani/storage-client/internal/dcs"
+	syndii2p "github.com/rabbiit/maniwani/storage-client/internal/i2p"
+	"github.com/rabbiit/maniwani/storage-client/internal/p2p"
+	"github.com/rabbiit/maniwani/storage-client/internal/place"
+	"github.com/rabbiit/maniwani/storage-client/internal/store"
 )
 
 // This file wires the Distributed Container Service into the node binary. It is

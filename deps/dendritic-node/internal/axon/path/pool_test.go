@@ -6,8 +6,8 @@ import (
 	"testing"
 	"time"
 
-	"github.com/syndichan/maniwani/storage-client/internal/axon/contain"
-	"github.com/syndichan/maniwani/storage-client/internal/axon/peer"
+	"github.com/rabbiit/maniwani/storage-client/internal/axon/contain"
+	"github.com/rabbiit/maniwani/storage-client/internal/axon/peer"
 )
 
 // fakeBook is a PeerSource without the probe quorum in the way. The quorum is

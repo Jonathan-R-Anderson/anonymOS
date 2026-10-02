@@ -23,7 +23,7 @@ import (
 	"strconv"
 	"time"
 
-	"github.com/syndichan/maniwani/storage-client/internal/channel"
+	"github.com/rabbiit/maniwani/storage-client/internal/channel"
 )
 
 // inclusionFixture is the on-disk shape of a recorded inclusion run.

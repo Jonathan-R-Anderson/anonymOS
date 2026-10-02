@@ -46,7 +46,7 @@ func signedManifest(t *testing.T, key ed25519.PrivateKey, sequence int64,
 		manifest.Routes[path] = entry
 	}
 	message := []byte(strings.Join([]string{
-		"syndichan-snapshot:v1", manifest.SnapshotID,
+		"rabbiit-snapshot:v1", manifest.SnapshotID,
 		strconv.FormatInt(manifest.Sequence, 10), manifest.RootHash,
 		strconv.FormatInt(manifest.CreatedAt, 10),
 		strconv.FormatInt(manifest.ExpiresAt, 10),
@@ -61,7 +61,7 @@ func publisherOrigin(t *testing.T, manifest *SnapshotManifest, objects map[strin
 	live func(http.ResponseWriter, *http.Request)) *httptest.Server {
 	t.Helper()
 	mux := http.NewServeMux()
-	mux.HandleFunc("/.well-known/syndichan/snapshot.json", func(w http.ResponseWriter, r *http.Request) {
+	mux.HandleFunc("/.well-known/rabbiit/snapshot.json", func(w http.ResponseWriter, r *http.Request) {
 		_ = json.NewEncoder(w).Encode(manifest)
 	})
 	mux.HandleFunc("/snapshot/object/", func(w http.ResponseWriter, r *http.Request) {
@@ -110,7 +110,7 @@ func TestSnapshotIsFetchedWhileTheOriginIsHealthy(t *testing.T) {
 
 func TestAnUnsignedOrForgedSnapshotIsRefused(t *testing.T) {
 	// Serving an unverifiable snapshot would let whoever runs this machine
-	// decide what syndichan says during an outage — the one thing the whole
+	// decide what rabbiit says during an outage — the one thing the whole
 	// design exists to prevent.
 	public, private, _ := ed25519.GenerateKey(nil)
 	_, wrongPrivate, _ := ed25519.GenerateKey(nil)
@@ -141,7 +141,7 @@ func TestObjectsAreCheckedAgainstTheSignedManifest(t *testing.T) {
 		map[string][]byte{"/": []byte("<html>real</html>")}, time.Now())
 
 	mux := http.NewServeMux()
-	mux.HandleFunc("/.well-known/syndichan/snapshot.json", func(w http.ResponseWriter, r *http.Request) {
+	mux.HandleFunc("/.well-known/rabbiit/snapshot.json", func(w http.ResponseWriter, r *http.Request) {
 		_ = json.NewEncoder(w).Encode(manifest)
 	})
 	mux.HandleFunc("/snapshot/object/", func(w http.ResponseWriter, r *http.Request) {
@@ -341,10 +341,10 @@ func TestGatewayServesTheSnapshotWhenTheOriginDies(t *testing.T) {
 	if !strings.Contains(recorder.Body.String(), "emergency copy") {
 		t.Fatalf("body = %q", recorder.Body.String())
 	}
-	if got := recorder.Header().Get("X-Syndichan-Source"); got != "snapshot" {
-		t.Errorf("X-Syndichan-Source = %q", got)
+	if got := recorder.Header().Get("X-Rabbiit-Source"); got != "snapshot" {
+		t.Errorf("X-Rabbiit-Source = %q", got)
 	}
-	if recorder.Header().Get("X-Syndichan-Snapshot") != "7" {
+	if recorder.Header().Get("X-Rabbiit-Snapshot") != "7" {
 		t.Errorf("snapshot sequence header missing")
 	}
 	if !strings.Contains(recorder.Header().Get("Warning"), "emergency") {
@@ -429,7 +429,7 @@ func signedRevocation(t *testing.T, key ed25519.PrivateKey, sequences []int64,
 	}
 	issued := time.Now().Unix()
 	message := []byte(strings.Join([]string{
-		"syndichan-revocation:v1", strings.Join(parts, ","), "",
+		"rabbiit-revocation:v1", strings.Join(parts, ","), "",
 		strconv.FormatInt(recordSeq, 10), strconv.FormatInt(issued, 10),
 	}, "\n"))
 	return &Revocations{
@@ -449,14 +449,14 @@ func TestARevokedSnapshotIsDroppedNotFlagged(t *testing.T) {
 
 	revocation := signedRevocation(t, private, []int64{7}, 1)
 	mux := http.NewServeMux()
-	mux.HandleFunc("/.well-known/syndichan/snapshot.json", func(w http.ResponseWriter, r *http.Request) {
+	mux.HandleFunc("/.well-known/rabbiit/snapshot.json", func(w http.ResponseWriter, r *http.Request) {
 		_ = json.NewEncoder(w).Encode(manifest)
 	})
 	mux.HandleFunc("/snapshot/object/", func(w http.ResponseWriter, r *http.Request) {
 		name := strings.TrimPrefix(r.URL.Path, "/snapshot/object/")
 		_, _ = w.Write(objects[name])
 	})
-	mux.HandleFunc("/.well-known/syndichan/revocations.json", func(w http.ResponseWriter, r *http.Request) {
+	mux.HandleFunc("/.well-known/rabbiit/revocations.json", func(w http.ResponseWriter, r *http.Request) {
 		_ = json.NewEncoder(w).Encode(revocation)
 	})
 	origin := httptest.NewServer(mux)
@@ -524,14 +524,14 @@ func TestAnExpiredDefensiveModeIsNotHonoured(t *testing.T) {
 		ExpiresAt: time.Now().Add(-time.Hour).Unix(),
 	}
 	message := []byte(strings.Join([]string{
-		"syndichan-defensive:v1", expired.Mode, expired.Reason,
+		"rabbiit-defensive:v1", expired.Mode, expired.Reason,
 		strconv.FormatInt(expired.IssuedAt, 10),
 		strconv.FormatInt(expired.ExpiresAt, 10), "0",
 	}, "\n"))
 	expired.Signature = base64.StdEncoding.EncodeToString(ed25519.Sign(private, message))
 
 	mux := http.NewServeMux()
-	mux.HandleFunc("/.well-known/syndichan/defensive-mode.json", func(w http.ResponseWriter, r *http.Request) {
+	mux.HandleFunc("/.well-known/rabbiit/defensive-mode.json", func(w http.ResponseWriter, r *http.Request) {
 		_ = json.NewEncoder(w).Encode(expired)
 	})
 	origin := httptest.NewServer(mux)
@@ -552,14 +552,14 @@ func TestAValidDefensiveModeIsHonoured(t *testing.T) {
 		IssuedAt: time.Now().Unix(), ExpiresAt: time.Now().Add(time.Hour).Unix(),
 	}
 	message := []byte(strings.Join([]string{
-		"syndichan-defensive:v1", record.Mode, record.Reason,
+		"rabbiit-defensive:v1", record.Mode, record.Reason,
 		strconv.FormatInt(record.IssuedAt, 10),
 		strconv.FormatInt(record.ExpiresAt, 10), "0",
 	}, "\n"))
 	record.Signature = base64.StdEncoding.EncodeToString(ed25519.Sign(private, message))
 
 	mux := http.NewServeMux()
-	mux.HandleFunc("/.well-known/syndichan/defensive-mode.json", func(w http.ResponseWriter, r *http.Request) {
+	mux.HandleFunc("/.well-known/rabbiit/defensive-mode.json", func(w http.ResponseWriter, r *http.Request) {
 		_ = json.NewEncoder(w).Encode(record)
 	})
 	origin := httptest.NewServer(mux)

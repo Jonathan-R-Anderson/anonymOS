@@ -7,7 +7,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/syndichan/maniwani/storage-client/internal/store"
+	"github.com/rabbiit/maniwani/storage-client/internal/store"
 )
 
 // The property the whole feature turns on. A node that has not measured its

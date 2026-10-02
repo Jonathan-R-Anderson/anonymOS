@@ -20,7 +20,7 @@
 //	every catalogue image present  ->  advertise compute
 //	any one of them unobtainable   ->  advertise nothing
 //
-// This package answers the first half. cmd/syndichan-node/computeimages.go
+// This package answers the first half. cmd/rabbiit-node/computeimages.go
 // wires the answer to the heartbeat, which is where the second half happens.
 //
 // WHY AN IMAGE IS DOWNLOADED WHEN A MICROVM KERNEL IS NOT
@@ -52,7 +52,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/syndichan/maniwani/storage-client/internal/compute"
+	"github.com/rabbiit/maniwani/storage-client/internal/compute"
 )
 
 // Runtime is the container surface this needs: enough to ask what is present
@@ -80,7 +80,7 @@ var ErrNotFetchable = errors.New("computeimage: this workload's image cannot be 
 // download executable images by editing a JSON file is a node whose safety rests
 // on that file. The digest is what actually protects the load; this only decides
 // where to look.
-const DefaultBaseURL = "https://syndichan.org/dl"
+const DefaultBaseURL = "https://rabbiit.io/dl"
 
 // MaxArtifactBytes bounds a single download.
 //

@@ -7,7 +7,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/syndichan/maniwani/storage-client/internal/bootstrap"
+	"github.com/rabbiit/maniwani/storage-client/internal/bootstrap"
 )
 
 func repoRoot() string { return filepath.Join("..", "..", "..") }

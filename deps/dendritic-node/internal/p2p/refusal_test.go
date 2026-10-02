@@ -7,7 +7,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/syndichan/maniwani/storage-client/internal/placement"
+	"github.com/rabbiit/maniwani/storage-client/internal/placement"
 )
 
 // A peer that keeps refusing must stop winning candidate slots. Measured on

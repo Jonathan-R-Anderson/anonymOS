@@ -66,7 +66,7 @@ func P2PRegistrationProof(priv ed25519.PrivateKey, wallet string, capabilities u
 		n = nonce.String()
 	}
 	msg := strings.Join([]string{
-		"syndichan-pof-register:v1",
+		"rabbiit-pof-register:v1",
 		strings.ToLower(wallet),
 		strconv.FormatUint(capabilities, 10),
 		strings.ToLower(endpointCommitment),

@@ -104,8 +104,8 @@ func TestOnceSignsTheExactBytesItSends(t *testing.T) {
 	})
 	mux.HandleFunc("/report", func(w http.ResponseWriter, r *http.Request) {
 		gotBody, _ = readAll(r)
-		gotNode = r.Header.Get("X-Syndichan-Node")
-		gotSig = r.Header.Get("X-Syndichan-Signature")
+		gotNode = r.Header.Get("X-Rabbiit-Node")
+		gotSig = r.Header.Get("X-Rabbiit-Signature")
 		w.WriteHeader(http.StatusOK)
 	})
 	mux.HandleFunc("/ok", func(w http.ResponseWriter, r *http.Request) {

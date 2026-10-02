@@ -7,7 +7,7 @@ import (
 	"os"
 	"strings"
 
-	"github.com/syndichan/maniwani/storage-client/internal/config"
+	"github.com/rabbiit/maniwani/storage-client/internal/config"
 )
 
 // Running without a browser.

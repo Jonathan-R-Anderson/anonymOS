@@ -16,6 +16,7 @@ import (
 	"fmt"
 	"io"
 	"log"
+	"net"
 	"net/http"
 	"net/url"
 	"os"
@@ -38,20 +39,20 @@ import (
 	"github.com/multiformats/go-multiaddr"
 	"github.com/multiformats/go-multihash"
 
-	"github.com/syndichan/maniwani/storage-client/internal/bootstrap"
-	"github.com/syndichan/maniwani/storage-client/internal/config"
-	"github.com/syndichan/maniwani/storage-client/internal/dcs"
-	"github.com/syndichan/maniwani/storage-client/internal/gateway"
-	"github.com/syndichan/maniwani/storage-client/internal/heartbeat"
-	syndii2p "github.com/syndichan/maniwani/storage-client/internal/i2p"
-	"github.com/syndichan/maniwani/storage-client/internal/place"
-	"github.com/syndichan/maniwani/storage-client/internal/placement"
-	"github.com/syndichan/maniwani/storage-client/internal/store"
-	"github.com/syndichan/maniwani/storage-client/internal/traffic"
+	"github.com/rabbiit/maniwani/storage-client/internal/bootstrap"
+	"github.com/rabbiit/maniwani/storage-client/internal/config"
+	"github.com/rabbiit/maniwani/storage-client/internal/dcs"
+	"github.com/rabbiit/maniwani/storage-client/internal/gateway"
+	"github.com/rabbiit/maniwani/storage-client/internal/heartbeat"
+	syndii2p "github.com/rabbiit/maniwani/storage-client/internal/i2p"
+	"github.com/rabbiit/maniwani/storage-client/internal/place"
+	"github.com/rabbiit/maniwani/storage-client/internal/placement"
+	"github.com/rabbiit/maniwani/storage-client/internal/store"
+	"github.com/rabbiit/maniwani/storage-client/internal/traffic"
 )
 
 const (
-	ProtocolID       = protocol.ID("/syndichan/storage/1.0.0")
+	ProtocolID       = protocol.ID("/rabbiit/storage/1.0.0")
 	maxHeaderBytes   = 64 << 10
 	maxNetworkShard  = 32 << 20
 	bootstrapRefresh = 15 * time.Minute
@@ -98,17 +99,52 @@ const (
 
 var heartbeatEndpoint = heartbeat.Endpoint
 
-// SetHeartbeatEndpoint points presence beacons at a non-default origin. Called
-// once at startup from the config; a no-op when the config leaves it empty.
-func SetHeartbeatEndpoint(url string) {
-	if url != "" {
-		heartbeatEndpoint = url
+// bootstrapURL is the single-URL bootstrap a node uses when its config has no
+// `bootstrap` section. A var so SetCoordinatorEndpoints can move it.
+var bootstrapURL = config.BootstrapURL
+
+// SetCoordinatorEndpoints points presence beacons at heartbeatURL and every
+// other coordinator call at the same domain: leases, revocations and the
+// default bootstrap document. Called once at startup from the config, before
+// the node is built; a no-op when the config leaves it empty.
+//
+// It used to move only the heartbeat. A node deployed on another domain then
+// announced itself there but asked the compiled-in one for leases and delete
+// tokens, so it showed up on its own network and was never handed any data.
+func SetCoordinatorEndpoints(heartbeatURL string) error {
+	if heartbeatURL == "" {
+		return nil
 	}
+	parsed, err := url.Parse(heartbeatURL)
+	if err != nil || parsed.Scheme == "" || parsed.Host == "" {
+		return fmt.Errorf("heartbeat_endpoint %q is not an absolute URL", heartbeatURL)
+	}
+	origin := parsed.Scheme + "://" + parsed.Host
+	heartbeatEndpoint = heartbeatURL
+	leaseURL = origin + leasePath
+	revocationURL = origin + revocationPath
+	// The bootstrap document is served by the data-node edge, node.<domain>,
+	// not the coordinator itself. An IP address has no subdomain to put it on,
+	// so a deployment addressed that way fetches it from the same host.
+	edge := origin
+	if net.ParseIP(parsed.Hostname()) == nil {
+		edge = parsed.Scheme + "://node." + parsed.Host
+	}
+	bootstrapURL = edge + config.BootstrapPath
+	return nil
 }
+
+// CoordinatorEndpoints reports where this node sends leases, revocations and
+// its default bootstrap fetch, for the startup log.
+func CoordinatorEndpoints() (lease, revocation, bootstrap string) {
+	return leaseURL, revocationURL, bootstrapURL
+}
+
+const leasePath = "/api/v1/storage/leases"
 
 // A var, like heartbeatEndpoint above, so tests can point the lease exchange at
 // a local server instead of reaching the production coordinator.
-var leaseURL = "https://syndichan.org/api/v1/storage/leases"
+var leaseURL = "https://rabbiit.io" + leasePath
 
 type BootstrapDocument struct {
 	Version              int       `json:"version"`
@@ -464,7 +500,7 @@ func finishNode(
 		return nil, err
 	}
 	n := &Node{
-		host: h, dht: kad, store: storage, logger: logger, bootstrap: config.BootstrapURL,
+		host: h, dht: kad, store: storage, logger: logger, bootstrap: bootstrapURL,
 		bootstrapPeers: make(map[peer.ID]struct{}), http: httpClient, dataDir: dataDir,
 		directHTTP: directHTTP, i2pOnly: i2pOnly,
 		repairing: make(map[string]struct{}), shardMoves: newShardMoveBudget(),
@@ -684,7 +720,7 @@ func (n *Node) LookupDCSWorker(ctx context.Context, nodeID string) (dcs.WorkerRe
 // the SHA-256 of a fixed label, so any node computes the same CID without
 // coordination.
 func dcsRendezvousCID() (cid.Cid, error) {
-	digest := sha256.Sum256([]byte("syndichan-dcs-worker-rendezvous/1"))
+	digest := sha256.Sum256([]byte("rabbiit-dcs-worker-rendezvous/1"))
 	mh, err := multihash.Encode(digest[:], multihash.SHA2_256)
 	if err != nil {
 		return cid.Undef, err
@@ -1167,7 +1203,7 @@ func (n *Node) refreshBootstrap(ctx context.Context) {
 		// peers at all, so this one failure kept the whole network unformed.
 		//
 		// Falling back leaks nothing new: the heartbeat at
-		// internal/heartbeat already POSTs to syndichan.org over clearnet by
+		// internal/heartbeat already POSTs to rabbiit.io over clearnet by
 		// deliberate design, so the site knows this node's address regardless.
 		// NOT gated on i2pOnly, and that is deliberate rather than an oversight.
 		// Open() passes i2pOnly=true for every storage node, so gating on it
@@ -1267,7 +1303,7 @@ func (n *Node) connectBootstrapPeers(ctx context.Context, peers []string) {
 		// or fetched from the network, and the only other evidence was the
 		// absence of a message.
 		n.logger.Printf("bootstrap peer %s connected", info.ID)
-		n.host.ConnManager().Protect(info.ID, "syndichan-bootstrap")
+		n.host.ConnManager().Protect(info.ID, "rabbiit-bootstrap")
 		n.peerMu.Lock()
 		n.bootstrapPeers[info.ID] = struct{}{}
 		n.peerMu.Unlock()
@@ -1276,7 +1312,7 @@ func (n *Node) connectBootstrapPeers(ctx context.Context, peers []string) {
 
 func leaseMessage(lease Lease) []byte {
 	return []byte(fmt.Sprintf(
-		"syndichan-storage-lease-v1\n%d\n%s\n%s\n%d\n%s\n%d",
+		"rabbiit-storage-lease-v1\n%d\n%s\n%s\n%d\n%s\n%d",
 		lease.Version, lease.ObjectID, lease.ShardID, lease.Size, lease.Recipient, lease.ExpiresAt,
 	))
 }
@@ -1676,8 +1712,8 @@ func (n *Node) requestLease(ctx context.Context, target peer.ID, objectID, shard
 	}
 	req.Header.Set("Content-Type", "application/json")
 	req.Header.Set("Accept", "application/json")
-	req.Header.Set("X-Syndichan-Node", n.host.ID().String())
-	req.Header.Set("X-Syndichan-Signature", base64.RawStdEncoding.EncodeToString(signature))
+	req.Header.Set("X-Rabbiit-Node", n.host.ID().String())
+	req.Header.Set("X-Rabbiit-Signature", base64.RawStdEncoding.EncodeToString(signature))
 	resp, err := n.http.Do(req)
 	if err != nil && n.directHTTP != nil {
 		// Same fallback as refreshBootstrap, and needed for the same reason.
@@ -1692,7 +1728,7 @@ func (n *Node) requestLease(ctx context.Context, target peer.ID, objectID, shard
 		// n.http goes through the I2P HTTP proxy, which is absent in the
 		// container deployment and reaches clearnet only via an outproxy
 		// elsewhere. Falling back direct leaks nothing new: this is a SIGNED
-		// request to syndichan.org naming this node, sent to the same host the
+		// request to rabbiit.io naming this node, sent to the same host the
 		// heartbeat already contacts directly.
 		directReq, rerr := http.NewRequestWithContext(ctx, http.MethodPost, leaseURL, bytes.NewReader(body))
 		if rerr == nil {

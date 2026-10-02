@@ -13,13 +13,17 @@ import (
 	"runtime"
 	"strings"
 
-	"github.com/syndichan/maniwani/storage-client/internal/compute"
+	"github.com/rabbiit/maniwani/storage-client/internal/compute"
 )
 
 // Peer discovery starts at the dedicated data-node edge. That edge exposes only
 // this well-known document over publicly trusted TLS; coordinator leases and
 // the direct five-minute presence heartbeat remain separate concerns.
-const BootstrapURL = "https://node.syndichan.org/.well-known/syndichan/storage-node.json"
+const BootstrapURL = "https://node.rabbiit.io" + BootstrapPath
+
+// BootstrapPath is where the data-node edge serves that document, on whichever
+// domain the node was deployed against.
+const BootstrapPath = "/.well-known/rabbiit/storage-node.json"
 
 // Role is the runtime role selected on the command line. It is resolved before
 // the configuration is read, so validation only ever demands settings the role
@@ -78,7 +82,7 @@ func (r Role) Description() string {
 // rather than following whoever answers first.
 type NetworkDirectiveConfig struct {
 	Wallet string `json:"wallet,omitempty"`
-	// Sources serving /.well-known/syndichan/network.json. More than one on
+	// Sources serving /.well-known/rabbiit/network.json. More than one on
 	// purpose: the source reached through the CURRENT domain is exactly the one
 	// that fails in the situation a directive exists for.
 	Sources []string `json:"sources,omitempty"`
@@ -199,7 +203,10 @@ type Config struct {
 	// NetworkDirective is how this node learns the network has moved.
 	NetworkDirective NetworkDirectiveConfig `json:"network_directive"`
 
-	// HeartbeatEndpoint overrides the compiled-in presence endpoint.
+	// HeartbeatEndpoint overrides the compiled-in presence endpoint, and with
+	// it every other coordinator URL the node has no setting for: leases,
+	// revocations and the default bootstrap document are sent to the same
+	// domain (bootstrap to its node. edge). See p2p.SetCoordinatorEndpoints.
 	//
 	// It exists because the endpoint was a const in internal/heartbeat, so a
 	// deployment on a different origin could repoint every other URL in this
@@ -220,7 +227,7 @@ type Config struct {
 	// with no flags -- only the config file decides its posture. An empty value
 	// means "storage" for backward compatibility with older config files.
 	RunMode string `json:"run_mode,omitempty"`
-	// Monitor is the status-page role: check that Syndichan answers from where
+	// Monitor is the status-page role: check that Rabbiit answers from where
 	// this node is, and publish the result. Absent means off, which is the
 	// right default -- a node should not start making outbound requests on a
 	// schedule because it was upgraded.
@@ -443,7 +450,7 @@ type GatewayValidatorConfig struct {
 // handling other people's reads.
 type GatewayContentConfig struct {
 	Enabled bool `json:"enabled"`
-	// OriginURL is the site being served, e.g. https://syndichan.org.
+	// OriginURL is the site being served, e.g. https://rabbiit.io.
 	OriginURL string `json:"origin_url,omitempty"`
 	// OriginAddress pins the origin to a literal host:port. DNS for the site
 	// points at gateways too, so resolving the name here could send this
@@ -460,13 +467,13 @@ type GatewayContentConfig struct {
 // GatewayEmergencyConfig is the read-only fallback copy.
 //
 // The publisher key is REQUIRED and is not defaulted. A gateway that would serve
-// an unverified snapshot is one whose operator decides what syndichan says
+// an unverified snapshot is one whose operator decides what rabbiit says
 // during an outage — the precise thing this whole design exists to prevent — so
 // an absent key disables the feature rather than relaxing it.
 type GatewayEmergencyConfig struct {
 	Enabled bool `json:"enabled"`
 	// PublisherKey is the base64 Ed25519 key from
-	// /.well-known/syndichan/snapshot-key.json. NOT the origin content key.
+	// /.well-known/rabbiit/snapshot-key.json. NOT the origin content key.
 	PublisherKey string `json:"publisher_key,omitempty"`
 	// CacheDir holds the copy between restarts, so a gateway that reboots
 	// mid-outage is useful immediately rather than after reaching a dead origin.
@@ -548,7 +555,7 @@ func DefaultDataDir() (string, error) {
 	if err != nil {
 		return "", err
 	}
-	return filepath.Join(base, "Syndichan", "storage-node"), nil
+	return filepath.Join(base, "Rabbiit", "storage-node"), nil
 }
 
 func Default() (Config, error) {
@@ -588,7 +595,7 @@ func Default() (Config, error) {
 		Gateway: GatewayConfig{
 			ListenAddress: "0.0.0.0", ListenPort: 443,
 			AdvertiseIPv4: true, AdvertiseIPv6: true,
-			RegistrationAPI: "https://syndichan.org/api/v1/gateways",
+			RegistrationAPI: "https://rabbiit.io/api/v1/gateways",
 			TLS: GatewayTLSConfig{
 				Mode: "existing", ACMEHTTPAddress: "0.0.0.0:80",
 			},
@@ -609,8 +616,8 @@ func Default() (Config, error) {
 			},
 			Frontend: GatewayFrontendConfig{
 				Enabled: false, OriginAddress: "",
-				OriginServerName: "syndichan.org",
-				SNIAllowlist:     []string{"syndichan.org"},
+				OriginServerName: "rabbiit.io",
+				SNIAllowlist:     []string{"rabbiit.io"},
 				MaxConnections:   1024, MaxBytesPerSecond: 16 << 20,
 				HandshakeTimeoutSeconds: 10,
 				DialTimeoutSeconds:      10, IdleTimeoutSeconds: 300,
@@ -916,7 +923,7 @@ func (c Config) validateGateway() error {
 		}
 		origin, err := url.Parse(g.Content.OriginURL)
 		if err != nil || origin.Scheme != "https" || origin.Host == "" {
-			return errors.New("gateway.content.origin_url must be an HTTPS URL, e.g. https://syndichan.org")
+			return errors.New("gateway.content.origin_url must be an HTTPS URL, e.g. https://rabbiit.io")
 		}
 		if g.Content.OriginAddress != "" {
 			if _, _, err := net.SplitHostPort(g.Content.OriginAddress); err != nil {
@@ -932,13 +939,13 @@ func (c Config) validateGateway() error {
 		if g.Content.Emergency.Enabled {
 			// Refused rather than defaulted. Without the key this gateway would
 			// either serve an unverified snapshot -- letting its operator decide
-			// what syndichan says during an outage -- or silently do nothing,
+			// what rabbiit says during an outage -- or silently do nothing,
 			// and an emergency feature that silently does nothing is worse than
 			// one that is plainly off.
 			if strings.TrimSpace(g.Content.Emergency.PublisherKey) == "" {
 				return errors.New(
 					"gateway.content.emergency needs publisher_key: copy it from " +
-						"/.well-known/syndichan/snapshot-key.json (it is NOT the " +
+						"/.well-known/rabbiit/snapshot-key.json (it is NOT the " +
 						"origin content-signing key)")
 			}
 			if strings.TrimSpace(g.Content.Emergency.CacheDir) == "" {

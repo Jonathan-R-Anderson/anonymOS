@@ -34,7 +34,7 @@ import (
 	"sync"
 	"time"
 
-	"github.com/syndichan/maniwani/storage-client/internal/axon/params"
+	"github.com/rabbiit/maniwani/storage-client/internal/axon/params"
 )
 
 // ObservationKind is a first-hand observation. Every kind is something this

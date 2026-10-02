@@ -147,7 +147,7 @@ func RegistrationDigest(chainID *big.Int, registry [20]byte, p2pPub ed25519.Publ
 // One-way by construction: the channel seed cannot be walked back to the wallet
 // key, so a leaked channel key exposes channel funds and nothing else.
 func (w *Wallet) ChannelSeed() [32]byte {
-	mac := hmac.New(sha256.New, []byte("syndichan/wallet/channel-seed/v1"))
+	mac := hmac.New(sha256.New, []byte("rabbiit/wallet/channel-seed/v1"))
 	mac.Write(w.priv.Serialize())
 	var out [32]byte
 	copy(out[:], mac.Sum(nil))

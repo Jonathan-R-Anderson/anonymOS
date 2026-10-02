@@ -12,8 +12,8 @@ import (
 	"testing"
 	"time"
 
-	"github.com/syndichan/maniwani/storage-client/internal/compute"
-	"github.com/syndichan/maniwani/storage-client/internal/dcs"
+	"github.com/rabbiit/maniwani/storage-client/internal/compute"
+	"github.com/rabbiit/maniwani/storage-client/internal/dcs"
 )
 
 type putCall struct {

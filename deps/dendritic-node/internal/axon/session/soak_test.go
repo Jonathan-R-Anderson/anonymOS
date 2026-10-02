@@ -9,7 +9,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/syndichan/maniwani/storage-client/internal/axon/params"
+	"github.com/rabbiit/maniwani/storage-client/internal/axon/params"
 )
 
 // TestE71TenMinuteTransfer is E7.1 at full length: a 10-minute transfer

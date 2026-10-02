@@ -7,9 +7,9 @@ import (
 	"math"
 	"sort"
 
-	"github.com/syndichan/maniwani/storage-client/internal/axon/params"
-	"github.com/syndichan/maniwani/storage-client/internal/axon/peer"
-	"github.com/syndichan/maniwani/storage-client/internal/axon/profile"
+	"github.com/rabbiit/maniwani/storage-client/internal/axon/params"
+	"github.com/rabbiit/maniwani/storage-client/internal/axon/peer"
+	"github.com/rabbiit/maniwani/storage-client/internal/axon/profile"
 )
 
 // Selector draws paths from a candidate set.

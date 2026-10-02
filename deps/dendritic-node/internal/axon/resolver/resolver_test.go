@@ -8,7 +8,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/syndichan/maniwani/storage-client/internal/axon/name"
+	"github.com/rabbiit/maniwani/storage-client/internal/axon/name"
 )
 
 func nm(t *testing.T, s string) name.Name {

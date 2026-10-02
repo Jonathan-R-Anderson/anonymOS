@@ -21,8 +21,8 @@ import (
 // its endpoints and pinned coordinator key changed.
 
 const (
-	storageUserAgent  = "Syndichan-Storage-Client/1.0"
-	bootstrapPrefix   = "syndichan-storage-bootstrap-v1"
+	storageUserAgent  = "Rabbiit-Storage-Client/1.0"
+	bootstrapPrefix   = "rabbiit-storage-bootstrap-v1"
 	activeWindow      = 15 * time.Minute
 	bootstrapLifetime = 20 * time.Minute
 	maxClockSkew      = 300 // seconds
@@ -333,7 +333,7 @@ func writeJSON(w http.ResponseWriter, status int, v any) {
 }
 
 func (c *Coordinator) Register(mux *http.ServeMux) {
-	mux.HandleFunc("GET /.well-known/syndichan/storage-node.json", func(w http.ResponseWriter, r *http.Request) {
+	mux.HandleFunc("GET /.well-known/rabbiit/storage-node.json", func(w http.ResponseWriter, r *http.Request) {
 		writeJSON(w, 200, c.BootstrapDocument())
 	})
 	mux.HandleFunc("POST /api/v1/storage/nodes/heartbeat", func(w http.ResponseWriter, r *http.Request) {
@@ -342,7 +342,7 @@ func (c *Coordinator) Register(mux *http.ServeMux) {
 			writeJSON(w, 400, map[string]string{"error": err.Error()})
 			return
 		}
-		hb, err := c.ValidateHeartbeat(body, r.Header.Get("X-Syndichan-Node"), r.Header.Get("X-Syndichan-Signature"),
+		hb, err := c.ValidateHeartbeat(body, r.Header.Get("X-Rabbiit-Node"), r.Header.Get("X-Rabbiit-Signature"),
 			r.Header.Get("User-Agent"))
 		if err != nil {
 			status := 400

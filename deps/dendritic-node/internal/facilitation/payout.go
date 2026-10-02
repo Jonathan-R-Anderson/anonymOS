@@ -30,7 +30,7 @@ import (
 // happened to arrive last.
 
 // PayoutDeclarationPrefix versions the signed format.
-const PayoutDeclarationPrefix = "syndichan-pof-payout:v1"
+const PayoutDeclarationPrefix = "rabbiit-pof-payout:v1"
 
 // PayoutDeclaration is a node's signed statement of where to send its rewards.
 type PayoutDeclaration struct {

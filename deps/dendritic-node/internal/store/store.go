@@ -114,8 +114,8 @@ func Open(dir string, dataShards, parityShards, chunkBytes int, capacity int64) 
 		// like a network stall. Say what it actually is: a second node on the
 		// same data_dir. Only one process may own a data_dir at a time.
 		if errors.Is(err, bolt.ErrTimeout) {
-			return nil, fmt.Errorf("%s is locked by another syndichan-node already running on data_dir %s — "+
-				"stop it first (ps aux | grep syndichan-node) or point this instance at a different data_dir", metaPath, dir)
+			return nil, fmt.Errorf("%s is locked by another rabbiit-node already running on data_dir %s — "+
+				"stop it first (ps aux | grep rabbiit-node) or point this instance at a different data_dir", metaPath, dir)
 		}
 		return nil, err
 	}

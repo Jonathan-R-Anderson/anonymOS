@@ -39,7 +39,7 @@ import (
 	"log"
 	"net/http"
 
-	"github.com/syndichan/maniwani/storage-client/internal/config"
+	"github.com/rabbiit/maniwani/storage-client/internal/config"
 )
 
 // unsupportedPlatform is the one reason this file gives, borrowed verbatim in

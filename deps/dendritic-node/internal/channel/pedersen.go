@@ -40,7 +40,7 @@ import (
 	"github.com/decred/dcrd/dcrec/secp256k1/v4"
 )
 
-const domainPedersenH = "syndichan/pedersen/H/v1"
+const domainPedersenH = "rabbiit/pedersen/H/v1"
 
 var (
 	hOnce  sync.Once
@@ -96,7 +96,7 @@ func (Pedersen) IsHomomorphic() bool { return true }
 // via CommitPoint.
 func (p Pedersen) Commit(value uint64, blinding [32]byte) Commitment {
 	pt := p.CommitPoint(value, blinding)
-	digest := derive("syndichan/pedersen/serialize/v1", pt.X.Bytes(), pt.Y.Bytes())
+	digest := derive("rabbiit/pedersen/serialize/v1", pt.X.Bytes(), pt.Y.Bytes())
 	return Commitment(digest)
 }
 

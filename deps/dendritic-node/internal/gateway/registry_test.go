@@ -39,14 +39,14 @@ func TestRegistryRequestHasSignatureAndNoReusableSecret(t *testing.T) {
 		t.Fatal(err)
 	}
 	signer := registrySigner{public: public, private: private}
-	client, err := NewRegistryClient("https://syndichan.org/api/v1/gateways", "gw-001.syndichan.org", signer)
+	client, err := NewRegistryClient("https://rabbiit.io/api/v1/gateways", "gw-001.rabbiit.io", signer)
 	if err != nil {
 		t.Fatal(err)
 	}
 	client.Now = func() time.Time { return time.Unix(1700000000, 0) }
 	client.Client.Transport = roundTripFunc(func(request *http.Request) (*http.Response, error) {
 		body, _ := io.ReadAll(request.Body)
-		signature, err := base64.RawStdEncoding.DecodeString(request.Header.Get("X-Syndichan-Signature"))
+		signature, err := base64.RawStdEncoding.DecodeString(request.Header.Get("X-Rabbiit-Signature"))
 		if err != nil || !ed25519.Verify(public, body, signature) {
 			t.Fatal("request signature was invalid")
 		}
@@ -68,7 +68,7 @@ func TestRegistryRequestHasSignatureAndNoReusableSecret(t *testing.T) {
 func TestRegistryEndpointRejectsEmbeddedCredentials(t *testing.T) {
 	_, private, _ := ed25519.GenerateKey(rand.Reader)
 	_, err := NewRegistryClient(
-		"https://user:secret@syndichan.org/api/v1/gateways", "gw-001.syndichan.org",
+		"https://user:secret@rabbiit.io/api/v1/gateways", "gw-001.rabbiit.io",
 		registrySigner{private: private},
 	)
 	if err == nil {
@@ -83,7 +83,7 @@ func TestReservationPrecedesACMEAndWaitsForMatchingDNS(t *testing.T) {
 	}
 	signer := registrySigner{public: public, private: private}
 	client, err := NewRegistryClient(
-		"https://syndichan.org/api/v1/gateways", "", signer,
+		"https://rabbiit.io/api/v1/gateways", "", signer,
 	)
 	if err != nil {
 		t.Fatal(err)
@@ -95,13 +95,13 @@ func TestReservationPrecedesACMEAndWaitsForMatchingDNS(t *testing.T) {
 		}
 		body, _ := io.ReadAll(request.Body)
 		signature, decodeErr := base64.RawStdEncoding.DecodeString(
-			request.Header.Get("X-Syndichan-Signature"),
+			request.Header.Get("X-Rabbiit-Signature"),
 		)
 		if decodeErr != nil || !ed25519.Verify(public, body, signature) {
 			t.Fatal("reservation signature was invalid")
 		}
 		payload, _ := json.Marshal(HostnameReservation{
-			Hostname: "gw-derived.syndichan.org",
+			Hostname: "gw-derived.rabbiit.io",
 			IP:       "203.0.113.8", ExpiresAt: 1700000900,
 		})
 		return &http.Response{
@@ -136,7 +136,7 @@ func TestReservationPrecedesACMEAndWaitsForMatchingDNS(t *testing.T) {
 func TestReservationExposesServerRetryAfter(t *testing.T) {
 	_, private, _ := ed25519.GenerateKey(rand.Reader)
 	client, err := NewRegistryClient(
-		"https://syndichan.org/api/v1/gateways", "",
+		"https://rabbiit.io/api/v1/gateways", "",
 		registrySigner{private: private},
 	)
 	if err != nil {

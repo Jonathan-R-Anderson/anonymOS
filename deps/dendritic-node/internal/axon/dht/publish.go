@@ -8,7 +8,7 @@ import (
 	"sort"
 	"time"
 
-	"github.com/syndichan/maniwani/storage-client/internal/axon/params"
+	"github.com/rabbiit/maniwani/storage-client/internal/axon/params"
 )
 
 // Descriptor publication (T7.5, E7.3, §9.4).

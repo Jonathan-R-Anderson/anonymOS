@@ -48,8 +48,8 @@ func capture(t *testing.T) (*httptest.Server, chan captured) {
 		body, _ := io.ReadAll(io.LimitReader(r.Body, 1<<20))
 		seen <- captured{
 			body: body, userAgent: r.Header.Get("User-Agent"),
-			nodeID:    r.Header.Get("X-Syndichan-Node"),
-			signature: r.Header.Get("X-Syndichan-Signature"),
+			nodeID:    r.Header.Get("X-Rabbiit-Node"),
+			signature: r.Header.Get("X-Rabbiit-Signature"),
 		}
 		w.WriteHeader(http.StatusOK)
 	}))

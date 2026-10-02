@@ -48,7 +48,7 @@ import (
 	"sync"
 	"time"
 
-	"github.com/syndichan/maniwani/storage-client/internal/ethproof"
+	"github.com/rabbiit/maniwani/storage-client/internal/ethproof"
 )
 
 // ErrFollowerNotReady means the authenticated chain follower has no usable

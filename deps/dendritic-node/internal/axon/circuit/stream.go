@@ -5,7 +5,7 @@ import (
 	"fmt"
 	"sync"
 
-	"github.com/syndichan/maniwani/storage-client/internal/axon/params"
+	"github.com/rabbiit/maniwani/storage-client/internal/axon/params"
 )
 
 // Stream multiplexing over a circuit (§8.6).

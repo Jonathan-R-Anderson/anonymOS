@@ -6,7 +6,7 @@ import (
 	"sync"
 	"testing"
 
-	"github.com/syndichan/maniwani/storage-client/internal/axon/peer"
+	"github.com/rabbiit/maniwani/storage-client/internal/axon/peer"
 )
 
 // TestSourceRaceUnderConcurrentSelect: a Selector may draw paths concurrently

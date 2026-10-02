@@ -25,8 +25,8 @@ package path
 import (
 	"math"
 
-	"github.com/syndichan/maniwani/storage-client/internal/axon/params"
-	"github.com/syndichan/maniwani/storage-client/internal/axon/profile"
+	"github.com/rabbiit/maniwani/storage-client/internal/axon/params"
+	"github.com/rabbiit/maniwani/storage-client/internal/axon/profile"
 )
 
 // Weight is the bonded-self-report weighting from §23's P12 card.

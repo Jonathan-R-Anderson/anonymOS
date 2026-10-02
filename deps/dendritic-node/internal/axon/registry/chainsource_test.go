@@ -5,8 +5,8 @@ import (
 	"errors"
 	"testing"
 
-	"github.com/syndichan/maniwani/storage-client/internal/axon/resolver"
-	"github.com/syndichan/maniwani/storage-client/internal/ethproof"
+	"github.com/rabbiit/maniwani/storage-client/internal/axon/resolver"
+	"github.com/rabbiit/maniwani/storage-client/internal/ethproof"
 )
 
 // ChainReader must be usable as the resolver's slow-path ChainSource.

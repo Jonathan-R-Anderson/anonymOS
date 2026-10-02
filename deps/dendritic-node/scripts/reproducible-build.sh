@@ -79,9 +79,9 @@ for target in "${TARGETS[@]}"; do
   b="$WORK/b-$os-$arch$suffix"
 
   ( cd "$ROOT" && CGO_ENABLED=0 GOOS=$os GOARCH=$arch GOARM=$goarm \
-      go build "${FLAGS[@]}" -o "$a" ./cmd/syndichan-node ) || { echo "build A failed for $target"; fail=1; continue; }
+      go build "${FLAGS[@]}" -o "$a" ./cmd/rabbiit-node ) || { echo "build A failed for $target"; fail=1; continue; }
   ( cd "$COPY" && CGO_ENABLED=0 GOOS=$os GOARCH=$arch GOARM=$goarm \
-      go build "${FLAGS[@]}" -o "$b" ./cmd/syndichan-node ) || { echo "build B failed for $target"; fail=1; continue; }
+      go build "${FLAGS[@]}" -o "$b" ./cmd/rabbiit-node ) || { echo "build B failed for $target"; fail=1; continue; }
 
   if cmp -s "$a" "$b"; then
     printf '%-22s %-8s %s\n' "$target" "OK" "$(sha256sum "$a" | cut -c1-16)"

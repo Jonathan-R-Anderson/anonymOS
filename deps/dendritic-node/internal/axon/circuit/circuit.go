@@ -8,8 +8,8 @@ import (
 	"sync"
 	"time"
 
-	"github.com/syndichan/maniwani/storage-client/internal/axon/link"
-	"github.com/syndichan/maniwani/storage-client/internal/axon/params"
+	"github.com/rabbiit/maniwani/storage-client/internal/axon/link"
+	"github.com/rabbiit/maniwani/storage-client/internal/axon/params"
 )
 
 // Circuit lifecycle and the relay-side circuit table (§8.4, §8.6).

@@ -221,8 +221,8 @@ func hostFromServerNameList(payload []byte) (string, error) {
 	return "", ErrNoSNI
 }
 
-// normalizeHost lower-cases and drops one trailing dot so "SYNDICHAN.ORG." and
-// "syndichan.org" compare equal against an allowlist. Anything containing a NUL,
+// normalizeHost lower-cases and drops one trailing dot so "RABBIIT.IO." and
+// "rabbiit.io" compare equal against an allowlist. Anything containing a NUL,
 // a slash, or whitespace is rejected by returning "": those cannot appear in a
 // legitimate host_name and are a classic way to smuggle a second value past a
 // naive comparison.

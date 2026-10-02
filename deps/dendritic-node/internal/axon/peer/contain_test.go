@@ -6,7 +6,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/syndichan/maniwani/storage-client/internal/axon/contain"
+	"github.com/rabbiit/maniwani/storage-client/internal/axon/contain"
 )
 
 // TestForgetWithoutDenyingIsTheatre: the next probe re-creates the entry.

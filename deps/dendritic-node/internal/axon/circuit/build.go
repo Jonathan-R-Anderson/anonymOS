@@ -8,7 +8,7 @@ import (
 	"fmt"
 	"io"
 
-	"github.com/syndichan/maniwani/storage-client/internal/axon/link"
+	"github.com/rabbiit/maniwani/storage-client/internal/axon/link"
 )
 
 // Telescoping construction over a live L2 link (§8.2, §8.4).

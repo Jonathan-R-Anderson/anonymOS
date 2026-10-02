@@ -59,10 +59,10 @@ const SlotSize = 1024
 // Onion key domains, separate from the note domains so a key recovered in one
 // role cannot be used in the other.
 const (
-	domainHopKey     = "syndichan/onion/hopkey/v1"
-	domainReplay     = "syndichan/onion/replay/v1"
-	domainPermute    = "syndichan/onion/permute/v1"
-	domainFailureKey = "syndichan/onion/failure/v1"
+	domainHopKey     = "rabbiit/onion/hopkey/v1"
+	domainReplay     = "rabbiit/onion/replay/v1"
+	domainPermute    = "rabbiit/onion/permute/v1"
+	domainFailureKey = "rabbiit/onion/failure/v1"
 )
 
 var (

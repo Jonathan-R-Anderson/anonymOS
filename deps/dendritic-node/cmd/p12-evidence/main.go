@@ -32,7 +32,7 @@ import (
 	"sort"
 	"time"
 
-	"github.com/syndichan/maniwani/storage-client/internal/channel"
+	"github.com/rabbiit/maniwani/storage-client/internal/channel"
 )
 
 // mainnet is the only chain this tool will file for. Evidence from anywhere

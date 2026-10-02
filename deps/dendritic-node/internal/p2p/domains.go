@@ -7,7 +7,7 @@ import (
 	ma "github.com/multiformats/go-multiaddr"
 	manet "github.com/multiformats/go-multiaddr/net"
 
-	axonpeer "github.com/syndichan/maniwani/storage-client/internal/axon/peer"
+	axonpeer "github.com/rabbiit/maniwani/storage-client/internal/axon/peer"
 )
 
 // Failure-domain keys for shard placement — T12.2.

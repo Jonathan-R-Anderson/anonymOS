@@ -14,7 +14,7 @@ func mustSave(t *testing.T, dir string, peers []string, now time.Time) {
 	t.Helper()
 	r := &Result{
 		Document: &Document{Peers: peers, CoordinatorPublicKey: "SHOULD-NOT-BE-CACHED"},
-		Source:   "https://gw-a.example/.well-known/syndichan/storage-node.json",
+		Source:   "https://gw-a.example/.well-known/rabbiit/storage-node.json",
 		Verified: true,
 	}
 	if err := SaveCache(dir, r, now); err != nil {

@@ -3,8 +3,8 @@ package main
 import (
 	"log"
 
-	"github.com/syndichan/maniwani/storage-client/internal/config"
-	"github.com/syndichan/maniwani/storage-client/internal/directive"
+	"github.com/rabbiit/maniwani/storage-client/internal/config"
+	"github.com/rabbiit/maniwani/storage-client/internal/directive"
 )
 
 // originURLs are the settings that point at the origin, and are therefore the

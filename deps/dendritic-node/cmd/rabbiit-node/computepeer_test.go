@@ -25,7 +25,7 @@ import (
 
 	"github.com/libp2p/go-libp2p/core/peer"
 
-	"github.com/syndichan/maniwani/storage-client/internal/p2p"
+	"github.com/rabbiit/maniwani/storage-client/internal/p2p"
 )
 
 // A real, well-formed peer id. Written out rather than generated because the

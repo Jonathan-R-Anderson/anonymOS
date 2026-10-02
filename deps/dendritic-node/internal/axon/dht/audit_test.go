@@ -10,7 +10,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/syndichan/maniwani/storage-client/internal/axon/identity"
+	"github.com/rabbiit/maniwani/storage-client/internal/axon/identity"
 )
 
 // T4.6 / E4.4: an audit of everything a storing node holds for a

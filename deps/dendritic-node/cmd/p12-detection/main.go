@@ -41,7 +41,7 @@ import (
 	"sort"
 	"time"
 
-	"github.com/syndichan/maniwani/storage-client/internal/channel"
+	"github.com/rabbiit/maniwani/storage-client/internal/channel"
 )
 
 const mainnet = 1

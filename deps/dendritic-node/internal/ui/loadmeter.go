@@ -27,7 +27,7 @@ import (
 	"sync"
 	"time"
 
-	"github.com/syndichan/maniwani/storage-client/internal/compute"
+	"github.com/rabbiit/maniwani/storage-client/internal/compute"
 )
 
 // Sample is one moment.

@@ -4,7 +4,7 @@ import (
 	"errors"
 	"fmt"
 
-	"github.com/syndichan/maniwani/storage-client/internal/axon/params"
+	"github.com/rabbiit/maniwani/storage-client/internal/axon/params"
 )
 
 // M2 — fixed datagrams. §16.3: "pad every overlay QUIC packet to 1200 B".

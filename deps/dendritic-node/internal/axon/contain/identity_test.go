@@ -8,9 +8,9 @@ import (
 	"testing"
 	"time"
 
-	"github.com/syndichan/maniwani/storage-client/internal/axon/contain"
-	"github.com/syndichan/maniwani/storage-client/internal/axon/dht"
-	"github.com/syndichan/maniwani/storage-client/internal/axon/link"
+	"github.com/rabbiit/maniwani/storage-client/internal/axon/contain"
+	"github.com/rabbiit/maniwani/storage-client/internal/axon/dht"
+	"github.com/rabbiit/maniwani/storage-client/internal/axon/link"
 )
 
 // TestContainmentIDsAgreeWithEveryStructureThatChecksThem.

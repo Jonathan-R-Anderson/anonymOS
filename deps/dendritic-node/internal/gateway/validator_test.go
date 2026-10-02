@@ -44,13 +44,13 @@ func hostOf(rawURL string) string {
 func signedGateway(t *testing.T, private ed25519.PrivateKey, signed, body []byte,
 	nodeID string) *httptest.Server {
 	t.Helper()
-	message := []byte("syndichan-object:v1\n/\n1\n" + hashOf(signed))
+	message := []byte("rabbiit-object:v1\n/\n1\n" + hashOf(signed))
 	signature := base64.StdEncoding.EncodeToString(ed25519.Sign(private, message))
 	return httptest.NewTLSServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		w.Header().Set("X-Syndichan-Version", "1")
-		w.Header().Set("X-Syndichan-Signature", signature)
+		w.Header().Set("X-Rabbiit-Version", "1")
+		w.Header().Set("X-Rabbiit-Signature", signature)
 		if nodeID != "" {
-			w.Header().Set("X-Syndichan-Gateway", nodeID)
+			w.Header().Set("X-Rabbiit-Gateway", nodeID)
 		}
 		_, _ = w.Write(body)
 	}))
@@ -63,7 +63,7 @@ func fakeOrigin(t *testing.T, public ed25519.PublicKey, entries []map[string]any
 	var mu sync.Mutex
 	reports := []capturedReport{}
 	mux := http.NewServeMux()
-	mux.HandleFunc("/.well-known/syndichan/origin-key.json", func(w http.ResponseWriter, r *http.Request) {
+	mux.HandleFunc("/.well-known/rabbiit/origin-key.json", func(w http.ResponseWriter, r *http.Request) {
 		_ = json.NewEncoder(w).Encode(map[string]any{
 			"public_key": base64.StdEncoding.EncodeToString(public), "signing": true})
 	})
@@ -183,7 +183,7 @@ func TestValidatorSignsReceiptsWithItsOwnIdentity(t *testing.T) {
 	// The signature must cover every field that gives the receipt meaning, or
 	// it could be lifted onto a different observation in the same name.
 	message := []byte(strings.Join([]string{
-		"syndichan-audit:v1", report.Gateway, report.ObjectKey, "1",
+		"rabbiit-audit:v1", report.Gateway, report.ObjectKey, "1",
 		report.ObjectHash, report.Result}, "\n"))
 	if !ed25519.Verify(key, message, signature) {
 		t.Error("receipt signature does not verify over the canonical message")

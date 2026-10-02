@@ -34,7 +34,7 @@ import (
 
 // Header is the first line of every canonical message. A document that does not
 // begin with it is not a directive, whatever else it may parse as.
-const Header = "syndichan network directive v1"
+const Header = "rabbiit network directive v1"
 
 // Kinds. A freeze pins the network where it is and refuses everything except a
 // resume; it is deliberately the cheapest directive to issue, because its
@@ -68,7 +68,7 @@ type Directive struct {
 	Note          string `json:"note"`
 }
 
-// Document is the JSON served at /.well-known/syndichan/network.json.
+// Document is the JSON served at /.well-known/rabbiit/network.json.
 type Document struct {
 	Directive *Directive `json:"directive"`
 	Canonical string     `json:"canonical"`
@@ -351,7 +351,7 @@ func (d *Directive) Effective(now int64) bool {
 	return now >= d.NotBefore
 }
 
-// ParseDocument reads the JSON served at /.well-known/syndichan/network.json.
+// ParseDocument reads the JSON served at /.well-known/rabbiit/network.json.
 func ParseDocument(body []byte) (*Document, error) {
 	var doc Document
 	if err := json.Unmarshal(body, &doc); err != nil {

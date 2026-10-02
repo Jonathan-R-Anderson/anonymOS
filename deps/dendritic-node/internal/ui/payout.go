@@ -4,7 +4,7 @@ import (
 	"net/http"
 	"strings"
 
-	"github.com/syndichan/maniwani/storage-client/internal/config"
+	"github.com/rabbiit/maniwani/storage-client/internal/config"
 )
 
 // setPayout records where this node's CREDIT earnings should be sent.

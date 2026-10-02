@@ -3,8 +3,8 @@ package path
 import (
 	"net/netip"
 
-	"github.com/syndichan/maniwani/storage-client/internal/axon/params"
-	"github.com/syndichan/maniwani/storage-client/internal/axon/peer"
+	"github.com/rabbiit/maniwani/storage-client/internal/axon/params"
+	"github.com/rabbiit/maniwani/storage-client/internal/axon/peer"
 )
 
 // UnknownOperatorPolicy decides what an unverifiable owner means for the

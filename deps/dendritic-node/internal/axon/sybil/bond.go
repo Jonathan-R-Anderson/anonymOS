@@ -21,7 +21,7 @@ import (
 	"math/big"
 	"time"
 
-	"github.com/syndichan/maniwani/storage-client/internal/ethproof"
+	"github.com/rabbiit/maniwani/storage-client/internal/ethproof"
 )
 
 // Address is a 20-byte Ethereum address.

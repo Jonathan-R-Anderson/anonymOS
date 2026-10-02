@@ -25,9 +25,9 @@ import (
 
 	"golang.org/x/crypto/hkdf"
 
-	"github.com/syndichan/maniwani/storage-client/internal/axon/circuit"
-	"github.com/syndichan/maniwani/storage-client/internal/axon/dht"
-	"github.com/syndichan/maniwani/storage-client/internal/axon/session"
+	"github.com/rabbiit/maniwani/storage-client/internal/axon/circuit"
+	"github.com/rabbiit/maniwani/storage-client/internal/axon/dht"
+	"github.com/rabbiit/maniwani/storage-client/internal/axon/session"
 )
 
 // StreamMeta is the OPEN metadata of a lookup stream: the protocol and its

@@ -227,7 +227,7 @@ func TestWebPeerAnswersThePreflight(t *testing.T) {
 	if err != nil {
 		t.Fatalf("request: %v", err)
 	}
-	req.Header.Set("Origin", "https://syndichan.org")
+	req.Header.Set("Origin", "https://rabbiit.io")
 	req.Header.Set("Access-Control-Request-Method", "POST")
 	req.Header.Set("Access-Control-Request-Headers", "content-type")
 

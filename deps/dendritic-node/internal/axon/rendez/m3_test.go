@@ -14,8 +14,8 @@ import (
 
 	"golang.org/x/crypto/curve25519"
 
-	"github.com/syndichan/maniwani/storage-client/internal/axon/circuit"
-	"github.com/syndichan/maniwani/storage-client/internal/axon/session"
+	"github.com/rabbiit/maniwani/storage-client/internal/axon/circuit"
+	"github.com/rabbiit/maniwani/storage-client/internal/axon/session"
 )
 
 // M3: a session over real rendezvous circuits survives their death.

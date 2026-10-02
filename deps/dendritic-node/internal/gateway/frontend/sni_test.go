@@ -41,7 +41,7 @@ func realClientHello(t testing.TB, serverName string) []byte {
 }
 
 func TestPeekSNIReadsARealClientHello(t *testing.T) {
-	for _, name := range []string{"syndichan.org", "gw-abc123.syndichan.org"} {
+	for _, name := range []string{"rabbiit.io", "gw-abc123.rabbiit.io"} {
 		hello := realClientHello(t, name)
 		got, raw, err := PeekSNI(bytes.NewReader(hello))
 		if err != nil {
@@ -65,9 +65,9 @@ func TestPeekSNINormalizesCaseAndTrailingDot(t *testing.T) {
 	// Go's stack rejects a trailing dot in ServerName, so exercise the
 	// normalizer directly rather than pretending the wire can carry one.
 	for _, tc := range []struct{ in, want string }{
-		{"SYNDICHAN.ORG", "syndichan.org"},
-		{"syndichan.org.", "syndichan.org"},
-		{"GW-ABC.Syndichan.Org.", "gw-abc.syndichan.org"},
+		{"RABBIIT.IO", "rabbiit.io"},
+		{"rabbiit.io.", "rabbiit.io"},
+		{"GW-ABC.Rabbiit.Io.", "gw-abc.rabbiit.io"},
 		{"", ""},
 		{"host name", ""},
 		{"host/name", ""},
@@ -123,7 +123,7 @@ func TestPeekSNIRejectsHelloWithoutSNI(t *testing.T) {
 // partial host. This is the property that matters for a parser fed by anyone on
 // the internet.
 func TestPeekSNITruncatedAtEveryOffset(t *testing.T) {
-	hello := realClientHello(t, "syndichan.org")
+	hello := realClientHello(t, "rabbiit.io")
 	for cut := 0; cut < len(hello); cut++ {
 		func() {
 			defer func() {
@@ -147,7 +147,7 @@ func TestPeekSNITruncatedAtEveryOffset(t *testing.T) {
 // another; the caller's exact allowlist is the security boundary that refuses
 // that new name.
 func TestPeekSNICorruptionNeverYieldsMalformedName(t *testing.T) {
-	hello := realClientHello(t, "syndichan.org")
+	hello := realClientHello(t, "rabbiit.io")
 	for i := 0; i < len(hello); i++ {
 		for _, mask := range []byte{0xFF, 0x01, 0x80} {
 			mutated := append([]byte(nil), hello...)
@@ -169,9 +169,9 @@ func TestPeekSNICorruptionNeverYieldsMalformedName(t *testing.T) {
 
 func TestServerNameListUsesFirstHostName(t *testing.T) {
 	payload := []byte{
-		0x00, 0x26, // list length
-		0x00, 0x00, 0x0d, // host_name, length 13
-		's', 'y', 'n', 'd', 'i', 'c', 'h', 'a', 'n', '.', 'o', 'r', 'g',
+		0x00, 0x23, // list length
+		0x00, 0x00, 0x0a, // host_name, length 10
+		'r', 'a', 'b', 'b', 'i', 'i', 't', '.', 'i', 'o',
 		0x00, 0x00, 0x13, // duplicate host_name, length 19
 		'a', 't', 't', 'a', 'c', 'k', 'e', 'r', '.', 'e', 'x', 'a', 'm', 'p', 'l', 'e', '.', 'c', 'o',
 	}
@@ -179,7 +179,7 @@ func TestServerNameListUsesFirstHostName(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if name != "syndichan.org" {
+	if name != "rabbiit.io" {
 		t.Fatalf("selected %q, want first host_name", name)
 	}
 }
@@ -235,7 +235,7 @@ func TestPeekSNIStopsAtShortReader(t *testing.T) {
 }
 
 func FuzzPeekSNI(f *testing.F) {
-	f.Add(realClientHello(f, "syndichan.org"))
+	f.Add(realClientHello(f, "rabbiit.io"))
 	f.Add([]byte{0x16, 0x03, 0x01, 0x00, 0x01, 0x01})
 	f.Add([]byte("not tls at all"))
 	f.Add([]byte{})

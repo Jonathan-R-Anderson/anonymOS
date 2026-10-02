@@ -5,7 +5,7 @@ import (
 	"errors"
 	"fmt"
 
-	"github.com/syndichan/maniwani/storage-client/internal/ethproof"
+	"github.com/rabbiit/maniwani/storage-client/internal/ethproof"
 )
 
 // On-chain resolution against the deployed AxonRegistry (items 2.4, 2.5).

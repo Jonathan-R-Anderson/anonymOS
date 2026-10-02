@@ -19,9 +19,9 @@ import (
 	"testing"
 	"time"
 
-	"github.com/syndichan/maniwani/storage-client/internal/compute"
-	"github.com/syndichan/maniwani/storage-client/internal/computeimage"
-	"github.com/syndichan/maniwani/storage-client/internal/p2p"
+	"github.com/rabbiit/maniwani/storage-client/internal/compute"
+	"github.com/rabbiit/maniwani/storage-client/internal/computeimage"
+	"github.com/rabbiit/maniwani/storage-client/internal/p2p"
 )
 
 // recordingReporter is the heartbeat, reduced to the one thing that matters:

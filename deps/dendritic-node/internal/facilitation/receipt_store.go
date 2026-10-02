@@ -44,7 +44,7 @@ func OpenReceiptStore(dir string) (*ReceiptStore, error) {
 		// Same trap as the shard store: bbolt reports a held lock as the bare
 		// word "timeout", which reads like a network problem.
 		if err == bolt.ErrTimeout {
-			return nil, fmt.Errorf("%s is locked by another syndichan-node on this data_dir", path)
+			return nil, fmt.Errorf("%s is locked by another rabbiit-node on this data_dir", path)
 		}
 		return nil, err
 	}

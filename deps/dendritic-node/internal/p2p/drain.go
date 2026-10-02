@@ -6,9 +6,9 @@ import (
 	"sort"
 	"time"
 
-	"github.com/syndichan/maniwani/storage-client/internal/place"
-	"github.com/syndichan/maniwani/storage-client/internal/placement"
-	"github.com/syndichan/maniwani/storage-client/internal/store"
+	"github.com/rabbiit/maniwani/storage-client/internal/place"
+	"github.com/rabbiit/maniwani/storage-client/internal/placement"
+	"github.com/rabbiit/maniwani/storage-client/internal/store"
 )
 
 // DRAINING A NODE: LEVELLING WITH A TARGET OF ZERO

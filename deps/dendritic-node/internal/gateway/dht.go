@@ -7,7 +7,7 @@ import (
 	"time"
 )
 
-const DHTNamespace = "syndichan-gateway"
+const DHTNamespace = "rabbiit-gateway"
 
 type DHTValidator struct {
 	TrustedProbes   map[string]string

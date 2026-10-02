@@ -14,8 +14,8 @@ import (
 	"testing"
 	"time"
 
-	"github.com/syndichan/maniwani/storage-client/internal/axon/contracts"
-	"github.com/syndichan/maniwani/storage-client/internal/axon/name"
+	"github.com/rabbiit/maniwani/storage-client/internal/axon/contracts"
+	"github.com/rabbiit/maniwani/storage-client/internal/axon/name"
 )
 
 // THE VECTOR. Every value below was PRODUCED BY THE CONTRACTS, in
@@ -566,7 +566,7 @@ func TestPackageNeitherDialsNorSigns(t *testing.T) {
 	}
 	forbidden := []string{"net", "net/http", "net/rpc", "crypto/ecdsa", "crypto/ed25519",
 		"github.com/decred/dcrd/dcrec/secp256k1/v4",
-		"github.com/syndichan/maniwani/storage-client/internal/channel"}
+		"github.com/rabbiit/maniwani/storage-client/internal/channel"}
 	fset := token.NewFileSet()
 	for _, f := range files {
 		if strings.HasSuffix(f, "_test.go") {

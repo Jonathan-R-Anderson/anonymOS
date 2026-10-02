@@ -20,7 +20,7 @@ import (
 
 	"github.com/decred/dcrd/dcrec/secp256k1/v4"
 
-	"github.com/syndichan/maniwani/storage-client/internal/channel"
+	"github.com/rabbiit/maniwani/storage-client/internal/channel"
 )
 
 const treasury = "0xE36e04b6Df20C00479005ba23233F67192f38421"

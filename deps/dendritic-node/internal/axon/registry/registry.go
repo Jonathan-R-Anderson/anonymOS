@@ -16,7 +16,7 @@ import (
 	"math/big"
 	"time"
 
-	"github.com/syndichan/maniwani/storage-client/internal/axon/name"
+	"github.com/rabbiit/maniwani/storage-client/internal/axon/name"
 )
 
 var (

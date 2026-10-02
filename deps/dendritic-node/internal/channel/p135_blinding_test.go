@@ -703,7 +703,7 @@ func TestX12EachHopPeelsOnlyItsOwnInstruction(t *testing.T) {
 		if err != nil {
 			t.Fatalf("hop %d could not peel its own instruction: %v", i, err)
 		}
-		want := Commitment(derive("syndichan/payment/hopcommit/v1",
+		want := Commitment(derive("rabbiit/payment/hopcommit/v1",
 			plan.Locks.Locks[i].X.Bytes(), plan.Locks.Locks[i].Y.Bytes()))
 		if hop.OutgoingCommitment != want {
 			t.Fatalf("hop %d peeled an instruction committing to another hop's lock", i)
@@ -722,7 +722,7 @@ func TestX12EachHopPeelsOnlyItsOwnInstruction(t *testing.T) {
 			if i == j {
 				continue
 			}
-			other := Commitment(derive("syndichan/payment/hopcommit/v1",
+			other := Commitment(derive("rabbiit/payment/hopcommit/v1",
 				plan.Locks.Locks[j].X.Bytes(), plan.Locks.Locks[j].Y.Bytes()))
 			if got.OutgoingCommitment == other {
 				t.Fatalf("hop %d's secret peeled hop %d's instruction; the route is "+

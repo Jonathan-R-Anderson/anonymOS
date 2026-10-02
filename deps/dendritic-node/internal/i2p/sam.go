@@ -584,5 +584,5 @@ func randomSessionID() (string, error) {
 	if _, err := rand.Read(value); err != nil {
 		return "", err
 	}
-	return "syndichan-" + hex.EncodeToString(value), nil
+	return "rabbiit-" + hex.EncodeToString(value), nil
 }

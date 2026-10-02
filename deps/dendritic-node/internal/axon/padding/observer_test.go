@@ -5,8 +5,8 @@ import (
 	"testing"
 	"time"
 
-	"github.com/syndichan/maniwani/storage-client/internal/axon/circuit"
-	"github.com/syndichan/maniwani/storage-client/internal/axon/params"
+	"github.com/rabbiit/maniwani/storage-client/internal/axon/circuit"
+	"github.com/rabbiit/maniwani/storage-client/internal/axon/params"
 )
 
 // This file is the observer's side of P13: what a link capture can and cannot

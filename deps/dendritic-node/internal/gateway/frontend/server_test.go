@@ -52,7 +52,7 @@ func TestServerRoutesLocalAndOriginTLSWithoutConsumingHello(t *testing.T) {
 
 	server, err := New(Config{
 		OriginAddress: origin.Addr().String(), LocalAddress: local.Addr().String(),
-		LocalHostname: "gw-test.syndichan.org", SNIAllowlist: []string{"syndichan.org"},
+		LocalHostname: "gw-test.rabbiit.io", SNIAllowlist: []string{"rabbiit.io"},
 		MaxConnections: 8, MaxBytesPerSecond: 1 << 20,
 		HandshakeTimeout: time.Second, DialTimeout: time.Second, IdleTimeout: time.Second,
 		ProxyProtocol: true,
@@ -86,21 +86,21 @@ func TestServerRoutesLocalAndOriginTLSWithoutConsumingHello(t *testing.T) {
 		}
 	}
 
-	request("syndichan.org")
+	request("rabbiit.io")
 	originRecord := <-originObserved
 	if len(originRecord) < 28 || !bytes.Equal(originRecord[:12], proxyV2Signature) {
 		t.Fatal("origin did not receive a PROXY v2 header")
 	}
-	if !bytes.Contains(originRecord[28:], []byte("syndichan.org")) {
+	if !bytes.Contains(originRecord[28:], []byte("rabbiit.io")) {
 		t.Fatal("origin did not receive the replayed ClientHello")
 	}
 
-	request("gw-test.syndichan.org")
+	request("gw-test.rabbiit.io")
 	localRecord := <-localObserved
 	if bytes.HasPrefix(localRecord, proxyV2Signature) {
 		t.Fatal("local identity endpoint unexpectedly received a PROXY header")
 	}
-	if !bytes.Contains(localRecord, []byte("gw-test.syndichan.org")) {
+	if !bytes.Contains(localRecord, []byte("gw-test.rabbiit.io")) {
 		t.Fatal("local identity endpoint did not receive the replayed ClientHello")
 	}
 }
@@ -114,7 +114,7 @@ func TestServerRefusesUnlistedSNI(t *testing.T) {
 	defer local.Close()
 	server, err := New(Config{
 		OriginAddress: origin.Addr().String(), LocalAddress: local.Addr().String(),
-		LocalHostname: "gw-test.syndichan.org", SNIAllowlist: []string{"syndichan.org"},
+		LocalHostname: "gw-test.rabbiit.io", SNIAllowlist: []string{"rabbiit.io"},
 		MaxConnections: 1, MaxBytesPerSecond: 1 << 20,
 		HandshakeTimeout: time.Second, DialTimeout: time.Second, IdleTimeout: time.Second,
 		ProxyProtocol: true,
@@ -182,7 +182,7 @@ func TestShutdownForcesConnectionsClosedAfterDrainDeadline(t *testing.T) {
 	defer local.Close()
 	server, err := New(Config{
 		OriginAddress: origin.Addr().String(), LocalAddress: local.Addr().String(),
-		LocalHostname: "gw-test.syndichan.org", SNIAllowlist: []string{"syndichan.org"},
+		LocalHostname: "gw-test.rabbiit.io", SNIAllowlist: []string{"rabbiit.io"},
 		MaxConnections: 1, MaxBytesPerSecond: 1 << 20,
 		HandshakeTimeout: time.Second, DialTimeout: time.Second, IdleTimeout: time.Minute,
 		ProxyProtocol: true,
@@ -200,7 +200,7 @@ func TestShutdownForcesConnectionsClosedAfterDrainDeadline(t *testing.T) {
 		t.Fatal(err)
 	}
 	defer client.Close()
-	if _, err := client.Write(realClientHello(t, "syndichan.org")); err != nil {
+	if _, err := client.Write(realClientHello(t, "rabbiit.io")); err != nil {
 		t.Fatal(err)
 	}
 	upstream := <-accepted
@@ -235,8 +235,8 @@ func TestRoutedSNIReachesItsOwnBackendNotTheOrigin(t *testing.T) {
 
 	server, err := New(Config{
 		OriginAddress: origin.Addr().String(), LocalAddress: local.Addr().String(),
-		LocalHostname: "gw-test.syndichan.org", SNIAllowlist: []string{"syndichan.org"},
-		SNIRoutes:      map[string]string{"node.syndichan.org": coTenant.Addr().String()},
+		LocalHostname: "gw-test.rabbiit.io", SNIAllowlist: []string{"rabbiit.io"},
+		SNIRoutes:      map[string]string{"node.rabbiit.io": coTenant.Addr().String()},
 		MaxConnections: 8, MaxBytesPerSecond: 1 << 20,
 		HandshakeTimeout: time.Second, DialTimeout: time.Second, IdleTimeout: time.Second,
 		ProxyProtocol: true,
@@ -266,7 +266,7 @@ func TestRoutedSNIReachesItsOwnBackendNotTheOrigin(t *testing.T) {
 		}
 	}
 
-	request("node.syndichan.org")
+	request("node.rabbiit.io")
 	tenantRecord := <-tenantObserved
 	if tenantRecord == nil {
 		t.Fatal("co-tenant never received the connection")
@@ -274,7 +274,7 @@ func TestRoutedSNIReachesItsOwnBackendNotTheOrigin(t *testing.T) {
 	if bytes.HasPrefix(tenantRecord, proxyV2Signature) {
 		t.Fatal("co-tenant received a PROXY header it never agreed to speak")
 	}
-	if !bytes.Contains(tenantRecord, []byte("node.syndichan.org")) {
+	if !bytes.Contains(tenantRecord, []byte("node.rabbiit.io")) {
 		t.Fatal("co-tenant did not receive the replayed ClientHello")
 	}
 	select {
@@ -283,8 +283,8 @@ func TestRoutedSNIReachesItsOwnBackendNotTheOrigin(t *testing.T) {
 	default:
 	}
 
-	request("syndichan.org")
-	if originRecord := <-originObserved; !bytes.Contains(originRecord, []byte("syndichan.org")) {
+	request("rabbiit.io")
+	if originRecord := <-originObserved; !bytes.Contains(originRecord, []byte("rabbiit.io")) {
 		t.Fatal("the origin stopped receiving its own traffic")
 	}
 }
@@ -292,8 +292,8 @@ func TestRoutedSNIReachesItsOwnBackendNotTheOrigin(t *testing.T) {
 func TestRoutedSNIRejectsATargetWithoutAPort(t *testing.T) {
 	_, err := New(Config{
 		OriginAddress: "1.2.3.4:443", LocalAddress: "127.0.0.1:9443",
-		LocalHostname: "gw-test.syndichan.org", SNIAllowlist: []string{"syndichan.org"},
-		SNIRoutes:      map[string]string{"node.syndichan.org": "no-port-here"},
+		LocalHostname: "gw-test.rabbiit.io", SNIAllowlist: []string{"rabbiit.io"},
+		SNIRoutes:      map[string]string{"node.rabbiit.io": "no-port-here"},
 		MaxConnections: 8, MaxBytesPerSecond: 1 << 20,
 		HandshakeTimeout: time.Second, DialTimeout: time.Second, IdleTimeout: time.Second,
 	}, nil)

@@ -16,7 +16,7 @@ import (
 	"github.com/aws/aws-sdk-go-v2/credentials"
 	awss3 "github.com/aws/aws-sdk-go-v2/service/s3"
 
-	"github.com/syndichan/maniwani/storage-client/internal/store"
+	"github.com/rabbiit/maniwani/storage-client/internal/store"
 )
 
 const publicReadPolicy = `{"Version":"2012-10-17","Statement":[{"Effect":"Allow",` +

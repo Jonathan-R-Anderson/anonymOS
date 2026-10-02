@@ -35,7 +35,7 @@ import (
 	"encoding/binary"
 	"time"
 
-	"github.com/syndichan/maniwani/storage-client/internal/axon/params"
+	"github.com/rabbiit/maniwani/storage-client/internal/axon/params"
 )
 
 // Role is which of §16.3's two mechanisms a link runs.

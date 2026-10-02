@@ -159,20 +159,20 @@ func TestDiscoverBuildsHostnameURLs(t *testing.T) {
 	// SRV gives HOSTNAMES, which is the point: a gateway holds a certificate
 	// for gw-<id>.<domain>, so connecting by bare address would fail TLS.
 	resolver := fakeResolver{records: []*net.SRV{
-		{Target: "gw-b.syndichan.org.", Port: 443, Priority: 10, Weight: 5},
-		{Target: "gw-a.syndichan.org.", Port: 443, Priority: 1, Weight: 1},
-		{Target: "gw-c.syndichan.org.", Port: 8443, Priority: 10, Weight: 50},
+		{Target: "gw-b.rabbiit.io.", Port: 443, Priority: 10, Weight: 5},
+		{Target: "gw-a.rabbiit.io.", Port: 443, Priority: 1, Weight: 1},
+		{Target: "gw-c.rabbiit.io.", Port: 8443, Priority: 10, Weight: 50},
 	}}
 	urls := Discover(context.Background(), resolver,
-		"_syndichan-bootstrap._tcp.syndichan.org")
+		"_rabbiit-bootstrap._tcp.rabbiit.io")
 	if len(urls) != 3 {
 		t.Fatalf("got %v", urls)
 	}
-	if !strings.HasPrefix(urls[0], "https://gw-a.syndichan.org/") {
+	if !strings.HasPrefix(urls[0], "https://gw-a.rabbiit.io/") {
 		t.Fatalf("priority ignored: %v", urls)
 	}
 	// Higher weight first within a priority.
-	if !strings.HasPrefix(urls[1], "https://gw-c.syndichan.org:8443/") {
+	if !strings.HasPrefix(urls[1], "https://gw-c.rabbiit.io:8443/") {
 		t.Fatalf("weight ignored: %v", urls)
 	}
 	if !strings.HasSuffix(urls[0], DocumentPath) {
@@ -197,7 +197,7 @@ func TestDiscoverIsHarmlessWhenDNSSaysNothing(t *testing.T) {
 func TestSourcesFallBackToConfiguredURLs(t *testing.T) {
 	// DNS being unavailable must not mean no bootstrap at all.
 	cfg := Config{SRVName: "_a._tcp.x.org",
-		URLs: []string{"https://node.syndichan.org" + DocumentPath}}
+		URLs: []string{"https://node.rabbiit.io" + DocumentPath}}
 	got := Sources(context.Background(), fakeResolver{err: fmt.Errorf("no")}, cfg)
 	if len(got) != 1 {
 		t.Fatalf("got %v", got)
@@ -206,10 +206,10 @@ func TestSourcesFallBackToConfiguredURLs(t *testing.T) {
 
 func TestSourcesDeduplicate(t *testing.T) {
 	resolver := fakeResolver{records: []*net.SRV{
-		{Target: "node.syndichan.org.", Port: 443},
+		{Target: "node.rabbiit.io.", Port: 443},
 	}}
 	cfg := Config{SRVName: "_a._tcp.x.org",
-		URLs: []string{"https://node.syndichan.org" + DocumentPath}}
+		URLs: []string{"https://node.rabbiit.io" + DocumentPath}}
 	if got := Sources(context.Background(), resolver, cfg); len(got) != 1 {
 		t.Fatalf("duplicate source not collapsed: %v", got)
 	}

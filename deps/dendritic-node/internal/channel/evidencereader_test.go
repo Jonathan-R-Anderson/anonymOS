@@ -28,7 +28,7 @@ import (
 	"sync"
 	"testing"
 
-	"github.com/syndichan/maniwani/storage-client/internal/ethproof"
+	"github.com/rabbiit/maniwani/storage-client/internal/ethproof"
 )
 
 // ---- a store that can be broken --------------------------------------------

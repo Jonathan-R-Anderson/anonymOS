@@ -62,7 +62,7 @@ func (c *BeaconClient) get(ctx context.Context, path string, out any) error {
 	// transport detail, not a trust one — but a 403 here would otherwise read
 	// as "this source cannot be asked", which the checkpoint acquirer treats
 	// as a hard failure.
-	req.Header.Set("User-Agent", "syndichan-lightclient/1.0")
+	req.Header.Set("User-Agent", "rabbiit-lightclient/1.0")
 	resp, err := c.HTTP.Do(req)
 	if err != nil {
 		return err

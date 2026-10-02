@@ -41,12 +41,12 @@ const NoteVersion uint16 = 1
 // and an encryption key derived from the same secret would be the same bytes,
 // and learning one would hand over the other.
 const (
-	domainNullifier = "syndichan/note/nullifier/v1"
-	domainOwner     = "syndichan/note/owner/v1"
-	domainKeyHint   = "syndichan/note/keyhint/v1"
-	domainValue     = "syndichan/note/value/v1"
-	domainContext   = "syndichan/note/context/v1"
-	domainRoute     = "syndichan/note/route/v1"
+	domainNullifier = "rabbiit/note/nullifier/v1"
+	domainOwner     = "rabbiit/note/owner/v1"
+	domainKeyHint   = "rabbiit/note/keyhint/v1"
+	domainValue     = "rabbiit/note/value/v1"
+	domainContext   = "rabbiit/note/context/v1"
+	domainRoute     = "rabbiit/note/route/v1"
 )
 
 var (

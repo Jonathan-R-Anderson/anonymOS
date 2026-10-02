@@ -18,12 +18,12 @@ import (
 
 	"github.com/libp2p/go-libp2p/core/peer"
 
-	"github.com/syndichan/maniwani/storage-client/internal/store"
+	"github.com/rabbiit/maniwani/storage-client/internal/store"
 )
 
 // SHARD RECALL OVER THE PEER PROTOCOL
 // ===================================
-// /syndichan/storage/1.0.0 dispatched four operations -- have, get,
+// /rabbiit/storage/1.0.0 dispatched four operations -- have, get,
 // pof-challenge, store -- and answered "unsupported operation" to everything
 // else. A shard that reached a peer could therefore never be taken back, so a
 // purge on the site was local-only and honestly reported the remote copies as
@@ -51,7 +51,7 @@ import (
 //
 // So a revocation is a DIFFERENT token:
 //
-//   - a different domain prefix, "syndichan-storage-revocation-v1";
+//   - a different domain prefix, "rabbiit-storage-revocation-v1";
 //   - a different field set (issued_at and a nonce; no size), so the two
 //     messages cannot collide even if a future refactor got the prefix wrong;
 //   - a REQUIRED recipient. A lease may name an empty recipient, which means
@@ -116,7 +116,9 @@ import (
 
 // revocationURL is the coordinator endpoint that mints delete tokens. A var, so
 // tests can point it at an httptest server, exactly like leaseURL.
-var revocationURL = "https://syndichan.org/api/v1/storage/revocations"
+var revocationURL = "https://rabbiit.io" + revocationPath
+
+const revocationPath = "/api/v1/storage/revocations"
 
 const (
 	// maxRevocationBatch bounds one coordinator request. A 40 MB object is 39
@@ -186,7 +188,7 @@ type revocationResponse struct {
 // fields, so no value can impersonate a field boundary.
 func revocationMessage(revocation Revocation) []byte {
 	return []byte(fmt.Sprintf(
-		"syndichan-storage-revocation-v1\n%d\n%s\n%s\n%s\n%s\n%d\n%d\n%s",
+		"rabbiit-storage-revocation-v1\n%d\n%s\n%s\n%s\n%s\n%d\n%d\n%s",
 		revocation.Version, revocation.ObjectID, revocation.ShardID,
 		revocation.Recipient, revocation.Requester, revocation.IssuedAt,
 		revocation.ExpiresAt, revocation.Nonce,
@@ -407,8 +409,8 @@ func (n *Node) requestRevocations(ctx context.Context, objectID string, shards [
 		}
 		request.Header.Set("Content-Type", "application/json")
 		request.Header.Set("Accept", "application/json")
-		request.Header.Set("X-Syndichan-Node", n.host.ID().String())
-		request.Header.Set("X-Syndichan-Signature", base64.RawStdEncoding.EncodeToString(signature))
+		request.Header.Set("X-Rabbiit-Node", n.host.ID().String())
+		request.Header.Set("X-Rabbiit-Signature", base64.RawStdEncoding.EncodeToString(signature))
 		return request, nil
 	}
 	request, err := newRequest()

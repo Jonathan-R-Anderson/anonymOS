@@ -24,7 +24,7 @@ import (
 	"fmt"
 	"io"
 
-	"github.com/syndichan/maniwani/storage-client/internal/store"
+	"github.com/rabbiit/maniwani/storage-client/internal/store"
 )
 
 // VaultBucket is where vault records live.

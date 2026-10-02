@@ -11,8 +11,8 @@ import (
 	"github.com/libp2p/go-libp2p/core/peer"
 	"github.com/multiformats/go-multihash"
 
-	syndii2p "github.com/syndichan/maniwani/storage-client/internal/i2p"
-	"github.com/syndichan/maniwani/storage-client/internal/place"
+	syndii2p "github.com/rabbiit/maniwani/storage-client/internal/i2p"
+	"github.com/rabbiit/maniwani/storage-client/internal/place"
 )
 
 // Storage-capacity advertisement: the half of the DHT that was missing.
@@ -40,7 +40,7 @@ func storageRendezvousCID() (cid.Cid, error) {
 }
 
 func storageCapacityKey(nodeID string) string {
-	return "/syndichan-storage/" + nodeID
+	return "/rabbiit-storage/" + nodeID
 }
 
 // PublishStorageCapacity announces how much room this node will accept.

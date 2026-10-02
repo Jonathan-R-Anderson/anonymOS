@@ -5,8 +5,8 @@ import (
 	"fmt"
 	"sort"
 
-	"github.com/syndichan/maniwani/storage-client/internal/axon/params"
-	"github.com/syndichan/maniwani/storage-client/internal/axon/peer"
+	"github.com/rabbiit/maniwani/storage-client/internal/axon/params"
+	"github.com/rabbiit/maniwani/storage-client/internal/axon/peer"
 )
 
 // SelectionPoint is a place where an adversary's identities could accumulate.

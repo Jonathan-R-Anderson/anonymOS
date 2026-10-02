@@ -39,9 +39,9 @@ import (
 
 	"github.com/decred/dcrd/dcrec/secp256k1/v4"
 
-	"github.com/syndichan/maniwani/storage-client/internal/channel"
-	"github.com/syndichan/maniwani/storage-client/internal/config"
-	"github.com/syndichan/maniwani/storage-client/internal/ui"
+	"github.com/rabbiit/maniwani/storage-client/internal/channel"
+	"github.com/rabbiit/maniwani/storage-client/internal/config"
+	"github.com/rabbiit/maniwani/storage-client/internal/ui"
 )
 
 // paymentStack is everything the node runs for channels, held together so

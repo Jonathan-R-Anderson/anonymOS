@@ -20,7 +20,7 @@ package ethproof
 // method fails, always, with the same error.
 //
 // That is safe today only because of a fact worth stating plainly: NOTHING in
-// cmd/syndichan-node constructs a BLSVerifier. The only callers of
+// cmd/rabbiit-node constructs a BLSVerifier. The only callers of
 // NewBLSVerifier in the whole repository are tests, and the light client takes
 // its verifier as a parameter rather than building one. BLS arrived as a
 // verified library capability with its consensus-spec vectors and was never

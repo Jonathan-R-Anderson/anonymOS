@@ -26,8 +26,8 @@ func newTestProxy(t *testing.T, origin *httptest.Server) *ContentProxy {
 func TestContentProxyServesAndNamesItself(t *testing.T) {
 	origin := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "text/html")
-		w.Header().Set("X-Syndichan-Signature", "sig")
-		w.Header().Set("X-Syndichan-Gateway", "origin")
+		w.Header().Set("X-Rabbiit-Signature", "sig")
+		w.Header().Set("X-Rabbiit-Gateway", "origin")
 		_, _ = io.WriteString(w, "<html>thread</html>")
 	}))
 	defer origin.Close()
@@ -39,15 +39,15 @@ func TestContentProxyServesAndNamesItself(t *testing.T) {
 		t.Fatalf("status = %d", recorder.Code)
 	}
 	// The origin's signature must survive, or the reader has nothing to check.
-	if recorder.Header().Get("X-Syndichan-Signature") != "sig" {
+	if recorder.Header().Get("X-Rabbiit-Signature") != "sig" {
 		t.Error("origin signature was not preserved")
 	}
 	// ...and the gateway must replace "origin" with itself, or the observation
 	// cannot be attributed to the key that actually served it.
-	if got := recorder.Header().Get("X-Syndichan-Gateway"); got != "12D3KooWTest" {
+	if got := recorder.Header().Get("X-Rabbiit-Gateway"); got != "12D3KooWTest" {
 		t.Errorf("gateway header = %q, want the gateway's own id", got)
 	}
-	if values := recorder.Header().Values("X-Syndichan-Gateway"); len(values) != 1 {
+	if values := recorder.Header().Values("X-Rabbiit-Gateway"); len(values) != 1 {
 		t.Errorf("gateway header appears %d times; a second value would let it "+
 			"claim to be both itself and the origin", len(values))
 	}
@@ -184,11 +184,11 @@ func TestServiceRoutesControlPlaneBeforeContent(t *testing.T) {
 }
 
 func TestContentProxyIsReadableCrossOriginButNeverWithCredentials(t *testing.T) {
-	// A reader on syndichan.org must be able to fetch the same object here and
+	// A reader on rabbiit.io must be able to fetch the same object here and
 	// compare it. Without CORS the browser hides the response and the only
 	// party positioned to audit a gateway cannot.
 	origin := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		w.Header().Set("X-Syndichan-Hash", "abc")
+		w.Header().Set("X-Rabbiit-Hash", "abc")
 		_, _ = io.WriteString(w, "ok")
 	}))
 	defer origin.Close()
@@ -206,7 +206,7 @@ func TestContentProxyIsReadableCrossOriginButNeverWithCredentials(t *testing.T) 
 		t.Error("credentials allowed cross-origin: any site could read an authenticated view")
 	}
 	exposed := recorder.Header().Get("Access-Control-Expose-Headers")
-	for _, header := range []string{"X-Syndichan-Hash", "X-Syndichan-Signature", "X-Syndichan-Gateway"} {
+	for _, header := range []string{"X-Rabbiit-Hash", "X-Rabbiit-Signature", "X-Rabbiit-Gateway"} {
 		if !strings.Contains(exposed, header) {
 			t.Errorf("%s is not exposed; an auditor could not read it", header)
 		}

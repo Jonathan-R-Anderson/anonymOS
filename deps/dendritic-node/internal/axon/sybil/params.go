@@ -1,6 +1,6 @@
 package sybil
 
-import "github.com/syndichan/maniwani/storage-client/internal/axon/params"
+import "github.com/rabbiit/maniwani/storage-client/internal/axon/params"
 
 // The bond floors, re-exported from params so this package reads one name per
 // value. They are NOT redefined here: params is the single home (T0.2), and a

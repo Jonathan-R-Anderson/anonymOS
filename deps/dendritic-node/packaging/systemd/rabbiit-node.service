@@ -1,11 +1,11 @@
 # REFERENCE COPY. scripts/install.sh generates a better unit than this one and
-# writes it to /etc/systemd/system/syndichan-node.service: it names whichever
+# writes it to /etc/systemd/system/rabbiit-node.service: it names whichever
 # router this machine actually has, and it adds an ExecStartPre that waits for
 # the SAM bridge. Prefer the installer; this file is for people who want to see
 # the shape, or who are packaging by hand.
 [Unit]
-Description=Syndichan encrypted volunteer storage and edge node
-Documentation=https://github.com/Jonathan-R-Anderson/syndichan/tree/main/storage-client
+Description=Rabbiit encrypted volunteer storage and edge node
+Documentation=https://github.com/Jonathan-R-Anderson/rabbiit/tree/main/storage-client
 Wants=network-online.target i2pd.service
 After=network-online.target i2pd.service
 # Wants=, not Requires=. Requires=i2pd.service refuses to start the node at all
@@ -15,14 +15,14 @@ After=network-online.target i2pd.service
 
 [Service]
 Type=simple
-User=syndichan
-Group=syndichan
+User=rabbiit
+Group=rabbiit
 # The node registers exactly six flags: -config, -payout, -capacity-gib,
 # -ui-listen, -show-config, -config-path. There is no -data-dir; passing it
 # exits 2 with "flag provided but not defined" before anything starts. The data
 # directory is the config file's own directory (config.LoadOrCreate), or the
 # data_dir key inside it.
-ExecStart=/usr/local/bin/syndichan-node -config /var/lib/syndichan/config.json
+ExecStart=/usr/local/bin/rabbiit-node -config /var/lib/rabbiit/config.json
 Restart=on-failure
 RestartSec=5s
 TimeoutStopSec=75s
@@ -42,7 +42,7 @@ ProtectControlGroups=true
 RestrictSUIDSGID=true
 LockPersonality=true
 MemoryDenyWriteExecute=true
-ReadWritePaths=/var/lib/syndichan
+ReadWritePaths=/var/lib/rabbiit
 
 [Install]
 WantedBy=multi-user.target

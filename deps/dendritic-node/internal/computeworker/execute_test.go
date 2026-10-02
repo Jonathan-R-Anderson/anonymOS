@@ -6,7 +6,7 @@ import (
 	"errors"
 	"testing"
 
-	"github.com/syndichan/maniwani/storage-client/internal/compute"
+	"github.com/rabbiit/maniwani/storage-client/internal/compute"
 )
 
 // THE rule. A container is not a boundary for code somebody else wrote, so a

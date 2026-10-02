@@ -13,8 +13,8 @@ import (
 	"testing"
 	"time"
 
-	"github.com/syndichan/maniwani/storage-client/internal/axon/contain"
-	"github.com/syndichan/maniwani/storage-client/internal/bootstrap"
+	"github.com/rabbiit/maniwani/storage-client/internal/axon/contain"
+	"github.com/rabbiit/maniwani/storage-client/internal/bootstrap"
 )
 
 // signedDocument builds a document the node will accept, signed by a key the

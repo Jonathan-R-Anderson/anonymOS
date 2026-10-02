@@ -7,7 +7,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/syndichan/maniwani/storage-client/internal/axon/link"
+	"github.com/rabbiit/maniwani/storage-client/internal/axon/link"
 )
 
 // M1 (§24) and E5.1: three nodes forward a cell.

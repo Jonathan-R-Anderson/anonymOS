@@ -206,9 +206,9 @@ func (v *Validator) audit(ctx context.Context, key []byte, gateway directoryEntr
 	}
 	latency := int(time.Since(started).Milliseconds())
 
-	version := response.Header.Get("X-Syndichan-Version")
-	signature := response.Header.Get("X-Syndichan-Signature")
-	served := response.Header.Get("X-Syndichan-Gateway")
+	version := response.Header.Get("X-Rabbiit-Version")
+	signature := response.Header.Get("X-Rabbiit-Signature")
+	served := response.Header.Get("X-Rabbiit-Gateway")
 	digest := sha256.Sum256(body)
 	bodyHash := hex.EncodeToString(digest[:])
 
@@ -242,7 +242,7 @@ func verifyObject(key []byte, objectKey, version, bodyHash, signature string) bo
 	if err != nil || len(raw) != 64 || len(key) != 32 {
 		return false
 	}
-	message := []byte("syndichan-object:v1\n" + objectKey + "\n" + version + "\n" + bodyHash)
+	message := []byte("rabbiit-object:v1\n" + objectKey + "\n" + version + "\n" + bodyHash)
 	return ed25519.Verify(ed25519.PublicKey(key), message, raw)
 }
 
@@ -260,7 +260,7 @@ func parseVersion(value string) int64 {
 func (v *Validator) report(ctx context.Context, gateway, objectKey, version,
 	bodyHash, result string, latency int) {
 	message := strings.Join([]string{
-		"syndichan-audit:v1", gateway, objectKey,
+		"rabbiit-audit:v1", gateway, objectKey,
 		strconv.FormatInt(parseVersion(version), 10), bodyHash, result,
 	}, "\n")
 	signature, err := v.Signer.Sign([]byte(message))
@@ -310,7 +310,7 @@ func (v *Validator) report(ctx context.Context, gateway, objectKey, version,
 
 func (v *Validator) originPublicKey(ctx context.Context) ([]byte, error) {
 	var document originKey
-	if err := v.fetchJSON(ctx, "/.well-known/syndichan/origin-key.json", &document); err != nil {
+	if err := v.fetchJSON(ctx, "/.well-known/rabbiit/origin-key.json", &document); err != nil {
 		return nil, err
 	}
 	if !document.Signing || document.PublicKey == "" {

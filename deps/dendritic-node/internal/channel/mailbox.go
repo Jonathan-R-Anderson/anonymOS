@@ -69,7 +69,7 @@ var (
 // for the reason PofRegistration.proof_message gives: a proof that did not name
 // what it was authorising could be replayed to point the same consent somewhere
 // else. This one cannot be lifted onto another volunteer or another window.
-const MailboxAuthorizationPrefix = "syndichan-mailbox:v1"
+const MailboxAuthorizationPrefix = "rabbiit-mailbox:v1"
 
 // MailboxAuthorization is a recipient's signed statement that a volunteer may
 // hold their mail.
@@ -337,7 +337,7 @@ func (m *Mailbox) Pending(recipient Address) int {
 // one volunteer cannot be replayed on another. The token comes from the node so
 // that a stale one cannot be reused indefinitely.
 func MailboxChallenge(nodeID string, recipient Address, token string) [32]byte {
-	return keccak32([]byte("syndichan-mailbox-collect:v1\n" +
+	return keccak32([]byte("rabbiit-mailbox-collect:v1\n" +
 		nodeID + "\n" + strings.ToLower(recipient.Hex()) + "\n" + token))
 }
 

@@ -12,7 +12,7 @@ import (
 )
 
 // DocumentPath is where every gateway serves the bootstrap document.
-const DocumentPath = "/.well-known/syndichan/storage-node.json"
+const DocumentPath = "/.well-known/rabbiit/storage-node.json"
 
 const (
 	fetchTimeout = 15 * time.Second

@@ -9,10 +9,10 @@ import (
 	"strings"
 	"time"
 
-	"github.com/syndichan/maniwani/storage-client/internal/config"
-	"github.com/syndichan/maniwani/storage-client/internal/facilitation"
-	"github.com/syndichan/maniwani/storage-client/internal/p2p"
-	"github.com/syndichan/maniwani/storage-client/internal/store"
+	"github.com/rabbiit/maniwani/storage-client/internal/config"
+	"github.com/rabbiit/maniwani/storage-client/internal/facilitation"
+	"github.com/rabbiit/maniwani/storage-client/internal/p2p"
+	"github.com/rabbiit/maniwani/storage-client/internal/store"
 )
 
 // Wiring the node into Proof-of-Facilitation.
@@ -188,11 +188,11 @@ func loadNodeSigningKey(node *p2p.Node) (ed25519.PublicKey, ed25519.PrivateKey, 
 func siteBaseURL(cfg config.Config) string {
 	raw := strings.TrimSpace(cfg.Gateway.RegistrationAPI)
 	if raw == "" {
-		return "https://syndichan.org"
+		return "https://rabbiit.io"
 	}
 	parsed, err := url.Parse(raw)
 	if err != nil || parsed.Scheme == "" || parsed.Host == "" {
-		return "https://syndichan.org"
+		return "https://rabbiit.io"
 	}
 	return parsed.Scheme + "://" + parsed.Host
 }

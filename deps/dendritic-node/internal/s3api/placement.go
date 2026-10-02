@@ -9,7 +9,7 @@ import (
 	"strconv"
 	"time"
 
-	"github.com/syndichan/maniwani/storage-client/internal/store"
+	"github.com/rabbiit/maniwani/storage-client/internal/store"
 )
 
 // THE LEDGER OVER HTTP

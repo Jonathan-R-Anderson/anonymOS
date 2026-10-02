@@ -24,9 +24,9 @@ try {
         $env:GOOS = $target.OS
         $env:GOARCH = $target.Arch
         $env:GOARM = $target.Arm
-        $output = "dist/syndichan-node-$($target.OS)-$($target.Arch)$($target.Suffix)"
+        $output = "dist/rabbiit-node-$($target.OS)-$($target.Arch)$($target.Suffix)"
         Write-Host "building $output"
-        & go build -trimpath "-ldflags=-s -w" -o $output ./cmd/syndichan-node
+        & go build -trimpath "-ldflags=-s -w" -o $output ./cmd/rabbiit-node
         if ($LASTEXITCODE -ne 0) {
             throw "go build failed for $($target.OS)/$($target.Arch)"
         }

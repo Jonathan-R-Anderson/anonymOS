@@ -48,14 +48,14 @@ import (
 
 	"github.com/libp2p/go-libp2p/core/peer"
 
-	"github.com/syndichan/maniwani/storage-client/internal/config"
-	"github.com/syndichan/maniwani/storage-client/internal/p2p"
+	"github.com/rabbiit/maniwani/storage-client/internal/config"
+	"github.com/rabbiit/maniwani/storage-client/internal/p2p"
 )
 
 // peerHeader names the peer a compute request arrived from, on the synthetic
 // request handed to the HTTP handlers. Absent for loopback callers, which is
 // what keeps the site's own behaviour exactly as it was.
-const peerHeader = "X-Syndichan-Peer"
+const peerHeader = "X-Rabbiit-Peer"
 
 // computeRelayTimeout bounds one relayed exchange at this node.
 //

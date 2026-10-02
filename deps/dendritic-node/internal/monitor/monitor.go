@@ -1,4 +1,4 @@
-// Package monitor checks that Syndichan answers, from wherever this node is,
+// Package monitor checks that Rabbiit answers, from wherever this node is,
 // and publishes the result to the public status page at /status.
 //
 // # WHY THE NODE DOES THIS AND NOT THE SERVER
@@ -40,7 +40,7 @@ import (
 
 const (
 	// UserAgent matches the storage client's, which the coordinator requires.
-	UserAgent = "Syndichan-Storage-Client/1.0"
+	UserAgent = "Rabbiit-Storage-Client/1.0"
 
 	// DefaultInterval is used only until the coordinator states its own. It is
 	// a floor rather than a schedule -- see jitter below.
@@ -290,8 +290,8 @@ func (c *Client) send(ctx context.Context, url string, results []Result) error {
 	}
 	req.Header.Set("Content-Type", "application/json")
 	req.Header.Set("User-Agent", UserAgent)
-	req.Header.Set("X-Syndichan-Node", c.Signer.ID())
-	req.Header.Set("X-Syndichan-Signature", base64.RawURLEncoding.EncodeToString(signature))
+	req.Header.Set("X-Rabbiit-Node", c.Signer.ID())
+	req.Header.Set("X-Rabbiit-Signature", base64.RawURLEncoding.EncodeToString(signature))
 
 	resp, err := c.client().Do(req)
 	if err != nil {

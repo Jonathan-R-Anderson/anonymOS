@@ -1,6 +1,6 @@
 [Unit]
-Description=Syndichan dedicated HTTPS gateway
-Documentation=https://github.com/Jonathan-R-Anderson/syndichan-node
+Description=Rabbiit dedicated HTTPS gateway
+Documentation=https://github.com/Jonathan-R-Anderson/dendritic-node
 Wants=network-online.target
 After=network-online.target
 
@@ -8,13 +8,13 @@ After=network-online.target
 Type=simple
 User=ubuntu
 Group=ubuntu
-WorkingDirectory=/home/ubuntu/syndichan-node
+WorkingDirectory=/home/ubuntu/rabbiit-node
 # Neither -gateway-only nor -data-dir exists on the binary; both exit 2 with
 # "flag provided but not defined". The gateway role is selected IN THE CONFIG:
 #   "run_mode": "gateway-only"
-# in /home/ubuntu/syndichan-node/config/config.json (see GATEWAY.md). The data
+# in /home/ubuntu/rabbiit-node/config/config.json (see GATEWAY.md). The data
 # directory is that config file's own directory, or its data_dir key.
-ExecStart=/home/ubuntu/syndichan-node/bin/syndichan-node -config /home/ubuntu/syndichan-node/config/config.json
+ExecStart=/home/ubuntu/rabbiit-node/bin/rabbiit-node -config /home/ubuntu/rabbiit-node/config/config.json
 Restart=on-failure
 RestartSec=5s
 TimeoutStopSec=75s
@@ -26,7 +26,7 @@ PrivateTmp=true
 PrivateDevices=true
 ProtectSystem=strict
 ProtectHome=read-only
-ReadWritePaths=/home/ubuntu/syndichan-node
+ReadWritePaths=/home/ubuntu/rabbiit-node
 ProtectKernelTunables=true
 ProtectKernelModules=true
 ProtectControlGroups=true

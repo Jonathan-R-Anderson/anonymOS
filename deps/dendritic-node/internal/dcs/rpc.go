@@ -14,7 +14,7 @@ import (
 
 // ProtocolID is the libp2p stream protocol DCS speaks, alongside the existing
 // storage protocol on the same host.
-const ProtocolID = "/syndichan/dcs/1.0.0"
+const ProtocolID = "/rabbiit/dcs/1.0.0"
 
 // Every DCS request is wrapped in a signed envelope. Transport is already
 // Noise-encrypted over I2P; the signature is ADDITIONAL and authenticates the

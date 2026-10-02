@@ -19,8 +19,8 @@ import (
 	"sync"
 	"time"
 
-	"github.com/syndichan/maniwani/storage-client/internal/store"
-	"github.com/syndichan/maniwani/storage-client/internal/traffic"
+	"github.com/rabbiit/maniwani/storage-client/internal/store"
+	"github.com/rabbiit/maniwani/storage-client/internal/traffic"
 )
 
 type Server struct {
@@ -72,7 +72,7 @@ func New(storage *store.Store, accessKey, secretKey string, logger *log.Logger) 
 func (s *Server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	requestID := fmt.Sprintf("%x", sha256.Sum256([]byte(fmt.Sprintf("%d-%s", time.Now().UnixNano(), r.RemoteAddr))))[:16]
 	w.Header().Set("x-amz-request-id", requestID)
-	w.Header().Set("Server", "SyndichanStorageNode")
+	w.Header().Set("Server", "RabbiitStorageNode")
 	bucket, key := splitPath(r.URL.Path)
 	query := r.URL.Query()
 	var auth AuthResult
@@ -91,7 +91,7 @@ func (s *Server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 	}
-	if strings.HasPrefix(key, ".syndichan-multipart/") {
+	if strings.HasPrefix(key, ".rabbiit-multipart/") {
 		s3Error(w, "AccessDenied", "This object-key prefix is reserved.", http.StatusForbidden, requestID)
 		return
 	}
@@ -193,7 +193,7 @@ func (s *Server) uploadPart(w http.ResponseWriter, r *http.Request, bucket, key,
 		s3Error(w, "NoSuchUpload", "The specified multipart upload does not exist.", http.StatusNotFound, requestID)
 		return
 	}
-	hiddenKey := ".syndichan-multipart/" + uploadID + "/" + strconv.Itoa(partNumber)
+	hiddenKey := ".rabbiit-multipart/" + uploadID + "/" + strconv.Itoa(partNumber)
 	reader := http.MaxBytesReader(w, r.Body, s.maxBody)
 	var manifest *store.Manifest
 	if expectedHash == "UNSIGNED-PAYLOAD" {
@@ -493,8 +493,8 @@ func (s *Server) listBuckets(w http.ResponseWriter, requestID string) {
 		} `xml:"Owner"`
 		Buckets []bucket `xml:"Buckets>Bucket"`
 	}{Xmlns: "http://s3.amazonaws.com/doc/2006-03-01/"}
-	payload.Owner.ID = "syndichan-local-node"
-	payload.Owner.DisplayName = "Syndichan storage node"
+	payload.Owner.ID = "rabbiit-local-node"
+	payload.Owner.DisplayName = "Rabbiit storage node"
 	for _, name := range names {
 		payload.Buckets = append(payload.Buckets, bucket{Name: name, CreationDate: time.Now().UTC().Format(time.RFC3339)})
 	}
@@ -562,7 +562,7 @@ func (s *Server) listObjects(w http.ResponseWriter, bucket, prefix, requestID st
 		Prefix: prefix, KeyCount: len(objects), MaxKeys: 1000,
 	}
 	for _, object := range objects {
-		if strings.HasPrefix(object.Key, ".syndichan-multipart/") {
+		if strings.HasPrefix(object.Key, ".rabbiit-multipart/") {
 			continue
 		}
 		payload.Contents = append(payload.Contents, content{

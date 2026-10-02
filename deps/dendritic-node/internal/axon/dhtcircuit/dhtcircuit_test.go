@@ -12,8 +12,8 @@ import (
 	"testing"
 	"time"
 
-	"github.com/syndichan/maniwani/storage-client/internal/axon/dht"
-	"github.com/syndichan/maniwani/storage-client/internal/axon/session"
+	"github.com/rabbiit/maniwani/storage-client/internal/axon/dht"
+	"github.com/rabbiit/maniwani/storage-client/internal/axon/session"
 )
 
 // pipe is a minimal in-memory carrier pair: what a circuit to a relay is, for

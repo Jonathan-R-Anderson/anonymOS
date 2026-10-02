@@ -11,7 +11,7 @@ import (
 
 	record "github.com/libp2p/go-libp2p-record"
 
-	"github.com/syndichan/maniwani/storage-client/internal/store"
+	"github.com/rabbiit/maniwani/storage-client/internal/store"
 )
 
 // objectManifestNamespace is the DHT namespace for object manifests. A manifest
@@ -19,7 +19,7 @@ import (
 // node reassemble an object by content -- the piece that was previously trapped
 // in each node's local BoltDB, which is why the coordinator's build context
 // could never cross from the bridge to a worker.
-const objectManifestNamespace = "syndichan-object-manifest"
+const objectManifestNamespace = "rabbiit-object-manifest"
 
 // manifestFetchTimeout budgets a DHT GetValue for a manifest.
 //

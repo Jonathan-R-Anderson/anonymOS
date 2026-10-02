@@ -31,7 +31,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/syndichan/maniwani/storage-client/internal/axon/release"
+	"github.com/rabbiit/maniwani/storage-client/internal/axon/release"
 )
 
 func main() {

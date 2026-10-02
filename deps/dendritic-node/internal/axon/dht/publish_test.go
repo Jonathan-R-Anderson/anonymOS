@@ -10,8 +10,8 @@ import (
 	"testing"
 	"time"
 
-	"github.com/syndichan/maniwani/storage-client/internal/axon/identity"
-	"github.com/syndichan/maniwani/storage-client/internal/axon/params"
+	"github.com/rabbiit/maniwani/storage-client/internal/axon/identity"
+	"github.com/rabbiit/maniwani/storage-client/internal/axon/params"
 )
 
 // network is a toy DHT: a routing table wide enough to hold r=8 verified

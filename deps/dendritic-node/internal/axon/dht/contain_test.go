@@ -6,7 +6,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/syndichan/maniwani/storage-client/internal/axon/contain"
+	"github.com/rabbiit/maniwani/storage-client/internal/axon/contain"
 )
 
 func contained(t *testing.T, ids ...string) *contain.List {

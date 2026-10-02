@@ -21,7 +21,7 @@ import (
 	"sync"
 	"time"
 
-	"github.com/syndichan/maniwani/storage-client/internal/axon/name"
+	"github.com/rabbiit/maniwani/storage-client/internal/axon/name"
 )
 
 // Mode is how an answer was obtained. §13.3 makes it a field in every answer.

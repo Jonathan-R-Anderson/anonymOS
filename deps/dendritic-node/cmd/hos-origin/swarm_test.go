@@ -15,8 +15,8 @@ import (
 	"testing"
 	"time"
 
-	"github.com/syndichan/maniwani/storage-client/internal/axon/session"
-	"github.com/syndichan/maniwani/storage-client/internal/axon/swarm"
+	"github.com/rabbiit/maniwani/storage-client/internal/axon/session"
+	"github.com/rabbiit/maniwani/storage-client/internal/axon/swarm"
 )
 
 // An in-memory carrier pair: what a rendezvous circuit is, for this test. The

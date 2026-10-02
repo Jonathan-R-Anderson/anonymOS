@@ -10,7 +10,7 @@ import (
 	"testing"
 
 	"filippo.io/edwards25519"
-	"github.com/syndichan/maniwani/storage-client/internal/facilitation"
+	"github.com/rabbiit/maniwani/storage-client/internal/facilitation"
 )
 
 // P1's test plan, executable. Each test names the criterion it discharges so a

@@ -6,7 +6,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/syndichan/maniwani/storage-client/internal/axon/link"
+	"github.com/rabbiit/maniwani/storage-client/internal/axon/link"
 )
 
 // TestCircuitTableConcurrentAccess exercises the relay circuit table's map

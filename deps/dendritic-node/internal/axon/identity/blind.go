@@ -11,7 +11,7 @@ import (
 	"time"
 
 	"filippo.io/edwards25519"
-	"github.com/syndichan/maniwani/storage-client/internal/axon/params"
+	"github.com/rabbiit/maniwani/storage-client/internal/axon/params"
 )
 
 // Ed25519 key blinding for descriptor keys (section 5.4).

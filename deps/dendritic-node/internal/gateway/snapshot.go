@@ -39,7 +39,7 @@ import (
 // in configuration. Objects are checked against the manifest when stored AND
 // again when served, because a cache on a volunteer's disk is not more
 // trustworthy than the network it came from — and the whole point of this
-// system is that a gateway operator cannot change what syndichan says.
+// system is that a gateway operator cannot change what rabbiit says.
 //
 // A snapshot that fails verification is discarded, not quarantined. There is no
 // use for bytes that are almost right.
@@ -134,7 +134,7 @@ func (m *SnapshotManifest) Usable(now time.Time) bool {
 
 // NewSnapshotCache builds a cache. A nil publisher key disables it entirely:
 // an unverifiable snapshot is worse than none, because it would let whoever
-// runs this machine decide what syndichan says during an outage.
+// runs this machine decide what rabbiit says during an outage.
 func NewSnapshotCache(origin, dir string, key ed25519.PublicKey) *SnapshotCache {
 	return &SnapshotCache{
 		Origin: strings.TrimRight(origin, "/"), PublisherKey: key, Dir: dir,
@@ -212,7 +212,7 @@ func describeHeld(m *SnapshotManifest) string {
 }
 
 func (c *SnapshotCache) fetchManifest(ctx context.Context) (*SnapshotManifest, error) {
-	body, err := c.get(ctx, c.Origin+"/.well-known/syndichan/snapshot.json", 1<<22)
+	body, err := c.get(ctx, c.Origin+"/.well-known/rabbiit/snapshot.json", 1<<22)
 	if err != nil {
 		return nil, err
 	}
@@ -246,7 +246,7 @@ func (c *SnapshotCache) verify(m *SnapshotManifest) error {
 		}
 	}
 	message := []byte(strings.Join([]string{
-		"syndichan-snapshot:v1", m.SnapshotID, strconv.FormatInt(m.Sequence, 10),
+		"rabbiit-snapshot:v1", m.SnapshotID, strconv.FormatInt(m.Sequence, 10),
 		m.RootHash, strconv.FormatInt(m.CreatedAt, 10),
 		strconv.FormatInt(m.ExpiresAt, 10), strconv.Itoa(m.ObjectCount),
 	}, "\n"))
@@ -468,7 +468,7 @@ func (c *SnapshotCache) Revoked() bool {
 // it is needed" is how a snapshot that leaked private data or carried injected
 // script gets served during the next outage by a gateway that meant well.
 func (c *SnapshotCache) refreshControl(ctx context.Context) {
-	body, err := c.get(ctx, c.Origin+"/.well-known/syndichan/revocations.json", 1<<20)
+	body, err := c.get(ctx, c.Origin+"/.well-known/rabbiit/revocations.json", 1<<20)
 	if err != nil {
 		return
 	}
@@ -529,7 +529,7 @@ func (c *SnapshotCache) verifyRevocations(r *Revocations) bool {
 		parts = append(parts, strconv.FormatInt(s, 10))
 	}
 	message := []byte(strings.Join([]string{
-		"syndichan-revocation:v1",
+		"rabbiit-revocation:v1",
 		strings.Join(parts, ","),
 		strings.Join(ids, ","),
 		strconv.FormatInt(r.Sequence, 10),
@@ -540,7 +540,7 @@ func (c *SnapshotCache) verifyRevocations(r *Revocations) bool {
 
 // FetchDefensiveMode returns a verified, unexpired defensive-mode record.
 func (c *SnapshotCache) FetchDefensiveMode(ctx context.Context) *DefensiveMode {
-	body, err := c.get(ctx, c.Origin+"/.well-known/syndichan/defensive-mode.json", 1<<16)
+	body, err := c.get(ctx, c.Origin+"/.well-known/rabbiit/defensive-mode.json", 1<<16)
 	if err != nil {
 		return nil
 	}
@@ -549,7 +549,7 @@ func (c *SnapshotCache) FetchDefensiveMode(ctx context.Context) *DefensiveMode {
 		return nil
 	}
 	message := []byte(strings.Join([]string{
-		"syndichan-defensive:v1", record.Mode, record.Reason,
+		"rabbiit-defensive:v1", record.Mode, record.Reason,
 		strconv.FormatInt(record.IssuedAt, 10),
 		strconv.FormatInt(record.ExpiresAt, 10),
 		strconv.FormatInt(record.MinimumSnapshotSequence, 10),

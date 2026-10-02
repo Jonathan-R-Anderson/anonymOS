@@ -205,7 +205,7 @@ func (f *Forwarder) ClaimUpstream(ctx context.Context, in Incoming,
 // the same intent across a restart. See the comment at its call site in
 // SweepClaimable for the theft that a lock-id-only key allowed.
 func claimUpstreamIntent(in Incoming) [32]byte {
-	return derive("syndichan/routing/claim-upstream/v2",
+	return derive("rabbiit/routing/claim-upstream/v2",
 		in.Channel[:], in.Lock.ID[:], in.Lock.Hash[:],
 		orZero(in.Lock.Amount).Bytes(), u64(uint64(in.Lock.Expiry)))
 }

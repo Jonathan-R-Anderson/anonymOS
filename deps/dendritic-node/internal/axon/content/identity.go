@@ -31,7 +31,7 @@ import (
 	"errors"
 	"fmt"
 
-	"github.com/syndichan/maniwani/storage-client/internal/axon/name"
+	"github.com/rabbiit/maniwani/storage-client/internal/axon/name"
 )
 
 // ServiceType is what a name serves. Coarse on purpose: a finer taxonomy would

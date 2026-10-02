@@ -15,7 +15,7 @@ import (
 //
 // WHY THIS EXISTS
 // ---------------
-// The SNI frontend forwards syndichan.org straight to the origin without
+// The SNI frontend forwards rabbiit.io straight to the origin without
 // decrypting it. That is safe, and it is also unmeasurable: the reader's TLS
 // session ends at the origin, so every response says it came from the origin no
 // matter whose machine carried it. A volunteer cannot be credited for honest
@@ -23,13 +23,13 @@ import (
 // can see distinguishes one gateway from another — or from none.
 //
 // This handler is the opposite trade. It terminates TLS under
-// gw-<hash>.syndichan.org, fetches the object from the origin, and serves it
+// gw-<hash>.rabbiit.io, fetches the object from the origin, and serves it
 // under its OWN name and its OWN certificate. That means it *can* alter the
-// bytes — which is the point. The origin signs content (X-Syndichan-Signature),
+// bytes — which is the point. The origin signs content (X-Rabbiit-Signature),
 // so a reader can check what they were handed, and an alteration is now a thing
 // that can be detected and attributed rather than a thing nobody can express.
 //
-// The volunteer never holds syndichan.org's private key. It holds a certificate
+// The volunteer never holds rabbiit.io's private key. It holds a certificate
 // for a name that is visibly its own, which is what lets a reader tell which
 // party is answering.
 //
@@ -60,7 +60,7 @@ type ContentProxy struct {
 	Origin *url.URL
 	// ServerName is the TLS name to validate the origin against. The origin is
 	// reached by address, so the certificate check is what makes this a
-	// connection to syndichan.org rather than to whoever holds that address.
+	// connection to rabbiit.io rather than to whoever holds that address.
 	ServerName string
 	// NodeID is this gateway's peer ID, announced on every response it serves.
 	NodeID     string
@@ -108,7 +108,7 @@ func NewContentProxy(origin *url.URL, serverName, nodeID string, originAddress s
 	}
 	if originAddress != "" {
 		// Pin the origin to a literal address while still validating its
-		// certificate by name. DNS for syndichan.org points at gateways as well
+		// certificate by name. DNS for rabbiit.io points at gateways as well
 		// as at the origin, so resolving it here could send a gateway's fetch to
 		// another gateway — a loop, and a way for one volunteer's answer to be
 		// laundered through another's identity.
@@ -199,7 +199,7 @@ func (p *ContentProxy) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	outbound.Host = p.ServerName
 	// The origin must be able to tell a gateway fetch from a reader, both for
 	// its own logs and so it never treats one as a visitor.
-	outbound.Header.Set("X-Syndichan-Gateway-Fetch", p.NodeID)
+	outbound.Header.Set("X-Rabbiit-Gateway-Fetch", p.NodeID)
 	outbound.Header.Del("Accept-Encoding") // let Go negotiate; body must be verifiable
 
 	response, err := p.client.Do(outbound)
@@ -240,10 +240,10 @@ func (p *ContentProxy) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	// gateway overwrites it with its own identity, which is what makes an audit
 	// receipt attributable to a specific key. Set, not added: two values would
 	// let a gateway claim to be both itself and the origin.
-	w.Header().Set("X-Syndichan-Gateway", p.NodeID)
+	w.Header().Set("X-Rabbiit-Gateway", p.NodeID)
 	w.Header().Set("X-Gateway-Version", "1")
 
-	// Readable cross-origin, so a reader on syndichan.org can fetch the same
+	// Readable cross-origin, so a reader on rabbiit.io can fetch the same
 	// object here and compare it against the origin's signature. Without this
 	// the browser hides the response and a gateway becomes un-auditable by the
 	// only party positioned to audit it.
@@ -255,8 +255,8 @@ func (p *ContentProxy) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Access-Control-Allow-Origin", "*")
 	w.Header().Set("Access-Control-Allow-Credentials", "false")
 	w.Header().Set("Access-Control-Expose-Headers",
-		"X-Syndichan-Version, X-Syndichan-Hash, X-Syndichan-Signature, "+
-			"X-Syndichan-Key, X-Syndichan-Gateway, X-Gateway-Version")
+		"X-Rabbiit-Version, X-Rabbiit-Hash, X-Rabbiit-Signature, "+
+			"X-Rabbiit-Key, X-Rabbiit-Gateway, X-Gateway-Version")
 
 	w.WriteHeader(response.StatusCode)
 	if r.Method == http.MethodHead {
@@ -329,20 +329,20 @@ func (p *ContentProxy) snapshotHeaders(w http.ResponseWriter, m *SnapshotManifes
 	// the snapshot manifest rather than a live object signature it cannot have.
 	// The header only SELECTS that path — the manifest signature decides whether
 	// the bytes are genuine, so a gateway cannot use it to escape checking.
-	w.Header().Set("X-Syndichan-Source", "snapshot")
-	w.Header().Set("X-Syndichan-Snapshot", strconv.FormatInt(m.Sequence, 10))
-	w.Header().Set("X-Syndichan-Snapshot-Time",
+	w.Header().Set("X-Rabbiit-Source", "snapshot")
+	w.Header().Set("X-Rabbiit-Snapshot", strconv.FormatInt(m.Sequence, 10))
+	w.Header().Set("X-Rabbiit-Snapshot-Time",
 		time.Unix(m.CreatedAt, 0).UTC().Format(time.RFC3339))
-	w.Header().Set("X-Syndichan-Cache-State", state)
-	w.Header().Set("X-Syndichan-Gateway", p.NodeID)
+	w.Header().Set("X-Rabbiit-Cache-State", state)
+	w.Header().Set("X-Rabbiit-Gateway", p.NodeID)
 	// Short: the origin may come back at any moment, and a reader holding an
 	// emergency copy for an hour would not notice.
 	w.Header().Set("Cache-Control", "public, max-age=120")
 	w.Header().Set("Warning", `110 - "Response served from emergency cached snapshot"`)
 	w.Header().Set("Access-Control-Allow-Origin", "*")
 	w.Header().Set("Access-Control-Expose-Headers",
-		"X-Syndichan-Source, X-Syndichan-Snapshot, X-Syndichan-Snapshot-Time, "+
-			"X-Syndichan-Cache-State, X-Syndichan-Gateway")
+		"X-Rabbiit-Source, X-Rabbiit-Snapshot, X-Rabbiit-Snapshot-Time, "+
+			"X-Rabbiit-Cache-State, X-Rabbiit-Gateway")
 }
 
 // MaintenancePage is served when there is no usable snapshot at all.
@@ -365,10 +365,10 @@ func maintenancePage(m *SnapshotManifest, note string) string {
 	}
 	return `<!doctype html><html lang="en"><head><meta charset="utf-8">` +
 		`<meta name="viewport" content="width=device-width,initial-scale=1">` +
-		`<title>syndichan — temporarily unavailable</title></head>` +
+		`<title>rabbiit — temporarily unavailable</title></head>` +
 		`<body style="background:#111;color:#ddd;font:16px/1.6 system-ui,sans-serif;` +
 		`margin:0;padding:3rem 1.5rem;text-align:center">` +
-		`<h1 style="font-size:1.4rem;color:#ffb84d">syndichan is temporarily in emergency mode</h1>` +
+		`<h1 style="font-size:1.4rem;color:#ffb84d">rabbiit is temporarily in emergency mode</h1>` +
 		`<p>The live service is unavailable and no usable cached copy is held here.</p>` +
 		note + taken +
 		`<p>No logins, posts, purchases or transfers are being processed.</p>` +
@@ -404,13 +404,13 @@ func (p *ContentProxy) serveOffload(w http.ResponseWriter, r *http.Request) bool
 	// Named honestly. Not "snapshot", because a client verifier must check
 	// these against the LIVE object signature they carry — they are the
 	// origin's bytes and have one — rather than against the snapshot manifest.
-	w.Header().Set("X-Syndichan-Source", "gateway-cache")
+	w.Header().Set("X-Rabbiit-Source", "gateway-cache")
 	if manifest != nil {
-		w.Header().Set("X-Syndichan-Snapshot", strconv.FormatInt(manifest.Sequence, 10))
-		w.Header().Set("X-Syndichan-Snapshot-Time",
+		w.Header().Set("X-Rabbiit-Snapshot", strconv.FormatInt(manifest.Sequence, 10))
+		w.Header().Set("X-Rabbiit-Snapshot-Time",
 			time.Unix(manifest.CreatedAt, 0).UTC().Format(time.RFC3339))
 	}
-	w.Header().Set("X-Syndichan-Gateway", p.NodeID)
+	w.Header().Set("X-Rabbiit-Gateway", p.NodeID)
 	w.Header().Set("Cache-Control", "public, max-age=300")
 	w.WriteHeader(http.StatusOK)
 	if r.Method == http.MethodHead {

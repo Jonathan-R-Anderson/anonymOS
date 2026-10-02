@@ -4,7 +4,7 @@ import (
 	"math"
 	"sort"
 
-	"github.com/syndichan/maniwani/storage-client/internal/axon/peer"
+	"github.com/rabbiit/maniwani/storage-client/internal/axon/peer"
 )
 
 // G5 — reporter reputation and report weight (§90).

@@ -43,7 +43,7 @@ import (
 	"math/big"
 	"strings"
 
-	"github.com/syndichan/maniwani/storage-client/internal/ethproof"
+	"github.com/rabbiit/maniwani/storage-client/internal/ethproof"
 )
 
 // ErrNoVerifiedEvidence means nothing usable is held for a channel.

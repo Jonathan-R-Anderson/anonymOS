@@ -126,7 +126,7 @@ type MultipathPayment struct {
 // FragmentIntent derives a leg's intent. Deterministic in every input, so a
 // retry is byte-identical and a different fragment is never confusable.
 func FragmentIntent(paymentID [32]byte, index int, channel [32]byte, amount *big.Int) [32]byte {
-	return derive("syndichan/multipath/intent/v1",
+	return derive("rabbiit/multipath/intent/v1",
 		paymentID[:], u64(uint64(index)), channel[:], orZero(amount).Bytes())
 }
 
@@ -135,7 +135,7 @@ func FragmentIntent(paymentID [32]byte, index int, channel [32]byte, amount *big
 // Keyed by the leg's intent rather than its index — see the file header for the
 // two attacks that (secret, index) allowed.
 func FragmentPreimage(secret [32]byte, intent [32]byte) [32]byte {
-	return derive("syndichan/multipath/preimage/v2", secret[:], intent[:])
+	return derive("rabbiit/multipath/preimage/v2", secret[:], intent[:])
 }
 
 // FragmentHash is what the lock commits to, hashed exactly as the contract
@@ -184,7 +184,7 @@ func BuildPayment(id [32]byte, secret [32]byte, total *big.Int, deadline int64,
 			Index: i, Channel: channels[i], Amount: new(big.Int).Set(amt),
 			Expiry: expiries[i], Intent: intent,
 			Hash:   FragmentHash(secret, intent),
-			LockID: derive("syndichan/multipath/lock/v1", intent[:]),
+			LockID: derive("rabbiit/multipath/lock/v1", intent[:]),
 		})
 		sum.Add(sum, amt)
 	}
@@ -331,10 +331,10 @@ func (e *MultipathExecutor) LoadJournal(id [32]byte) (*MultipathPayment, error) 
 // settleIntent and refundIntent are distinct from the lock intent, so settling
 // is not confusable with locking and a replay of one cannot pass for the other.
 func settleIntent(lockIntent [32]byte) [32]byte {
-	return derive("syndichan/multipath/settle/v1", lockIntent[:])
+	return derive("rabbiit/multipath/settle/v1", lockIntent[:])
 }
 func refundIntent(lockIntent [32]byte) [32]byte {
-	return derive("syndichan/multipath/refund/v1", lockIntent[:])
+	return derive("rabbiit/multipath/refund/v1", lockIntent[:])
 }
 
 // Status asks the CHANNELS what happened. It never consults the journal for

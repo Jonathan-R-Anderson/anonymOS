@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Install syndichan-node, its runtime dependencies, and a boot service.
+# Install rabbiit-node, its runtime dependencies, and a boot service.
 #
 # LINUX ONLY -- refused at the top rather than half-supported.
 #
@@ -33,7 +33,7 @@
 #   DO_START_ROUTER     -> I2P router (SAM)      -> start_router
 #   DO_ENABLE_DOCKER    -> Docker Engine         -> start_docker
 #   DO_BOOTSTRAP_GO     -> Go toolchain          -> bootstrap_go
-#   DO_BUILD_BINARY     -> syndichan-node binary -> build_binary
+#   DO_BUILD_BINARY     -> rabbiit-node binary -> build_binary
 #   DO_CREATE_USER      -> service account       -> create_user_and_dirs
 #   DO_ADD_DOCKER_GROUP -> docker group          -> add_docker_group,
 #                                                    install_compute_dropin
@@ -60,7 +60,7 @@ REPO_ROOT="$(cd "$SCRIPT_DIR/.." && pwd)"
 
 if [ "$(uname -s)" != "Linux" ]; then
   echo "$PROGRAM: this installer supports Linux only (found $(uname -s))." >&2
-  echo "Elsewhere: 'go build ./cmd/syndichan-node' and run it by hand." >&2
+  echo "Elsewhere: 'go build ./cmd/rabbiit-node' and run it by hand." >&2
   exit 2
 fi
 
@@ -75,7 +75,7 @@ trap 'ABORT_LINE="$LINENO"' ERR
 
 WORK=""
 workdir() { # private scratch directory, created on first use only
-  [ -n "$WORK" ] || WORK="$(mktemp -d "${TMPDIR:-/tmp}/syndichan-install.XXXXXX")"
+  [ -n "$WORK" ] || WORK="$(mktemp -d "${TMPDIR:-/tmp}/rabbiit-install.XXXXXX")"
   printf '%s' "$WORK"
 }
 
@@ -101,19 +101,19 @@ ASSUME_YES=0         # --yes
 INSTALL_SERVICE=1    # --no-service
 WANT_COMPUTE=0       # --with-compute
 BINARY_SRC=""        # --binary PATH
-DATA_DIR="/var/lib/syndichan"
+DATA_DIR="/var/lib/rabbiit"
 PAYOUT=""
 CAPACITY_GIB=""
 UI_LISTEN=""
 
-NODE_USER="syndichan"
-NODE_GROUP="syndichan"
+NODE_USER="rabbiit"
+NODE_GROUP="rabbiit"
 PREFIX="/usr/local"
-BIN_DEST="$PREFIX/bin/syndichan-node"
-WAIT_HELPER="$PREFIX/lib/syndichan/wait-for-sam"
-UNIT_PATH="/etc/systemd/system/syndichan-node.service"
-UNIT_DROPIN="/etc/systemd/system/syndichan-node.service.d/10-compute.conf"
-OPENRC_PATH="/etc/init.d/syndichan-node"
+BIN_DEST="$PREFIX/bin/rabbiit-node"
+WAIT_HELPER="$PREFIX/lib/rabbiit/wait-for-sam"
+UNIT_PATH="/etc/systemd/system/rabbiit-node.service"
+UNIT_DROPIN="/etc/systemd/system/rabbiit-node.service.d/10-compute.conf"
+OPENRC_PATH="/etc/init.d/rabbiit-node"
 
 # Not tunable, on purpose. Java I2P delays its SAM client app by 120s and a cold
 # router still has tunnels to build after that, so any budget short enough to be
@@ -131,7 +131,7 @@ GO_MIN_MINOR=21
 
 usage() {
   cat <<'EOF'
-syndichan-node installer (Linux)
+rabbiit-node installer (Linux)
 
 Start here, and come back here when something breaks:
 
@@ -159,7 +159,7 @@ Options:
                        on its own -- it just will not INSTALL Docker unless you
                        ask here.
   --binary PATH        Use this binary instead of discovering or building one.
-  --data-dir PATH      Node data directory (default: /var/lib/syndichan). Must
+  --data-dir PATH      Node data directory (default: /var/lib/rabbiit). Must
                        be >=2 components deep, outside system directories, and
                        either new, empty, or already owned by the service user.
   --payout 0x...       Payout address. Without one the node earns nothing, and
@@ -241,7 +241,7 @@ data_dir_problem() { # -> the reason this path is unusable, or nothing
       echo "may contain only letters, digits, spaces and . _ - + : @ /"; return 0 ;;
   esac
   [ "$(dirname "$1")" = "/" ] &&
-    { echo "must be at least two components deep (e.g. /srv/syndichan)"; return 0; }
+    { echo "must be at least two components deep (e.g. /srv/rabbiit)"; return 0; }
   case "$1" in
     /usr|/usr/*|/etc|/etc/*|/bin|/bin/*|/sbin|/sbin/*|/lib|/lib/*|/lib64|/lib64/*|/boot|/boot/*|/dev|/dev/*|/proc|/proc/*|/sys|/sys/*|/run|/run/*|/root|/root/*)
       echo "is inside a system path"; return 0 ;;
@@ -489,7 +489,7 @@ service_start()   { case "$SERVICE_MGR" in systemd) run systemctl start "$1" ;; 
 service_restart() { case "$SERVICE_MGR" in systemd) run systemctl restart "$1" ;; openrc) run rc-service "$1" restart ;; esac; }
 
 sha_of() { sha256sum | awk '{print $1}'; }
-MARKER_PREFIX="# managed-by: syndichan install.sh v$VERSION sha256="
+MARKER_PREFIX="# managed-by: rabbiit install.sh v$VERSION sha256="
 
 # ---------------------------------------------------------------------------
 # DETECT
@@ -522,7 +522,7 @@ detect_ca_certs() {
     fi
   done
   # Nastier than it looks: the presence heartbeat is a real clearnet HTTPS POST
-  # to syndichan.org (Proxy is nil on purpose). With no root certs every
+  # to rabbiit.io (Proxy is nil on purpose). With no root certs every
   # peer-to-peer thing works and the node is invisible to the site -- a split
   # brain with no error anywhere the operator is looking.
   REQUIRED_MISSING=1
@@ -694,30 +694,30 @@ detect_binary() {
   local candidate
   if [ -n "$BINARY_SRC" ]; then
     if [ ! -f "$BINARY_SRC" ] || [ ! -x "$BINARY_SRC" ]; then
-      blocker "syndichan-node binary" "all" "--binary $BINARY_SRC is not an executable file"
+      blocker "rabbiit-node binary" "all" "--binary $BINARY_SRC is not an executable file"
       return 0
     fi
     BINARY_RESOLVED="$BINARY_SRC"
-    plan ok "syndichan-node binary" "all" "$BINARY_RESOLVED (given with --binary)"
+    plan ok "rabbiit-node binary" "all" "$BINARY_RESOLVED (given with --binary)"
     plan skip "Go toolchain" "building" "not needed; --binary was given"
     return 0
   fi
-  for candidate in "$REPO_ROOT/syndichan-node" "$REPO_ROOT/dist/syndichan-node-linux-$GOARCH"; do
+  for candidate in "$REPO_ROOT/rabbiit-node" "$REPO_ROOT/dist/rabbiit-node-linux-$GOARCH"; do
     if [ -x "$candidate" ]; then
       BINARY_RESOLVED="$candidate"
-      plan ok "syndichan-node binary" "all" "$BINARY_RESOLVED"
+      plan ok "rabbiit-node binary" "all" "$BINARY_RESOLVED"
       plan skip "Go toolchain" "building" "not needed; a built binary is already here"
       return 0
     fi
   done
   if [ ! -f "$REPO_ROOT/go.mod" ]; then
     REQUIRED_MISSING=1
-    plan manual "syndichan-node binary" "all" "no binary and no source tree ($REPO_ROOT/go.mod missing); build elsewhere and pass --binary PATH"
+    plan manual "rabbiit-node binary" "all" "no binary and no source tree ($REPO_ROOT/go.mod missing); build elsewhere and pass --binary PATH"
     return 0
   fi
   detect_go || return 0
   DO_BUILD_BINARY=1
-  plan fix "syndichan-node binary" "all" "will run 'go build ./cmd/syndichan-node' in $REPO_ROOT (as ${SUDO_USER:-the invoking user}, never root)"
+  plan fix "rabbiit-node binary" "all" "will run 'go build ./cmd/rabbiit-node' in $REPO_ROOT (as ${SUDO_USER:-the invoking user}, never root)"
   return 0
 }
 
@@ -741,7 +741,7 @@ detect_go() {
     fi
     REQUIRED_MISSING=1
     plan manual "Go toolchain" "building" "$cmd is go${ver:-?}, older than $GO_MIN_MAJOR.$GO_MIN_MINOR and unable to fetch the pinned toolchain; upgrade it or pass --binary PATH"
-    plan manual "syndichan-node binary" "all" "cannot be built with the Go on this machine"
+    plan manual "rabbiit-node binary" "all" "cannot be built with the Go on this machine"
     return 1
   fi
 
@@ -765,7 +765,7 @@ detect_go() {
   if [ -n "$blocked" ]; then
     REQUIRED_MISSING=1
     plan manual "Go toolchain" "building" "no usable Go: $blocked. Install Go $GO_MIN_MAJOR.$GO_MIN_MINOR+ yourself, or build elsewhere and pass --binary PATH"
-    plan manual "syndichan-node binary" "all" "no binary and no way to build one here"
+    plan manual "rabbiit-node binary" "all" "no binary and no way to build one here"
     return 1
   fi
   DO_BOOTSTRAP_GO=1
@@ -945,7 +945,7 @@ resolve_runtime_data_dir() {
       if [ -z "$CONFIG_DATA_DIR" ]; then
         # Absent key: config.Default() already filled DataDir in, and the unit
         # sets HOME=$DATA_DIR, so os.UserConfigDir() lands UNDER the data dir.
-        RUNTIME_DATA_DIR_WHY="$CONFIG_FILE has no data_dir key; the node falls back to \$HOME/.config/Syndichan/storage-node, i.e. inside $DATA_DIR"
+        RUNTIME_DATA_DIR_WHY="$CONFIG_FILE has no data_dir key; the node falls back to \$HOME/.config/Rabbiit/storage-node, i.e. inside $DATA_DIR"
       else
         local problem; problem="$(data_dir_problem "$CONFIG_DATA_DIR")"
         if [ -n "$problem" ]; then
@@ -1120,7 +1120,7 @@ detect_state_conflicts() {
   case "$CONFIG_STATE" in
     absent)
       if [ "$INSTALL_SERVICE" = "0" ]; then
-        plan skip "configuration" "all" "--no-service: the node creates its own on first run (~/.config/Syndichan/storage-node)"
+        plan skip "configuration" "all" "--no-service: the node creates its own on first run (~/.config/Rabbiit/storage-node)"
       else
         plan fix "configuration" "all" "will be created BY THE NODE, running as $NODE_USER, at $CONFIG_FILE"
       fi ;;
@@ -1136,7 +1136,7 @@ detect_state_conflicts() {
   # Two instances on one data_dir collide on the bbolt flock in
   # <data_dir>/storage/metadata.db.
   if have pgrep && pgrep -f '[s]yndichan-node' >/dev/null 2>&1; then
-    plan manual "running node" "all" "a syndichan-node process is already running; make sure it is not using $RUNTIME_DATA_DIR"
+    plan manual "running node" "all" "a rabbiit-node process is already running; make sure it is not using $RUNTIME_DATA_DIR"
   fi
   # serve() calls logger.Fatalf, so a taken port takes down the WHOLE node.
   local port
@@ -1483,7 +1483,7 @@ install_packages() {
 # pile of duplicate keys. Returns 0 if changed, 1 if already correct. The awk is
 # verified byte-identical on a second pass -- do not rewrite it casually.
 #
-# packaging/systemd/i2pd-syndichan.default is NOT used: upstream's unit has no
+# packaging/systemd/i2pd-rabbiit.default is NOT used: upstream's unit has no
 # EnvironmentFile and hardcodes ExecStart, so $DAEMON_OPTS from /etc/default/i2pd
 # is read only by the sysvinit script -- dropping it on a systemd box silently
 # applies nothing.
@@ -1533,7 +1533,7 @@ configure_i2pd() {
     return 0
   fi
   step "Configuring i2pd: $I2PD_CONF"
-  [ -f "$I2PD_CONF.syndichan.bak" ] || run cp -p "$I2PD_CONF" "$I2PD_CONF.syndichan.bak"
+  [ -f "$I2PD_CONF.rabbiit.bak" ] || run cp -p "$I2PD_CONF" "$I2PD_CONF.rabbiit.bak"
   local changed=0
   # SAM is on by default in i2pd >= 2.28, so most of these are assertions. Assert
   # anyway: the failure mode is a config where somebody uncommented
@@ -1670,7 +1670,7 @@ this is either a corrupted transfer or a tampered mirror."
   [ -e "$GO_ROOT_DEST" ] && die "$GO_ROOT_DEST appeared while this was running; refusing to overwrite it"
   # A sibling of the destination, so the final mv is a rename within one
   # filesystem and cannot half-succeed.
-  staging="$(dirname "$GO_ROOT_DEST")/.syndichan-go-unpack.$$"
+  staging="$(dirname "$GO_ROOT_DEST")/.rabbiit-go-unpack.$$"
   run rm -rf -- "$staging"
   run mkdir -p -- "$staging"
   step "Unpacking to $GO_ROOT_DEST"
@@ -1704,11 +1704,11 @@ build_binary() {
   case "$REPO_ROOT" in
     *"'"*) die "the checkout path contains a single quote and cannot be built from safely: $REPO_ROOT" ;;
   esac
-  step "Building syndichan-node from $REPO_ROOT"
+  step "Building rabbiit-node from $REPO_ROOT"
   # GOTOOLCHAIN=auto explicitly, so `go env -w GOTOOLCHAIN=local` on this
   # machine cannot break the build: go.mod pins go 1.25.12 and any Go from 1.21
   # up fetches exactly that on demand.
-  local build="cd '$REPO_ROOT' && CGO_ENABLED=0 GOTOOLCHAIN=auto '$GO_CMD' build -trimpath -ldflags='-s -w' -o '$REPO_ROOT/syndichan-node' ./cmd/syndichan-node"
+  local build="cd '$REPO_ROOT' && CGO_ENABLED=0 GOTOOLCHAIN=auto '$GO_CMD' build -trimpath -ldflags='-s -w' -o '$REPO_ROOT/rabbiit-node' ./cmd/rabbiit-node"
   # As the human who invoked the script, never root: a root-owned GOCACHE and
   # root-owned objects inside somebody's checkout outlive the install and show
   # up later as a build that fails for the account owning the source.
@@ -1718,7 +1718,7 @@ build_binary() {
     warn "building as root; the build cache and output will be root-owned"
     run sh -c "$build"
   fi
-  BINARY_RESOLVED="$REPO_ROOT/syndichan-node"
+  BINARY_RESOLVED="$REPO_ROOT/rabbiit-node"
   return 0
 }
 
@@ -1812,9 +1812,9 @@ install_binary() {
   # Replacing a running binary in place gives ETXTBSY. The enable/restart at the
   # end brings it back; the "boot service" plan row says so.
   case "$SERVICE_MGR" in
-    systemd) systemctl is-active --quiet syndichan-node.service 2>/dev/null &&
-               { run systemctl stop syndichan-node.service || true; } ;;
-    openrc)  [ -f "$OPENRC_PATH" ] && { run rc-service syndichan-node stop || true; } ;;
+    systemd) systemctl is-active --quiet rabbiit-node.service 2>/dev/null &&
+               { run systemctl stop rabbiit-node.service || true; } ;;
+    openrc)  [ -f "$OPENRC_PATH" ] && { run rc-service rabbiit-node stop || true; } ;;
   esac
   run install -d -m 0755 "$PREFIX/bin"
   run install -m 0755 "$BINARY_RESOLVED" "$BIN_DEST"
@@ -1865,26 +1865,26 @@ while :; do
       exec 3>&-
       case "$line" in
         "HELLO REPLY"*RESULT=OK*)
-          echo "syndichan: I2P SAM bridge ready after ${waited}s"
+          echo "rabbiit: I2P SAM bridge ready after ${waited}s"
           exit 0 ;;
         *)
           # Something owns 7656 and does not speak SAM. Waiting cannot fix a
           # port collision, and pretending otherwise hides it.
-          echo "syndichan: 127.0.0.1:7656 is not a SAM bridge: ${line}" >&2
+          echo "rabbiit: 127.0.0.1:7656 is not a SAM bridge: ${line}" >&2
           exit 1 ;;
       esac
     fi
     exec 3>&-
   fi
   if [ "$waited" -ge "$budget" ]; then
-    echo "syndichan: I2P SAM bridge did not answer within ${budget}s" >&2
+    echo "rabbiit: I2P SAM bridge did not answer within ${budget}s" >&2
     exit 1
   fi
   sleep 2
   waited=$((waited + 2))
 done
 HELPER
-  run install -d -m 0755 "$PREFIX/lib/syndichan"
+  run install -d -m 0755 "$PREFIX/lib/rabbiit"
   run install -m 0755 "$tmp" "$WAIT_HELPER"
   return 0
 }
@@ -1907,14 +1907,14 @@ generate_unit() {
 # the node will fail to write with a \"read-only file system\" error that names
 # the filesystem and never mentions this sandbox. Fix it with a drop-in rather
 # than by editing this file (which the installer would then refuse to refresh):
-#   systemctl edit syndichan-node   ->   [Service]
+#   systemctl edit rabbiit-node   ->   [Service]
 #                                        ReadWritePaths=<the data_dir>
 "
   fi
   cat <<EOF
 [Unit]
-Description=Syndichan encrypted volunteer storage and edge node
-Documentation=https://github.com/Jonathan-R-Anderson/syndichan/tree/main/storage-client
+Description=Rabbiit encrypted volunteer storage and edge node
+Documentation=https://github.com/Jonathan-R-Anderson/rabbiit/tree/main/storage-client
 Wants=$wants
 After=$wants
 # Wants=, not Requires=. Requires=i2pd.service (as the shipped packaging unit
@@ -1992,7 +1992,7 @@ generate_compute_dropin() {
   done
   groups="${groups# }"
   cat <<EOF
-# Compute/DCS access for syndichan-node.
+# Compute/DCS access for rabbiit-node.
 #
 # HARDENING GIVEN UP HERE, out loud:
 #   - the docker group is root-equivalent by design. A node that lends compute
@@ -2042,8 +2042,8 @@ generate_openrc() {
   # Stated rather than faked -- an OpenRC node runs with less isolation.
   cat <<EOF
 #!/sbin/openrc-run
-name="syndichan-node"
-description="Syndichan encrypted volunteer storage and edge node"
+name="rabbiit-node"
+description="Rabbiit encrypted volunteer storage and edge node"
 
 command="$BIN_DEST"
 command_args="-config '$CONFIG_FILE'"
@@ -2052,7 +2052,7 @@ command_background=false
 supervisor=supervise-daemon
 respawn_delay=15
 respawn_max=0
-pidfile="/run/syndichan-node.pid"
+pidfile="/run/rabbiit-node.pid"
 # config.Default() calls os.UserConfigDir() unconditionally, so a missing HOME
 # makes the node exit before it reads the -config file it was handed.
 export HOME="$DATA_DIR"
@@ -2125,10 +2125,10 @@ install_openrc_service() {
   # started: the operator asked for a node that comes back after a reboot, and
   # refusing to overwrite their script is not a reason to leave it disabled.
   install_managed "$OPENRC_PATH" 0755 generate_openrc || true
-  step "Enabling syndichan-node on boot (OpenRC)"
-  run rc-update add syndichan-node default || warn "could not 'rc-update add syndichan-node default'"
-  run rc-service syndichan-node restart ||
-    warn "the service did not start; see /var/log/rc.log and 'rc-service syndichan-node status'"
+  step "Enabling rabbiit-node on boot (OpenRC)"
+  run rc-update add rabbiit-node default || warn "could not 'rc-update add rabbiit-node default'"
+  run rc-service rabbiit-node restart ||
+    warn "the service did not start; see /var/log/rc.log and 'rc-service rabbiit-node status'"
   return 0
 }
 
@@ -2142,10 +2142,10 @@ install_systemd_unit() {
   # runs as $NODE_USER and still needs the socket, and skipping the drop-in
   # because the unit was not ours is how compute ends up half-configured.
   install_compute_dropin
-  step "Enabling syndichan-node on boot"
-  run systemctl enable syndichan-node.service
-  run systemctl restart syndichan-node.service ||
-    warn "the service did not start; see: journalctl -u syndichan-node -n 50"
+  step "Enabling rabbiit-node on boot"
+  run systemctl enable rabbiit-node.service
+  run systemctl restart rabbiit-node.service ||
+    warn "the service did not start; see: journalctl -u rabbiit-node -n 50"
   return 0
 }
 
@@ -2197,7 +2197,7 @@ add_docker_group() {
 # main
 # ---------------------------------------------------------------------------
 
-printf '%ssyndichan-node installer%s\n' "$C_BOLD" "$C_RESET"
+printf '%srabbiit-node installer%s\n' "$C_BOLD" "$C_RESET"
 if [ "$DRY_RUN" = "1" ]; then
   printf '%s--check: detecting only. Nothing on this machine will be changed.%s\n' "$C_DIM" "$C_RESET"
 fi
@@ -2272,10 +2272,10 @@ printf '\n%sDone.%s\n' "$C_BOLD" "$C_RESET"
 if [ "$INSTALL_SERVICE" = "1" ]; then
   case "$SERVICE_MGR" in
     systemd)
-      say "  systemctl status syndichan-node       # is it up"
-      say "  journalctl -u syndichan-node -f       # what is it doing" ;;
+      say "  systemctl status rabbiit-node       # is it up"
+      say "  journalctl -u rabbiit-node -f       # what is it doing" ;;
     openrc)
-      say "  rc-service syndichan-node status      # is it up"
+      say "  rc-service rabbiit-node status      # is it up"
       say "  tail -f /var/log/rc.log               # what is it doing" ;;
   esac
 fi

@@ -8,7 +8,7 @@ import (
 
 	"golang.org/x/crypto/curve25519"
 
-	"github.com/syndichan/maniwani/storage-client/internal/axon/circuit"
+	"github.com/rabbiit/maniwani/storage-client/internal/axon/circuit"
 )
 
 // M2 (§24): client to service through a circuit and a rendezvous point.

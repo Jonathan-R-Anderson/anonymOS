@@ -9,7 +9,7 @@ import (
 
 	bolt "go.etcd.io/bbolt"
 
-	"github.com/syndichan/maniwani/storage-client/internal/placement"
+	"github.com/rabbiit/maniwani/storage-client/internal/placement"
 )
 
 // THE PLACEMENT LEDGER

@@ -4,8 +4,8 @@ import (
 	"errors"
 	"sort"
 
-	"github.com/syndichan/maniwani/storage-client/internal/axon/params"
-	"github.com/syndichan/maniwani/storage-client/internal/axon/peer"
+	"github.com/rabbiit/maniwani/storage-client/internal/axon/params"
+	"github.com/rabbiit/maniwani/storage-client/internal/axon/peer"
 )
 
 // Relay is one selectable relay: where it sits in the address space, what it

@@ -8,8 +8,8 @@ import (
 
 	"github.com/libp2p/go-libp2p/core/peer"
 
-	"github.com/syndichan/maniwani/storage-client/internal/placement"
-	"github.com/syndichan/maniwani/storage-client/internal/store"
+	"github.com/rabbiit/maniwani/storage-client/internal/placement"
+	"github.com/rabbiit/maniwani/storage-client/internal/store"
 )
 
 // LEVELLING THE POOLS: THE MOVER

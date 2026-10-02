@@ -9,7 +9,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/syndichan/maniwani/storage-client/internal/store"
+	"github.com/rabbiit/maniwani/storage-client/internal/store"
 )
 
 type testNode struct{}

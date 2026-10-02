@@ -16,7 +16,7 @@ go test ./...
 
 | Endpoint | |
 |---|---|
-| `GET /.well-known/syndichan/storage-node.json` | signed bootstrap document (live peers + seeds), byte-compatible with the node's verifier |
+| `GET /.well-known/rabbiit/storage-node.json` | signed bootstrap document (live peers + seeds), byte-compatible with the node's verifier |
 | `POST /api/v1/storage/nodes/heartbeat` | a node's signed beacon (peer-ID key, clock skew, replay checked), answered with live peers |
 | `GET /api/v1/network/peers` | the active nodes |
 | `GET /api/v1/releases/{channel}` | the current wallet-signed release manifest for a channel |

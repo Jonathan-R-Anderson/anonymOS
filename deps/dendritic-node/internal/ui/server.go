@@ -18,8 +18,8 @@ import (
 	"strconv"
 	"strings"
 
-	"github.com/syndichan/maniwani/storage-client/internal/config"
-	"github.com/syndichan/maniwani/storage-client/internal/store"
+	"github.com/rabbiit/maniwani/storage-client/internal/config"
+	"github.com/rabbiit/maniwani/storage-client/internal/store"
 )
 
 // The site's own logo, compiled into the binary. Embedded rather than fetched
@@ -137,7 +137,7 @@ func (s *Server) authorize(w http.ResponseWriter, r *http.Request) bool {
 			return true
 		}
 	}
-	w.Header().Set("WWW-Authenticate", `Basic realm="Syndichan node", charset="UTF-8"`)
+	w.Header().Set("WWW-Authenticate", `Basic realm="Rabbiit node", charset="UTF-8"`)
 	http.Error(w, "the management dashboard requires the ui_username and ui_password "+
 		"from this node's config file", http.StatusUnauthorized)
 	return false
@@ -486,7 +486,7 @@ const pageHTML = `<!doctype html>
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
-<title>Syndichan Storage Node</title>
+<title>Rabbiit Storage Node</title>
 <link rel="icon" type="image/png" href="/favicon.png">
 <style>
 /* Palette mirrors the site's dark themes and uses the same --sc-* naming
@@ -551,7 +551,7 @@ td code{font-family:var(--sc-mono);font-size:.82rem;color:var(--sc-muted);word-b
 </style>
 </head>
 <body>
-<header><div class="wrap"><img src="/favicon.png" alt="" width="24" height="24" style="border-radius:4px"><h1>Syndichan</h1><span class="tag">Storage Node</span></div></header>
+<header><div class="wrap"><img src="/favicon.png" alt="" width="24" height="24" style="border-radius:4px"><h1>Rabbiit</h1><span class="tag">Storage Node</span></div></header>
 <main>
 <p class="muted">Only encrypted shards are stored here. Nothing is readable without the
 site's keys, and rejecting an item deletes its bytes and refuses that content ID in future.</p>
@@ -583,7 +583,7 @@ site's keys, and rejecting an item deletes its bytes and refuses that content ID
   encrypted shards accumulate.</p>
   <form method="post" action="/storage-dir">
     <input type="hidden" name="csrf" value="{{.CSRF}}">
-    <input name="data_dir" id="datadir" placeholder="/media/drive/syndichan" required>
+    <input name="data_dir" id="datadir" placeholder="/media/drive/rabbiit" required>
     <button type="submit">Save location</button>
   </form>
   <div class="notice">Changing this takes effect the next time the node starts, and existing

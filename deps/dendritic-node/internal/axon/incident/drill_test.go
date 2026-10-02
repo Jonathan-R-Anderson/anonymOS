@@ -29,10 +29,10 @@ import (
 	"testing"
 	"time"
 
-	"github.com/syndichan/maniwani/storage-client/internal/axon/contain"
-	"github.com/syndichan/maniwani/storage-client/internal/axon/path"
-	"github.com/syndichan/maniwani/storage-client/internal/axon/peer"
-	"github.com/syndichan/maniwani/storage-client/internal/axon/profile"
+	"github.com/rabbiit/maniwani/storage-client/internal/axon/contain"
+	"github.com/rabbiit/maniwani/storage-client/internal/axon/path"
+	"github.com/rabbiit/maniwani/storage-client/internal/axon/peer"
+	"github.com/rabbiit/maniwani/storage-client/internal/axon/profile"
 )
 
 // The compromised relay. One node id, carried through every step, because the

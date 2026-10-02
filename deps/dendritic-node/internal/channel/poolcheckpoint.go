@@ -108,7 +108,7 @@ type CheckpointResult struct {
 // nothing on chain or in a signature depends on it.
 func CheckpointIntent(id [32]byte, nonce uint64, amount *big.Int) [32]byte {
 	h := sha256.New()
-	h.Write([]byte("syndichan/p15/checkpoint\x00"))
+	h.Write([]byte("rabbiit/p15/checkpoint\x00"))
 	h.Write(id[:])
 	var n [8]byte
 	for i := 0; i < 8; i++ {

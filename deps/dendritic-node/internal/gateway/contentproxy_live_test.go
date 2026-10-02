@@ -15,22 +15,22 @@ import (
 // the behaviour, and a suite that fails when a remote host is down is a suite
 // people learn to ignore.
 //
-//	SYNDICHAN_LIVE_ORIGIN=51.79.71.153:443 go test ./internal/gateway/ -run Live -v
+//	RABBIIT_LIVE_ORIGIN=51.79.71.153:443 go test ./internal/gateway/ -run Live -v
 //
 // What it proves that the unit tests cannot: the origin's signature headers
 // survive a real fetch, and the body still hashes to what the signature covers.
 // If a gateway broke either, a reader's verification would fail and the gateway
 // would be blamed for the origin's content being unverifiable.
 func TestLiveOriginContentSurvivesTheProxy(t *testing.T) {
-	address := os.Getenv("SYNDICHAN_LIVE_ORIGIN")
+	address := os.Getenv("RABBIIT_LIVE_ORIGIN")
 	if address == "" {
-		t.Skip("set SYNDICHAN_LIVE_ORIGIN=host:port to run")
+		t.Skip("set RABBIIT_LIVE_ORIGIN=host:port to run")
 	}
-	origin, err := url.Parse("https://syndichan.org")
+	origin, err := url.Parse("https://rabbiit.io")
 	if err != nil {
 		t.Fatal(err)
 	}
-	proxy := NewContentProxy(origin, "syndichan.org", "12D3KooWLiveTest", address)
+	proxy := NewContentProxy(origin, "rabbiit.io", "12D3KooWLiveTest", address)
 
 	recorder := httptest.NewRecorder()
 	proxy.ServeHTTP(recorder, httptest.NewRequest(http.MethodGet, "/", nil))
@@ -38,12 +38,12 @@ func TestLiveOriginContentSurvivesTheProxy(t *testing.T) {
 	if recorder.Code != http.StatusOK {
 		t.Fatalf("status = %d", recorder.Code)
 	}
-	for _, header := range []string{"X-Syndichan-Version", "X-Syndichan-Hash", "X-Syndichan-Signature"} {
+	for _, header := range []string{"X-Rabbiit-Version", "X-Rabbiit-Hash", "X-Rabbiit-Signature"} {
 		if recorder.Header().Get(header) == "" {
 			t.Errorf("%s did not survive the proxy; the reader has nothing to verify", header)
 		}
 	}
-	if got := recorder.Header().Get("X-Syndichan-Gateway"); got != "12D3KooWLiveTest" {
+	if got := recorder.Header().Get("X-Rabbiit-Gateway"); got != "12D3KooWLiveTest" {
 		t.Errorf("gateway header = %q, want this gateway's identity", got)
 	}
 	if !strings.Contains(recorder.Body.String(), "<") {
@@ -56,12 +56,12 @@ func TestLiveOriginContentSurvivesTheProxy(t *testing.T) {
 	// gateway would see a mismatch, and the gateway would be blamed for content
 	// it relayed faithfully.
 	digest := sha256.Sum256(recorder.Body.Bytes())
-	if got, want := hex.EncodeToString(digest[:]), recorder.Header().Get("X-Syndichan-Hash"); got != want {
+	if got, want := hex.EncodeToString(digest[:]), recorder.Header().Get("X-Rabbiit-Hash"); got != want {
 		t.Fatalf("proxied body hash = %s, signed hash = %s: a reader would see a "+
 			"forgery that never happened", got, want)
 	}
 	t.Logf("version=%s hash=%s bytes=%d",
-		recorder.Header().Get("X-Syndichan-Version"),
-		recorder.Header().Get("X-Syndichan-Hash"),
+		recorder.Header().Get("X-Rabbiit-Version"),
+		recorder.Header().Get("X-Rabbiit-Hash"),
 		recorder.Body.Len())
 }

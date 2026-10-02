@@ -8,7 +8,7 @@ import (
 	"math/bits"
 	"time"
 
-	"github.com/syndichan/maniwani/storage-client/internal/axon/params"
+	"github.com/rabbiit/maniwani/storage-client/internal/axon/params"
 )
 
 // Admission proof of work for the CHEAP roles.

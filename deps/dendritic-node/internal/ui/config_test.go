@@ -8,7 +8,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/syndichan/maniwani/storage-client/internal/config"
+	"github.com/rabbiit/maniwani/storage-client/internal/config"
 )
 
 // The config panels only render when config access is wired, so the base tests

@@ -1,38 +1,38 @@
 {
   "no_peers": {
     "document": {
-      "coordinator_public_key": "A6EHv/POEL4dcN0Y50vAmWfk1jCbpQ1fHdyGZBJVMbg",
+      "coordinator_public_key": "8do4Rro602bRNYeHR5k7d8ewnHWHIkrwK80CkfNSdYE",
       "expires_at": "2026-08-01T22:00:00Z",
       "peers": [],
-      "signature": "RaROQmnu1ZABc/J/HW2or2ETJJChJ9BL1RywyIZ+bEIZJAQ7wwABtQQp1DfrSYln3imWP2ywogvg6/E46qcBCA==",
+      "signature": "eZcVgDQzji8o5lxiX7H3CtGy30hSYZf4sf7DJ4jKVIR+9BjTovFB1VzU/WmNro9b9NfMj4NLAH8C9YzX6S9oAQ==",
       "version": 1
     },
-    "message": "syndichan-storage-bootstrap-v1\nexpires_at: 2026-08-01T22:00:00Z\ncoordinator: A6EHv/POEL4dcN0Y50vAmWfk1jCbpQ1fHdyGZBJVMbg\npeers: 0"
+    "message": "rabbiit-storage-bootstrap-v1\nexpires_at: 2026-08-01T22:00:00Z\ncoordinator: 8do4Rro602bRNYeHR5k7d8ewnHWHIkrwK80CkfNSdYE\npeers: 0"
   },
   "one_peer": {
     "document": {
-      "coordinator_public_key": "A6EHv/POEL4dcN0Y50vAmWfk1jCbpQ1fHdyGZBJVMbg",
+      "coordinator_public_key": "8do4Rro602bRNYeHR5k7d8ewnHWHIkrwK80CkfNSdYE",
       "expires_at": "2026-08-01T23:30:00.5Z",
       "peers": [
         "/garlic32/zzzz/p2p/12D3KooWZ"
       ],
-      "signature": "refoVoVR610571gkKM3rp1/gOsheI1N8iGLw8Z/xpkdpdVX7+0VBmDiMmvqSxgNArN6e3djGlS7HUe7WAmxYAg==",
+      "signature": "lkumrsWsUTey+uGOC4TzRDho3tVU04vO3ML2MnFjyrSMktGBNqI0imPJZ2LLeaZUw3ZQ+tzn6dnEVvcP24s6Dw==",
       "version": 1
     },
-    "message": "syndichan-storage-bootstrap-v1\nexpires_at: 2026-08-01T23:30:00.5Z\ncoordinator: A6EHv/POEL4dcN0Y50vAmWfk1jCbpQ1fHdyGZBJVMbg\npeers: 1\n/garlic32/zzzz/p2p/12D3KooWZ"
+    "message": "rabbiit-storage-bootstrap-v1\nexpires_at: 2026-08-01T23:30:00.5Z\ncoordinator: 8do4Rro602bRNYeHR5k7d8ewnHWHIkrwK80CkfNSdYE\npeers: 1\n/garlic32/zzzz/p2p/12D3KooWZ"
   },
   "three_peers": {
     "document": {
-      "coordinator_public_key": "A6EHv/POEL4dcN0Y50vAmWfk1jCbpQ1fHdyGZBJVMbg",
+      "coordinator_public_key": "8do4Rro602bRNYeHR5k7d8ewnHWHIkrwK80CkfNSdYE",
       "expires_at": "2026-08-01T21:57:28.877772Z",
       "peers": [
         "/garlic32/aaaa/p2p/12D3KooWA",
         "/garlic32/bbbb/p2p/12D3KooWB",
         "/garlic32/cccc/p2p/12D3KooWC"
       ],
-      "signature": "5xljMxmtjoPZeMrDIdNmaVOKyfEJVHRnZGt7mOGrt6tLrn+F05U4oSvAVOEiuYtRkSHO8PXHDq3J3bn5LngJCw==",
+      "signature": "wDy8JjdhMF2Tte2EgS+7Iik3FZyBaOJCueYm7AqUSEQLHzhQhg2zeJQe/DPz1XbXZMA9FtZreueQ9GNmtp7mCg==",
       "version": 1
     },
-    "message": "syndichan-storage-bootstrap-v1\nexpires_at: 2026-08-01T21:57:28.877772Z\ncoordinator: A6EHv/POEL4dcN0Y50vAmWfk1jCbpQ1fHdyGZBJVMbg\npeers: 3\n/garlic32/aaaa/p2p/12D3KooWA\n/garlic32/bbbb/p2p/12D3KooWB\n/garlic32/cccc/p2p/12D3KooWC"
+    "message": "rabbiit-storage-bootstrap-v1\nexpires_at: 2026-08-01T21:57:28.877772Z\ncoordinator: 8do4Rro602bRNYeHR5k7d8ewnHWHIkrwK80CkfNSdYE\npeers: 3\n/garlic32/aaaa/p2p/12D3KooWA\n/garlic32/bbbb/p2p/12D3KooWB\n/garlic32/cccc/p2p/12D3KooWC"
   }
 }

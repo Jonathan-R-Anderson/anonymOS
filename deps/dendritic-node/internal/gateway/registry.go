@@ -17,7 +17,7 @@ import (
 	"time"
 )
 
-const RegistryUserAgent = "Syndichan-Storage-Client/1.0"
+const RegistryUserAgent = "Rabbiit-Storage-Client/1.0"
 
 // RegistryClient sends signed, short-lived statements to the central gateway
 // controller. It deliberately has no credential field: the node identity is
@@ -239,8 +239,8 @@ func (c *RegistryClient) signedPost(
 	}
 	request.Header.Set("Content-Type", "application/json")
 	request.Header.Set("User-Agent", RegistryUserAgent)
-	request.Header.Set("X-Syndichan-Node", c.Signer.ID())
-	request.Header.Set("X-Syndichan-Signature", base64.RawStdEncoding.EncodeToString(signature))
+	request.Header.Set("X-Rabbiit-Node", c.Signer.ID())
+	request.Header.Set("X-Rabbiit-Signature", base64.RawStdEncoding.EncodeToString(signature))
 	response, err := c.Client.Do(request)
 	if err != nil {
 		return nil, fmt.Errorf("gateway registry: %w", err)

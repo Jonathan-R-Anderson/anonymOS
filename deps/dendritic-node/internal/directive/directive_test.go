@@ -103,7 +103,7 @@ func TestANoteCannotForgeAField(t *testing.T) {
 	if err != nil {
 		t.Fatalf("parse: %v", err)
 	}
-	if d.OriginDomain != "syndichan.net" {
+	if d.OriginDomain != "rabbiit.net" {
 		t.Fatalf("note captured origin_domain: %q", d.OriginDomain)
 	}
 	if d.Emergency {

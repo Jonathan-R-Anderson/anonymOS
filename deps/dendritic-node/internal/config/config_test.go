@@ -90,7 +90,7 @@ func TestGatewayDefaultDisabledAndRegistryIsPublicConfiguration(t *testing.T) {
 	if cfg.Gateway.Enabled {
 		t.Fatal("public gateway is enabled by default")
 	}
-	if cfg.Gateway.RegistrationAPI != "https://syndichan.org/api/v1/gateways" {
+	if cfg.Gateway.RegistrationAPI != "https://rabbiit.io/api/v1/gateways" {
 		t.Fatal("unexpected registration API default")
 	}
 }
@@ -116,14 +116,14 @@ func TestGatewayRequiresExternalQuorumConfiguration(t *testing.T) {
 func TestGatewayRejectsCredentialBearingRegistrationAPI(t *testing.T) {
 	cfg := validTestConfig(t)
 	cfg.Gateway.Enabled = true
-	cfg.Gateway.PublicHostname = "gw-001.syndichan.org"
+	cfg.Gateway.PublicHostname = "gw-001.rabbiit.io"
 	cfg.Gateway.TLS.CertificatePath = "cert.pem"
 	cfg.Gateway.TLS.PrivateKeyPath = "key.pem"
 	cfg.Gateway.PublicAddresses = []string{"8.8.8.8"}
 	cfg.Gateway.ProbeURLs = []string{
 		"https://probe-a.example", "https://probe-b.example", "https://probe-c.example",
 	}
-	cfg.Gateway.RegistrationAPI = "https://user:token@syndichan.org/api/v1/gateways"
+	cfg.Gateway.RegistrationAPI = "https://user:token@rabbiit.io/api/v1/gateways"
 	if err := cfg.Validate(); err == nil {
 		t.Fatal("credential-bearing registration API was accepted")
 	}
@@ -143,9 +143,9 @@ func TestGatewayFrontendValidation(t *testing.T) {
 	valid := func() Config {
 		cfg := validTestConfig(t)
 		cfg.Gateway.Frontend.Enabled = true
-		cfg.Gateway.Frontend.OriginAddress = "origin.syndichan.org:9443"
-		cfg.Gateway.Frontend.OriginServerName = "syndichan.org"
-		cfg.Gateway.Frontend.SNIAllowlist = []string{"syndichan.org", "gw-node.syndichan.org"}
+		cfg.Gateway.Frontend.OriginAddress = "origin.rabbiit.io:9443"
+		cfg.Gateway.Frontend.OriginServerName = "rabbiit.io"
+		cfg.Gateway.Frontend.SNIAllowlist = []string{"rabbiit.io", "gw-node.rabbiit.io"}
 		return cfg
 	}
 	if err := valid().Validate(); err != nil {
@@ -185,9 +185,9 @@ func TestGatewayFrontendValidation(t *testing.T) {
 func TestGatewayFrontendSaveLoadRoundTrip(t *testing.T) {
 	cfg := validTestConfig(t)
 	cfg.Gateway.Frontend.Enabled = true
-	cfg.Gateway.Frontend.OriginAddress = "origin.syndichan.org:9443"
-	cfg.Gateway.Frontend.OriginServerName = "syndichan.org"
-	cfg.Gateway.Frontend.SNIAllowlist = []string{"syndichan.org"}
+	cfg.Gateway.Frontend.OriginAddress = "origin.rabbiit.io:9443"
+	cfg.Gateway.Frontend.OriginServerName = "rabbiit.io"
+	cfg.Gateway.Frontend.SNIAllowlist = []string{"rabbiit.io"}
 	path := filepath.Join(t.TempDir(), "config.json")
 	if err := Save(path, cfg, RoleStorage); err != nil {
 		t.Fatal(err)

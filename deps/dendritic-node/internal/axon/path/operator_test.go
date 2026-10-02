@@ -5,7 +5,7 @@ import (
 	"fmt"
 	"testing"
 
-	"github.com/syndichan/maniwani/storage-client/internal/axon/peer"
+	"github.com/rabbiit/maniwani/storage-client/internal/axon/peer"
 )
 
 // owned is `relay` plus a verified on-chain owner.

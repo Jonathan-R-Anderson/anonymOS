@@ -229,18 +229,6 @@ func (d *ServiceDescriptor) signingBytes() ([]byte, error) {
 	return encMode.Marshal(&c)
 }
 
-// SignWith signs with a blinded signer -- identity.BlindedSigner.SignMessage,
-// which is how a service actually holds its per-period key: a blinded scalar
-// has no Ed25519 seed, so Sign below cannot take it.
-func (d *ServiceDescriptor) SignWith(sign func(msg []byte) []byte) error {
-	msg, err := d.signingBytes()
-	if err != nil {
-		return err
-	}
-	d.Sig = sign(msg)
-	return nil
-}
-
 // Sign signs under the BLINDED private key.
 func (d *ServiceDescriptor) Sign(blinded ed25519.PrivateKey) error {
 	msg, err := d.signingBytes()

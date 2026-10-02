@@ -50,7 +50,7 @@ import (
 
 // MessagePrefix begins the signed message. Must match
 // backend/services/storage_coordination.bootstrap_message exactly.
-const MessagePrefix = "syndichan-storage-bootstrap-v1"
+const MessagePrefix = "rabbiit-storage-bootstrap-v1"
 
 // DefaultAgreement is how many independent sources must return the same peer
 // set and coordinator key when no key is pinned.

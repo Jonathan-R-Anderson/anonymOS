@@ -136,7 +136,7 @@ func TestTheMailboxAnswersTheBrowsersPreflight(t *testing.T) {
 	for _, route := range []string{"authorize", "deliver", "collect", "states", "accepted"} {
 		req, _ := http.NewRequest(http.MethodOptions, srv.URL+"/mailbox/v1/"+route, nil)
 		// Exactly what tip-channel.js provokes.
-		req.Header.Set("Origin", "https://syndichan.example")
+		req.Header.Set("Origin", "https://rabbiit.io")
 		req.Header.Set("Access-Control-Request-Method", "POST")
 		req.Header.Set("Access-Control-Request-Headers", "content-type")
 

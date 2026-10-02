@@ -6,7 +6,7 @@ import (
 
 	"github.com/libp2p/go-libp2p/core/network"
 
-	"github.com/syndichan/maniwani/storage-client/internal/store"
+	"github.com/rabbiit/maniwani/storage-client/internal/store"
 )
 
 // A holder that ANSWERS "deleted" and keeps the bytes.

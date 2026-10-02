@@ -233,7 +233,7 @@ func TestGatewayOnlyStillRequiresGatewayConfiguration(t *testing.T) {
 		{"missing public hostname", func(c *Config) { c.Gateway.PublicHostname = "" }},
 		{"missing registration API", func(c *Config) { c.Gateway.RegistrationAPI = "" }},
 		{"credential-bearing registration API", func(c *Config) {
-			c.Gateway.RegistrationAPI = "https://user:token@syndichan.org/api/v1/gateways"
+			c.Gateway.RegistrationAPI = "https://user:token@rabbiit.io/api/v1/gateways"
 		}},
 		{"missing public addresses", func(c *Config) { c.Gateway.PublicAddresses = nil }},
 		// Clearing probe_urls ENTIRELY is valid now (controller-only
@@ -372,7 +372,7 @@ func TestLoadOrCreateGatewayOnlyAcceptsConfigWithoutStorageSettings(t *testing.T
 	    "enabled": true,
 	    "listen_port": 443,
 	    "public_hostname": "gw-node.example.com",
-	    "registration_api": "https://syndichan.org/api/v1/gateways",
+	    "registration_api": "https://rabbiit.io/api/v1/gateways",
 	    "tls": {"mode": "existing", "certificate_path": "cert.pem", "private_key_path": "key.pem"},
 	    "public_addresses": ["198.51.100.10"],
 	    "probe_urls": [
@@ -459,7 +459,7 @@ func TestShippedGatewayExampleNeedsNoStorageConfiguration(t *testing.T) {
 
 	// With that one field filled in, it must start -- and still need no
 	// storage configuration whatsoever.
-	cfg.Gateway.TLS.ACMEEmail = "ops@syndichan.org"
+	cfg.Gateway.TLS.ACMEEmail = "ops@rabbiit.io"
 	if err := cfg.ValidateForRole(RoleGatewayOnly); err != nil {
 		t.Fatalf("the documented gateway example cannot start as a gateway: %v", err)
 	}
@@ -490,7 +490,7 @@ func TestPlaceholderACMEEmailIsRejected(t *testing.T) {
 		}
 	}
 	// A real address, and an intentionally empty one, both pass.
-	for _, good := range []string{"ops@syndichan.org", ""} {
+	for _, good := range []string{"ops@rabbiit.io", ""} {
 		cfg := acme()
 		cfg.Gateway.TLS.ACMEEmail = good
 		if err := cfg.ValidateForRole(RoleGatewayOnly); err != nil {

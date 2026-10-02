@@ -19,7 +19,7 @@ import (
 
 	"github.com/quic-go/quic-go"
 
-	"github.com/syndichan/maniwani/storage-client/internal/axon/params"
+	"github.com/rabbiit/maniwani/storage-client/internal/axon/params"
 )
 
 // TestTransportProfileMatchesSection62 pins §6.2's table.

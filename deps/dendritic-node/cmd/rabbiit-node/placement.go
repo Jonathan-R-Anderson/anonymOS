@@ -6,10 +6,10 @@ import (
 	"log"
 	"time"
 
-	"github.com/syndichan/maniwani/storage-client/internal/dcs"
-	"github.com/syndichan/maniwani/storage-client/internal/p2p"
-	"github.com/syndichan/maniwani/storage-client/internal/place"
-	"github.com/syndichan/maniwani/storage-client/internal/store"
+	"github.com/rabbiit/maniwani/storage-client/internal/dcs"
+	"github.com/rabbiit/maniwani/storage-client/internal/p2p"
+	"github.com/rabbiit/maniwani/storage-client/internal/place"
+	"github.com/rabbiit/maniwani/storage-client/internal/store"
 )
 
 // Blob placement wiring: advertise this node's free space, accept placements

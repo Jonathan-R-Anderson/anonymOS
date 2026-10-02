@@ -9,15 +9,15 @@ import (
 
 func TestACMEManagerUsesExactHostAndPrivateCache(t *testing.T) {
 	cache := filepath.Join(t.TempDir(), "certificates")
-	manager, err := NewACMEManager("GW-Node.Syndichan.org.", "ops@syndichan.org", cache)
+	manager, err := NewACMEManager("GW-Node.Rabbiit.io.", "ops@rabbiit.io", cache)
 	if err != nil {
 		t.Fatal(err)
 	}
-	if err := manager.HostPolicy(context.Background(), "gw-node.syndichan.org"); err != nil {
+	if err := manager.HostPolicy(context.Background(), "gw-node.rabbiit.io"); err != nil {
 		t.Fatalf("configured hostname rejected: %v", err)
 	}
 	for _, hostname := range []string{
-		"syndichan.org", "other.syndichan.org", "gw-node.syndichan.org.example",
+		"rabbiit.io", "other.rabbiit.io", "gw-node.rabbiit.io.example",
 	} {
 		if err := manager.HostPolicy(context.Background(), hostname); err == nil {
 			t.Fatalf("unconfigured hostname %q accepted", hostname)
@@ -37,12 +37,12 @@ func TestACMEManagerUsesExactHostAndPrivateCache(t *testing.T) {
 }
 
 func TestACMEManagerRejectsUnsafeConfiguration(t *testing.T) {
-	for _, hostname := range []string{"", "*.syndichan.org", "https://syndichan.org", "127.0.0.1"} {
+	for _, hostname := range []string{"", "*.rabbiit.io", "https://rabbiit.io", "127.0.0.1"} {
 		if _, err := NewACMEManager(hostname, "", t.TempDir()); err == nil {
 			t.Fatalf("unsafe hostname %q accepted", hostname)
 		}
 	}
-	if _, err := NewACMEManager("gw-node.syndichan.org", "", ""); err == nil {
+	if _, err := NewACMEManager("gw-node.rabbiit.io", "", ""); err == nil {
 		t.Fatal("empty certificate cache accepted")
 	}
 }

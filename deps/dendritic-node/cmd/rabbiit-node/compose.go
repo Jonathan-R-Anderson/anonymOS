@@ -9,7 +9,7 @@ import (
 	"path/filepath"
 	"strings"
 
-	"github.com/syndichan/maniwani/storage-client/internal/dcs"
+	"github.com/rabbiit/maniwani/storage-client/internal/dcs"
 )
 
 // dockerComposeRunner runs vulhub-style docker-compose challenges by shelling out
@@ -113,7 +113,7 @@ func (r *dockerComposeRunner) Up(ctx context.Context, project string, files []dc
 	// upstream compose file, so answers derived from it can't be shared.
 	composeFiles := []string{composeName}
 	if len(env) > 0 && primarySvc != "" {
-		overrideName := "docker-compose.syndichan-env.yml"
+		overrideName := "docker-compose.rabbiit-env.yml"
 		if werr := os.WriteFile(filepath.Join(dir, overrideName),
 			[]byte(composeOverrideYAML(primarySvc, env)), 0o600); werr != nil {
 			return "", werr

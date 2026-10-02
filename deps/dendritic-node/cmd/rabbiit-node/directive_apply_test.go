@@ -6,17 +6,17 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/syndichan/maniwani/storage-client/internal/config"
-	"github.com/syndichan/maniwani/storage-client/internal/directive"
+	"github.com/rabbiit/maniwani/storage-client/internal/config"
+	"github.com/rabbiit/maniwani/storage-client/internal/directive"
 )
 
 func configPointingAtOrigin() *config.Config {
 	cfg := &config.Config{}
-	cfg.Gateway.RegistrationAPI = "https://syndichan.org/api/v1/gateways"
-	cfg.Gateway.Validator.OriginURL = "https://syndichan.org"
-	cfg.Gateway.Content.OriginURL = "https://syndichan.org"
+	cfg.Gateway.RegistrationAPI = "https://rabbiit.io/api/v1/gateways"
+	cfg.Gateway.Validator.OriginURL = "https://rabbiit.io"
+	cfg.Gateway.Content.OriginURL = "https://rabbiit.io"
 	cfg.NetworkDirective.Sources = []string{
-		"https://syndichan.org/.well-known/syndichan/network.json",
+		"https://rabbiit.io/.well-known/rabbiit/network.json",
 	}
 	cfg.UIListen = "127.0.0.1:9090"
 	cfg.I2PSAM = "127.0.0.1:7656"
@@ -45,7 +45,7 @@ func TestAMoveCarriesEveryOriginURL(t *testing.T) {
 	// host that moved.
 	cfg := configPointingAtOrigin()
 	logs := applyWithStore(t, cfg, &directive.Directive{
-		Kind: directive.KindMove, Sequence: 3, OriginDomain: "syndichan.net"})
+		Kind: directive.KindMove, Sequence: 3, OriginDomain: "rabbiit.net"})
 
 	for what, got := range map[string]string{
 		"registration": cfg.Gateway.RegistrationAPI,
@@ -53,10 +53,10 @@ func TestAMoveCarriesEveryOriginURL(t *testing.T) {
 		"content":      cfg.Gateway.Content.OriginURL,
 		"source":       cfg.NetworkDirective.Sources[0],
 	} {
-		if !strings.Contains(got, "syndichan.net") {
+		if !strings.Contains(got, "rabbiit.net") {
 			t.Fatalf("%s did not follow the move: %s", what, got)
 		}
-		if strings.Contains(got, "syndichan.org") {
+		if strings.Contains(got, "rabbiit.io") {
 			t.Fatalf("%s still points at the old origin: %s", what, got)
 		}
 	}
@@ -70,7 +70,7 @@ func TestLocalAddressesNeverFollowADirective(t *testing.T) {
 	// moved them would point this node's own internals at somebody else's host.
 	cfg := configPointingAtOrigin()
 	applyWithStore(t, cfg, &directive.Directive{
-		Kind: directive.KindMove, Sequence: 3, OriginDomain: "syndichan.net"})
+		Kind: directive.KindMove, Sequence: 3, OriginDomain: "rabbiit.net"})
 
 	if cfg.UIListen != "127.0.0.1:9090" || cfg.I2PSAM != "127.0.0.1:7656" {
 		t.Fatalf("local addresses moved: ui=%s sam=%s", cfg.UIListen, cfg.I2PSAM)
@@ -84,12 +84,12 @@ func TestAnOperatorsOwnEndpointIsLeftAlone(t *testing.T) {
 	cfg := configPointingAtOrigin()
 	cfg.Gateway.RegistrationAPI = "https://my-own.example/api/v1/gateways"
 	applyWithStore(t, cfg, &directive.Directive{
-		Kind: directive.KindMove, Sequence: 3, OriginDomain: "syndichan.net"})
+		Kind: directive.KindMove, Sequence: 3, OriginDomain: "rabbiit.net"})
 
 	if cfg.Gateway.RegistrationAPI != "https://my-own.example/api/v1/gateways" {
 		t.Fatalf("hijacked an unrelated endpoint: %s", cfg.Gateway.RegistrationAPI)
 	}
-	if !strings.Contains(cfg.Gateway.Validator.OriginURL, "syndichan.net") {
+	if !strings.Contains(cfg.Gateway.Validator.OriginURL, "rabbiit.net") {
 		t.Fatal("the origin URLs should still have followed")
 	}
 }
@@ -111,7 +111,7 @@ func TestApplyingTwiceIsAStableNoOp(t *testing.T) {
 	// log claims a move is happening on every restart forever.
 	cfg := configPointingAtOrigin()
 	held := &directive.Directive{Kind: directive.KindMove, Sequence: 3,
-		OriginDomain: "syndichan.net"}
+		OriginDomain: "rabbiit.net"}
 	applyWithStore(t, cfg, held)
 	after := cfg.Gateway.RegistrationAPI
 
@@ -137,29 +137,29 @@ func TestMovingBackIsPossible(t *testing.T) {
 	logger := log.New(out, "", 0)
 
 	away := &directive.Directive{Kind: directive.KindMove, Sequence: 3,
-		OriginDomain: "syndichan.net"}
+		OriginDomain: "rabbiit.net"}
 	if err := store.Adopt(away, "sig", "signer", 1); err != nil {
 		t.Fatal(err)
 	}
 	applyDirective(cfg, store, away, logger)
 
 	back := &directive.Directive{Kind: directive.KindMove, Sequence: 4,
-		OriginDomain: "syndichan.org"}
+		OriginDomain: "rabbiit.io"}
 	if err := store.Adopt(back, "sig", "signer", 2); err != nil {
 		t.Fatal(err)
 	}
 	applyDirective(cfg, store, back, logger)
 
-	if !strings.Contains(cfg.Gateway.Validator.OriginURL, "syndichan.org") {
+	if !strings.Contains(cfg.Gateway.Validator.OriginURL, "rabbiit.io") {
 		t.Fatalf("could not move back: %s", cfg.Gateway.Validator.OriginURL)
 	}
 }
 
 func TestNothingToChangeIsSaidOutLoud(t *testing.T) {
 	cfg := &config.Config{}
-	cfg.NetworkDirective.Sources = []string{"https://syndichan.org/x.json"}
+	cfg.NetworkDirective.Sources = []string{"https://rabbiit.io/x.json"}
 	logs := applyWithStore(t, cfg, &directive.Directive{
-		Kind: directive.KindMove, Sequence: 3, OriginDomain: "syndichan.net"})
+		Kind: directive.KindMove, Sequence: 3, OriginDomain: "rabbiit.net"})
 	if !strings.Contains(logs, "no URLs changed") {
 		t.Fatalf("silent no-op: %q", logs)
 	}

@@ -38,7 +38,7 @@ import (
 	"time"
 )
 
-const domainEscrowOpen = "syndichan/escrow/opening/v1"
+const domainEscrowOpen = "rabbiit/escrow/opening/v1"
 
 var (
 	ErrEscrowUnknown = errors.New("escrow: no such escrow")

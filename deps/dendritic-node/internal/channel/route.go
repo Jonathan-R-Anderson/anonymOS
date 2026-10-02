@@ -194,7 +194,7 @@ func score(c Candidate, seed [32]byte) float64 {
 	// routers do not win every draw across the whole network. Without it the
 	// best-scoring three become the de facto route for everyone, which
 	// concentrates exactly what diversity is meant to spread.
-	j := derive("syndichan/route/jitter/v1", []byte(c.NodeID), seed[:])
+	j := derive("rabbiit/route/jitter/v1", []byte(c.NodeID), seed[:])
 	s += float64(j[0]) / 255.0
 	return s
 }

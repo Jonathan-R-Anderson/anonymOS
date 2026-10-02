@@ -6,7 +6,7 @@ import (
 	"math"
 	"testing"
 
-	"github.com/syndichan/maniwani/storage-client/internal/axon/params"
+	"github.com/rabbiit/maniwani/storage-client/internal/axon/params"
 )
 
 // hostilePopulation builds 60 relays of which 20 % are the adversary's.

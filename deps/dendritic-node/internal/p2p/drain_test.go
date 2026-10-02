@@ -8,8 +8,8 @@ import (
 	"testing"
 	"time"
 
-	"github.com/syndichan/maniwani/storage-client/internal/placement"
-	"github.com/syndichan/maniwani/storage-client/internal/store"
+	"github.com/rabbiit/maniwani/storage-client/internal/placement"
+	"github.com/rabbiit/maniwani/storage-client/internal/store"
 )
 
 // DRAINING TAKES A HOLDER AWAY. Every test here is therefore about what the

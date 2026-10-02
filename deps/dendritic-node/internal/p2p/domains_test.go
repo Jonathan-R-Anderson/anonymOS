@@ -7,8 +7,8 @@ import (
 
 	ma "github.com/multiformats/go-multiaddr"
 
-	axonpeer "github.com/syndichan/maniwani/storage-client/internal/axon/peer"
-	"github.com/syndichan/maniwani/storage-client/internal/placement"
+	axonpeer "github.com/rabbiit/maniwani/storage-client/internal/axon/peer"
+	"github.com/rabbiit/maniwani/storage-client/internal/placement"
 )
 
 // T12.2 — the planner has refused to co-locate two shards of a chunk in one

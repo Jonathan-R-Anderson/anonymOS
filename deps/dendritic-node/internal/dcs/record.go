@@ -7,13 +7,13 @@ import (
 	"strings"
 	"time"
 
-	"github.com/syndichan/maniwani/storage-client/internal/compute"
+	"github.com/rabbiit/maniwani/storage-client/internal/compute"
 )
 
 // DHTWorkerNamespace mirrors gateway.DHTNamespace. A worker publishes its
-// capability record under /syndichan-dcs-worker/<node-id>, validated and
+// capability record under /rabbiit-dcs-worker/<node-id>, validated and
 // selected-by-sequence exactly like a gateway registration.
-const DHTWorkerNamespace = "syndichan-dcs-worker"
+const DHTWorkerNamespace = "rabbiit-dcs-worker"
 
 func WorkerDHTKey(nodeID string) string { return "/" + DHTWorkerNamespace + "/" + nodeID }
 

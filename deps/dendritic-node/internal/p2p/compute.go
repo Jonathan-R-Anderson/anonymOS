@@ -28,7 +28,7 @@ package p2p
 // to whatever this node installed as its ComputeHandler and the answer is
 // handed back. That keeps the wire honest when the catalogue grows, and it is
 // what lets the receiving node serve a peer's frame through the very handlers
-// its loopback API serves — see cmd/syndichan-node/computepeer.go.
+// its loopback API serves — see cmd/rabbiit-node/computepeer.go.
 //
 // REFUSAL IS NOT UNREACHABILITY
 // -----------------------------
@@ -86,7 +86,7 @@ import (
 	"github.com/libp2p/go-libp2p/core/peer"
 	"github.com/multiformats/go-multiaddr"
 
-	syndii2p "github.com/syndichan/maniwani/storage-client/internal/i2p"
+	syndii2p "github.com/rabbiit/maniwani/storage-client/internal/i2p"
 )
 
 // The three compute operations, named on the wire. Prefixed rather than bare

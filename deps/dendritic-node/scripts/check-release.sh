@@ -48,13 +48,13 @@ DIST="$ROOT/dist"
 # a second copy would be a second thing to forget to update. This lists only the
 # artifact NAMES it must have produced, which is what "did the matrix succeed"
 # actually means.
-EXPECTED="syndichan-node-linux-amd64
-syndichan-node-linux-arm64
-syndichan-node-linux-arm
-syndichan-node-darwin-amd64
-syndichan-node-darwin-arm64
-syndichan-node-windows-amd64.exe
-syndichan-node-windows-arm64.exe"
+EXPECTED="rabbiit-node-linux-amd64
+rabbiit-node-linux-arm64
+rabbiit-node-linux-arm
+rabbiit-node-darwin-amd64
+rabbiit-node-darwin-arm64
+rabbiit-node-windows-amd64.exe
+rabbiit-node-windows-arm64.exe"
 
 # The GOOS/GOARCH pairs for vet. These DO restate the matrix, because `go vet`
 # has to be told a platform and build-release.sh does not expose its list. Kept
@@ -87,7 +87,7 @@ step "3/6  the release binary must not link BLS"
 # blst is cgo and cannot build with CGO_ENABLED=0. It reached the node through
 # internal/ethproof and broke four targets. BLS is opt-in under `ethbls`; if it
 # comes back into the ordinary graph the release is broken again.
-if CGO_ENABLED=0 go list -deps ./cmd/syndichan-node 2>/dev/null | grep -q blst; then
+if CGO_ENABLED=0 go list -deps ./cmd/rabbiit-node 2>/dev/null | grep -q blst; then
 	fail "blst is back in the ordinary node dependency graph; the release build will not cross-compile"
 fi
 printf '  no blst in the CGO-free node dependency graph\n'
@@ -124,13 +124,13 @@ step "6/6  the non-Linux compute boundary"
 # that is not there.
 #
 # What it CANNOT prove from a Linux host: that those handlers refuse at runtime.
-# cmd/syndichan-node/computeapi_other_test.go asserts exactly that — no 2xx, no
+# cmd/rabbiit-node/computeapi_other_test.go asserts exactly that — no 2xx, no
 # admitted/accepted/done true, no executor field — and it can only EXECUTE on a
 # non-Linux machine. Compiled everywhere, run where it applies.
 if [ "$(go env GOOS)" = "linux" ]; then
 	printf '  compiled for darwin and windows; the refusal tests execute on a non-Linux host\n'
 else
-	go test ./cmd/syndichan-node/ || fail "the non-Linux compute refusal tests failed"
+	go test ./cmd/rabbiit-node/ || fail "the non-Linux compute refusal tests failed"
 	printf '  non-Linux compute handlers refuse every request\n'
 fi
 

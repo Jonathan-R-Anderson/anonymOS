@@ -15,7 +15,7 @@ import (
 	"sync"
 	"time"
 
-	"github.com/syndichan/maniwani/storage-client/internal/axon/swarm"
+	"github.com/rabbiit/maniwani/storage-client/internal/axon/swarm"
 )
 
 // The origin's part in the swarm (roadmap §4, "Release push"): it is the

@@ -15,12 +15,12 @@ import (
 	"github.com/libp2p/go-libp2p/core/peer"
 	"github.com/libp2p/go-libp2p/core/protocol"
 
-	syndii2p "github.com/syndichan/maniwani/storage-client/internal/i2p"
+	syndii2p "github.com/rabbiit/maniwani/storage-client/internal/i2p"
 )
 
 // StreamTransport carries DCS envelopes over the node's existing libp2p host,
 // which already runs the I2P transport. It does NOT open a second network: a
-// DCS request to a worker is a new stream on the /syndichan/dcs/1.0.0 protocol
+// DCS request to a worker is a new stream on the /rabbiit/dcs/1.0.0 protocol
 // to that worker's garlic destination, over the same host that exchanges
 // shards. Reusing the host means reusing its Noise handshake, its peer
 // authentication and its I2P tunnels for free.

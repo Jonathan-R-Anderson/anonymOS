@@ -24,7 +24,7 @@ One process may be a candidate and probe, but its own probe result never counts.
 
 1. The candidate signs a short-lived hostname reservation with its persistent
    node identity. The controller deterministically derives
-   `gw-<identity-hash>.syndichan.org`, points it only at the observed request
+   `gw-<identity-hash>.rabbiit.io`, points it only at the observed request
    source IP, and returns after the DNS provider accepts the change.
 2. The candidate confirms that public DNS resolves its assigned name to that
    exact address, then starts exact-host ACME and its TLS listener.
@@ -39,11 +39,11 @@ One process may be a candidate and probe, but its own probe result never counts.
 7. The candidate requires three distinct admitted identities across two
    configured network trust domains by default.
 8. It signs a five-minute registration and submits it directly to
-   `https://syndichan.org/api/v1/gateways/register`. The server ignores claimed
+   `https://rabbiit.io/api/v1/gateways/register`. The server ignores claimed
    addresses, derives the HTTPS source IP, and independently checks TCP 443,
    TLS hostname validity, HTTP 200, and `X-Gateway-Version`.
 9. Only after server acceptance is it published under
-   `/syndichan-gateway/<node-id>` in Kademlia. Every DHT reader independently
+   `/rabbiit-gateway/<node-id>` in Kademlia. Every DHT reader independently
    validates the gateway signature, probe signatures, expiry, quorum, address
    policy, and DHT-key binding.
 10. The server reconciles its verified healthy registry with Name.com. Durable
@@ -68,9 +68,9 @@ the admitted probe node IDs/public keys, and either:
 Then:
 
 ```sh
-syndichan-node -gateway-enable
-syndichan-node -gateway-status
-syndichan-node
+rabbiit-node -gateway-enable
+rabbiit-node -gateway-status
+rabbiit-node
 ```
 
 Forward TCP 443 at the router and permit it through host, IPv6, and cloud
@@ -122,10 +122,10 @@ Public TCP 443 is required; public TCP 80 is required as well when
 `gateway.tls.mode` is `acme`.
 
 ```sh
-/usr/local/bin/syndichan-node \
+/usr/local/bin/rabbiit-node \
   -gateway-only \
-  -config /var/lib/syndichan/config.json \
-  -data-dir /var/lib/syndichan/data
+  -config /var/lib/rabbiit/config.json \
+  -data-dir /var/lib/rabbiit/data
 ```
 
 Startup logs the resolved role and the exact config path it loaded, which is
@@ -135,27 +135,27 @@ For the packaged systemd unit, use a drop-in so package updates cannot erase
 the role selection:
 
 ```sh
-sudo systemctl edit syndichan-node
+sudo systemctl edit rabbiit-node
 ```
 
 ```ini
 [Service]
 ExecStart=
-ExecStart=/usr/local/bin/syndichan-node -gateway-only -config /var/lib/syndichan/config.json -data-dir /var/lib/syndichan/data
+ExecStart=/usr/local/bin/rabbiit-node -gateway-only -config /var/lib/rabbiit/config.json -data-dir /var/lib/rabbiit/data
 ```
 
 ```sh
 sudo systemctl daemon-reload
-sudo systemctl enable --now syndichan-node
+sudo systemctl enable --now rabbiit-node
 ```
 
 Never run a second copy alongside the service; only one process can own 80 and
 443. Confirm the role took effect:
 
 ```sh
-systemctl show syndichan-node -p ExecStart
+systemctl show rabbiit-node -p ExecStart
 ss -lnt | grep -E ':80 |:443 |:9000 |:9090 '
-curl --fail https://gw-NODE-ID.syndichan.org/readyz
+curl --fail https://gw-NODE-ID.rabbiit.io/readyz
 ```
 
 Only 80/443 may be present; 9000 and 9090 must be absent. `/readyz` must return
@@ -197,8 +197,8 @@ A five-minute systemd updater is included for a dedicated gateway whose whole
 installation lives under one normal user's home directory:
 
 ```text
-/home/ubuntu/syndichan-node/
-├── bin/{syndichan-node, syndichan-node.previous, update-from-github}
+/home/ubuntu/rabbiit-node/
+├── bin/{rabbiit-node, rabbiit-node.previous, update-from-github}
 ├── config/config.json
 ├── data/
 ├── source.git
@@ -207,42 +207,42 @@ installation lives under one normal user's home directory:
 ```
 
 Use
-[`syndichan-node-gateway-home.service`](packaging/systemd/syndichan-node-gateway-home.service)
+[`rabbiit-node-gateway-home.service`](packaging/systemd/rabbiit-node-gateway-home.service)
 for the gateway plus
-[`syndichan-node-update.service`](packaging/systemd/syndichan-node-update.service)
+[`rabbiit-node-update.service`](packaging/systemd/rabbiit-node-update.service)
 and
-[`syndichan-node-update.timer`](packaging/systemd/syndichan-node-update.timer)
+[`rabbiit-node-update.timer`](packaging/systemd/rabbiit-node-update.timer)
 for updates. Replace the example `/readyz` hostname in the update service with
-the controller-assigned `gw-...syndichan.org` name before enabling it.
+the controller-assigned `gw-...rabbiit.io` name before enabling it.
 
 The updater never installs a downloaded opaque executable. It fetches `main`
 into a bare mirror, exports the exact commit to a temporary directory, runs
 `go test ./...`, builds with `CGO_ENABLED=0`, loads the real configuration in a
-non-listening preflight, keeps the current binary as `syndichan-node.previous`,
+non-listening preflight, keeps the current binary as `rabbiit-node.previous`,
 atomically installs the candidate and restarts the service, accepts the commit
 only once public `https://gw-.../readyz` succeeds, and otherwise restores and
 restarts the previous binary automatically.
 
 ```sh
 sudo install -m 0755 scripts/update-from-github.sh \
-  /home/ubuntu/syndichan-node/bin/update-from-github
-sudo install -m 0644 packaging/systemd/syndichan-node-gateway-home.service \
-  /etc/systemd/system/syndichan-node.service
-sudo install -m 0644 packaging/systemd/syndichan-node-update.service \
+  /home/ubuntu/rabbiit-node/bin/update-from-github
+sudo install -m 0644 packaging/systemd/rabbiit-node-gateway-home.service \
+  /etc/systemd/system/rabbiit-node.service
+sudo install -m 0644 packaging/systemd/rabbiit-node-update.service \
   /etc/systemd/system/
-sudo install -m 0644 packaging/systemd/syndichan-node-update.timer \
+sudo install -m 0644 packaging/systemd/rabbiit-node-update.timer \
   /etc/systemd/system/
 sudo systemctl daemon-reload
-sudo systemctl enable --now syndichan-node syndichan-node-update.timer
+sudo systemctl enable --now rabbiit-node rabbiit-node-update.timer
 ```
 
 Inspect state, or force one check:
 
 ```sh
-cat /home/ubuntu/syndichan-node/update-status
-systemctl list-timers syndichan-node-update.timer
-sudo systemctl start syndichan-node-update.service
-sudo journalctl -u syndichan-node-update.service -n 100 --no-pager
+cat /home/ubuntu/rabbiit-node/update-status
+systemctl list-timers rabbiit-node-update.timer
+sudo systemctl start rabbiit-node-update.service
+sudo journalctl -u rabbiit-node-update.service -n 100 --no-pager
 ```
 
 Requires `git`, `go`, `curl`, `tar`, `flock`, and GNU `timeout`. No GitHub
@@ -254,7 +254,7 @@ the updater script itself but never rewrites its systemd privilege boundary.
 ## Diagnostics
 
 ```sh
-syndichan-node -gateway-status
+rabbiit-node -gateway-status
 curl --fail https://gateway.example.com/healthz
 curl --fail https://gateway.example.com/readyz
 openssl s_client -connect PUBLIC_IP:443 -servername gateway.example.com

@@ -1,7 +1,7 @@
 package path
 
 import (
-	"github.com/syndichan/maniwani/storage-client/internal/axon/peer"
+	"github.com/rabbiit/maniwani/storage-client/internal/axon/peer"
 	"sync"
 )
 

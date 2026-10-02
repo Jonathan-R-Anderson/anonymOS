@@ -13,7 +13,7 @@ import (
 
 	bolt "go.etcd.io/bbolt"
 
-	"github.com/syndichan/maniwani/storage-client/internal/store"
+	"github.com/rabbiit/maniwani/storage-client/internal/store"
 )
 
 // A LEDGER READ FAILURE IS NOT "NOBODY HAS IT"

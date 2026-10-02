@@ -176,6 +176,7 @@ enum FileType {
     FD_BINDER,           // /dev/binder|hwbinder|vndbinder + binderfs nodes -- Android IPC (A1-A4)
     FD_BINDER_CTL,       // /dev/binderfs/binder-control -- BINDER_CTL_ADD creates named contexts (A4)
     FD_CGROUP,           // a cgroup v2 control file under /sys/fs/cgroup (A6); backend=(node<<8)|fileId
+    FD_EXT4,             // a file/dir in a mounted Android ext4 image (A9.3b); backend=(mountSel<<56)|inode
 }
 
 struct File {
@@ -2481,6 +2482,18 @@ private long fileObjRead(ObjHeader* oh, void* _buf, ulong _count) {
         return cast(ssize_t)read;
     }
 
+    // A9.3b: a file in a mounted Android ext4 image -- read from the image by offset.
+    if (f.type == FileType.FD_EXT4) {
+        const size_t enc = cast(size_t)f.backend;
+        const int  sel = cast(int)(enc >> 56);
+        const uint ino = cast(uint)(enc & 0xFFFF_FFFF);
+        auto m = aVfsMount(sel);
+        if (m is null) return 0;
+        const long got = ext4ReadInodeAt(*m, ino, f.offset, cast(ubyte*)_buf, cast(uint)_count);
+        if (got > 0) f.offset += cast(ulong)got;
+        return (got < 0) ? 0 : cast(ssize_t)got;
+    }
+
     // A6: a cgroup v2 control file -- content is synthesised from the cgroup tree, streamed by offset.
     if (f.type == FileType.FD_CGROUP) {
         const int enc = cast(int)cast(size_t)f.backend;
@@ -3132,6 +3145,8 @@ private int namespaceCheckOpen(const(char)* path, int flags) {
     if ((need & CAP_RIGHT_WRITE) == 0 && cstrEqPrefix(path, "/sys/fs/selinux")) return 0;
     // A9.2: a container owns its own property area; allow it to create/map there (per-domain rtfs).
     if (androidPropIsPath(path)) return 0;
+    // A9.3b: the mounted Android images under /aroot are read-only; a container may read them.
+    if (aVfsIsPath(path)) return 0;
     {   const int v = nsPathVerdict(path, need);
         if (v != 0) return v; }
 
@@ -4509,6 +4524,22 @@ public int sys_open(const(char)* path, int flags) {
         // An unknown path under the cgroup root: fall through to ENOENT handling.
     }
 
+    // A9.3b: /aroot[/vendor]/... -- the mounted Android ext4 images (read-only), served by FD_EXT4.
+    if (aVfsIsPath(path)) {
+        int sel; bool isDir;
+        const uint ino = aVfsResolve(path, sel, isDir);
+        if (ino == 0) return negErrno(ENOENT);
+        g_fdTable[fd].type     = FileType.FD_EXT4;
+        g_fdTable[fd].flags    = flags;
+        g_fdTable[fd].offset   = 0;
+        g_fdTable[fd].backend  = cast(void*)((cast(size_t)sel << 56) | cast(size_t)ino);
+        ulong sz = 0; uint mode = 0;
+        auto m = aVfsMount(sel);
+        if (m !is null) ext4InodeInfo(*m, ino, &mode, &sz);
+        g_fdTable[fd].fileSize = sz;
+        return publishActiveFdReturn(fd);
+    }
+
     // /dev/dri/card0, /dev/dri/renderD128 → DRM/KMS device
     if (cstrEq(path, "/dev/dri/card0") || cstrEq(path, "/dev/dri/renderD128")) {
         g_fdTable[fd].type    = FileType.FD_DRM;
@@ -5470,6 +5501,13 @@ private long fileObjStat(ObjHeader* oh, ulong _statBuf) {
             *cast(ulong*)(_statBuf + 0) =
                 (f.type == FileType.FD_BOOT_MODULE) ? 1 : 2;        // st_dev
             *cast(ulong*)(_statBuf + 8) = cast(ulong)f.backend + 1; // st_ino
+        } else if (f.type == FileType.FD_EXT4) {
+            // A9.3b: report the real mode+size from the Android ext4 inode.
+            const size_t enc = cast(size_t)f.backend;
+            auto m = aVfsMount(cast(int)(enc >> 56));
+            uint mode = 0x8000 | 0x01ED; ulong sz = f.fileSize;
+            if (m !is null) { uint md; ulong s; if (ext4InodeInfo(*m, cast(uint)(enc & 0xFFFF_FFFF), &md, &s)) { mode = md; sz = s; } }
+            writeLinuxStat(_statBuf, mode, sz);
         } else if (fileIsSyntheticDirectory(f)) {
             writeLinuxStat(_statBuf, 0x4000 | 0x01ED, 0); // S_IFDIR | 0755
         } else if (f.type == FileType.FD_RTDIR) {
@@ -14975,6 +15013,27 @@ public long linux_sys_getdents64(ulong fd, ulong dirp, ulong count) {
     int ifd = cast(int)fd;
     if (ifd < 0 || ifd >= 1024 || g_fdTable[ifd].type == FileType.FD_NONE) return negErrno(EBADF);
     File* f = &g_fdTable[ifd];
+    // A9.3b: a directory in a mounted Android ext4 image -- enumerate via the ext4 driver.  f.offset
+    // is the entry index; "." and ".." come from the image itself, so no synthetic lead-in.
+    if (f.type == FileType.FD_EXT4) {
+        if (count == 0) return negErrno(EINVAL);
+        const size_t enc = cast(size_t)f.backend;
+        auto m = aVfsMount(cast(int)(enc >> 56));
+        if (m is null) return negErrno(ENOTDIR);
+        const uint dirIno = cast(uint)(enc & 0xFFFF_FFFF);
+        { uint md; if (!ext4InodeInfo(*m, dirIno, &md, null) || (md & 0xF000) != 0x4000) return negErrno(ENOTDIR); }
+        auto buf2 = cast(ubyte*)dirp;
+        size_t w2 = 0;
+        for (;;) {
+            char[256] nm; uint nl; uint cino; ubyte ft;
+            if (!ext4DirEnt(*m, dirIno, cast(uint)f.offset, nm.ptr, &nl, &cino, &ft)) break;
+            const ubyte dt = (ft == 2) ? DT_DIR : (ft == 1 ? DT_REG : (ft == 7 ? DT_LNK : DT_REG));
+            if (!writeDirent64(buf2, count, &w2, cast(ulong)cino, cast(long)f.offset + 1, dt, nm.ptr, nl))
+                return cast(long)w2;
+            f.offset += 1;
+        }
+        return cast(long)w2;
+    }
     if (!fileIsSyntheticDirectory(f) && !fileIsRtDirectory(f)) return negErrno(ENOTDIR);
     if (count == 0) return negErrno(EINVAL);
 
@@ -18824,6 +18883,48 @@ private bool androidPropIsPath(const(char)* path) @nogc nothrow {
     i = 0;
     foreach (c; b) { if (path[i] != c) return false; ++i; }
     return path[i] == '\0' || path[i] == '/';
+}
+
+// ── A9.3b: the Android ext4 images mounted into the VFS ─────────────────────────────────────────────
+// The system image is exposed at /aroot (system-as-root) and the vendor image at /aroot/vendor, so
+// Android's files resolve by path (e.g. /aroot/system/bin/linker64).  Read-only.  An FD_EXT4 fd
+// carries (mountSel<<56)|inode in its backend; f.offset is the read cursor (files) or entry index
+// (directories).
+import core.android.ext4 : Ext4Mount, ext4AndroidMount, ext4AndroidSys, ext4AndroidVen,
+                           ext4Resolve, ext4InodeInfo, ext4ReadInodeAt, ext4DirEnt;
+
+private bool aVfsIsPath(const(char)* p) @nogc nothrow {
+    static immutable string pre = "/aroot";
+    size_t i = 0; foreach (c; pre) { if (p[i] != c) return false; ++i; }
+    return p[i] == '\0' || p[i] == '/';
+}
+
+// Resolve an /aroot[/vendor]/... path to (mount, inode, isDir).  mountSel: 0=system, 1=vendor.
+// Returns inode number (0 = not found / not an Android path).
+private uint aVfsResolve(const(char)* path, out int mountSel, out bool isDir) {
+    mountSel = 0; isDir = false;
+    if (!aVfsIsPath(path)) return 0;
+    ext4AndroidMount();
+    const(char)* sub = path + 6;                       // past "/aroot"
+    Ext4Mount* m;
+    static immutable string vpre = "/vendor";
+    bool isVen = true;
+    { size_t i = 0; foreach (c; vpre) { if (sub[i] != c) { isVen = false; break; } ++i; }
+      if (isVen && sub[i] != '\0' && sub[i] != '/') isVen = false; }
+    if (isVen) { mountSel = 1; m = ext4AndroidVen(); sub = sub + 7; }   // past "/vendor"
+    else       { mountSel = 0; m = ext4AndroidSys(); }
+    if (m is null) return 0;
+    if (sub[0] == '\0') sub = "/\0".ptr;               // the mount root itself
+    ubyte[256] inode;
+    const uint ino = ext4Resolve(*m, sub, inode.ptr);
+    if (ino == 0) return 0;
+    uint mode;
+    if (ext4InodeInfo(*m, ino, &mode, null)) isDir = (mode & 0xF000) == 0x4000;
+    return ino;
+}
+
+private Ext4Mount* aVfsMount(int sel) @nogc nothrow {
+    return (sel == 1) ? ext4AndroidVen() : ext4AndroidSys();
 }
 
 public long linux_sys_seccomp(ulong op, ulong f, ulong a) { return negErrno(EINVAL); }

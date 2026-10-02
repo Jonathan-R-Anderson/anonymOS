@@ -241,6 +241,103 @@ Ext4Mount ext4FindAndroid(bool wantVendor) {
     return none;
 }
 
+// ── A9.3b: mount the Android images into the VFS ──────────────────────────────────────────────────
+// The system image is "system-as-root" (it has a /system directory); the vendor image does not.
+// Mounted (by posix.d) at /aroot and /aroot/vendor respectively.
+__gshared Ext4Mount g_amSys;
+__gshared Ext4Mount g_amVen;
+private __gshared bool g_amInit = false;
+
+public void ext4AndroidMount() {
+    if (g_amInit) return;
+    g_amInit = true;
+    if (!diskReady()) return;
+    ubyte[256] ino;
+    foreach (idx; 0 .. 8) {
+        auto m = ext4Mount(idx);
+        if (!m.ok) continue;
+        if (ext4Resolve(m, "/system\0".ptr, ino.ptr) != 0) {
+            if (!g_amSys.ok) g_amSys = m;                 // system-as-root carries /system
+        } else if (ext4Resolve(m, "/waydroid.prop\0".ptr, ino.ptr) != 0 ||
+                   ext4Resolve(m, "/lib64\0".ptr, ino.ptr) != 0) {
+            if (!g_amVen.ok) g_amVen = m;                 // vendor image
+        }
+    }
+}
+public Ext4Mount* ext4AndroidSys() { return g_amSys.ok ? &g_amSys : null; }
+public Ext4Mount* ext4AndroidVen() { return g_amVen.ok ? &g_amVen : null; }
+
+/// i_mode and byte size of an inode; false if it cannot be read.
+bool ext4InodeInfo(const ref Ext4Mount m, uint ino, uint* mode, ulong* size) {
+    ubyte[256] inode;
+    if (!readInode(m, ino, inode.ptr)) return false;
+    if (mode !is null) *mode = rd16(inode.ptr, 0x00);
+    if (size !is null) *size = inodeSize(inode.ptr);
+    return true;
+}
+
+/// Read [off, off+n) of file inode `ino` into `dst`; returns bytes read (0 at/after EOF), -1 on error.
+long ext4ReadInodeAt(const ref Ext4Mount m, uint ino, ulong off, ubyte* dst, uint n) {
+    ubyte[256] inode;
+    if (!readInode(m, ino, inode.ptr)) return -1;
+    const ulong sz = inodeSize(inode.ptr);
+    if (off >= sz) return 0;
+    const ulong avail = sz - off;
+    uint want = (n < avail) ? n : cast(uint)avail;
+    ubyte[MAX_BLOCK] blk;
+    uint done = 0;
+    while (done < want) {
+        const ulong fileOff = off + done;
+        const uint  logical = cast(uint)(fileOff / m.blockSize);
+        const uint  within  = cast(uint)(fileOff % m.blockSize);
+        const ulong phys    = mapBlock(m, inode.ptr, logical);
+        if (phys == 0 || !readBlock(m, phys, blk.ptr)) break;
+        uint chunk = m.blockSize - within;
+        if (chunk > want - done) chunk = want - done;
+        foreach (i; 0 .. chunk) dst[done + i] = blk[within + i];
+        done += chunk;
+    }
+    return done;
+}
+
+/// Enumerate directory inode `dirIno`'s entry number `index` (0-based over present entries).
+/// Fills name (NUL-terminated), its length, the child inode, and the dir-entry file-type; false past end.
+bool ext4DirEnt(const ref Ext4Mount m, uint dirIno, uint index,
+                char* outName, uint* outLen, uint* outIno, ubyte* outType) {
+    ubyte[256] dirInode;
+    if (!readInode(m, dirIno, dirInode.ptr)) return false;
+    const ulong sz = inodeSize(dirInode.ptr);
+    ubyte[MAX_BLOCK] blk;
+    uint logical = 0; ulong scanned = 0; uint seen = 0;
+    while (scanned < sz) {
+        const ulong phys = mapBlock(m, dirInode.ptr, logical);
+        if (phys == 0 || !readBlock(m, phys, blk.ptr)) break;
+        uint off = 0;
+        while (off + 8 <= m.blockSize) {
+            const uint   eino   = rd32(blk.ptr, off);
+            const ushort recLen = rd16(blk.ptr, off + 4);
+            const ubyte  nlen   = blk[off + 6];
+            const ubyte  ftype  = blk[off + 7];
+            if (recLen < 8) break;
+            if (eino != 0) {
+                if (seen == index) {
+                    const uint c = nlen < 255 ? nlen : 255;
+                    foreach (i; 0 .. c) outName[i] = cast(char)blk[off + 8 + i];
+                    outName[c] = '\0';
+                    if (outLen  !is null) *outLen  = c;
+                    if (outIno  !is null) *outIno  = eino;
+                    if (outType !is null) *outType = ftype;
+                    return true;
+                }
+                ++seen;
+            }
+            off += recLen;
+        }
+        ++logical; scanned += m.blockSize;
+    }
+    return false;
+}
+
 // Boot self-test: find the Android system image among the attached disks, read a real file out of
 // its ext4, and show it -- proving the kernel can read Android's /system without the host.
 public void ext4SelfTest() {

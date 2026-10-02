@@ -3121,12 +3121,14 @@ private int nsPathVerdict(const(char)* path, uint need) {
 private bool nsReadable(const(char)* path) {
     const int tid = cast(int)g_current_task_id;
     if (tid < 0 || tid >= MAX_TASKS || g_tasks[tid].domainObjId == 0) return true;
+    if (androidDataIsPath(path)) return true;   // A9.3f: a container owns its own /data overlay
     return nsPathVerdict(path, CAP_RIGHT_READ) == 0;
 }
 
 private int nsWriteGate(const(char)* path) {
     const int tid = cast(int)g_current_task_id;
     if (tid < 0 || tid >= MAX_TASKS || g_tasks[tid].domainObjId == 0) return 0;
+    if (androidDataIsPath(path)) return 0;       // A9.3f: a container's writable /data (rtfs /.adata)
     return nsPathVerdict(path, CAP_RIGHT_WRITE);
 }
 
@@ -3147,6 +3149,8 @@ private int namespaceCheckOpen(const(char)* path, int flags) {
     if (androidPropIsPath(path)) return 0;
     // A9.3b: the mounted Android images under /aroot are read-only; a container may read them.
     if (aVfsIsPath(path)) return 0;
+    // A9.3f: a container owns its own writable /data (redirected to per-domain rtfs /.adata).
+    if (androidDataIsPath(path)) return 0;
     {   const int v = nsPathVerdict(path, need);
         if (v != 0) return v; }
 
@@ -4271,6 +4275,12 @@ public int sys_open(const(char)* path, int flags) {
     {
         const(char)* ap = androidPropRewrite(path, _apropAbs.ptr, _apropAbs.length);
         if (ap !is null) path = ap;
+    }
+    // A9.3f: a writable /data for the Android runtime (chroot form /aroot/data) -> rtfs /.adata.
+    char[1024] _adataAbs = void;
+    {
+        const(char)* ad = androidDataRewrite(path, _adataAbs.ptr, _adataAbs.length);
+        if (ad !is null) path = ad;
     }
 
     // F1: /objects/processes is the live process view = /proc. Rewrite the prefix so
@@ -16318,6 +16328,8 @@ private long rtMkdirSyscall(int dirfd, const(char)* path, ushort mode) {
     if (cgIsPath(path)) return cgMkdir(path);   // A6: mkdir a cgroup under /sys/fs/cgroup
     char[1024] _apm = void;                      // A9.2: /dev/__properties__ -> rtfs backing
     { const(char)* ap = androidPropRewrite(path, _apm.ptr, _apm.length); if (ap !is null) path = ap; }
+    char[1024] _adm = void;                      // A9.3f: /data (or /aroot/data) -> rtfs /.adata
+    { const(char)* ad = androidDataRewrite(path, _adm.ptr, _adm.length); if (ad !is null) path = ad; }
     int parent; const(char)* leaf; size_t leafLen;
     const int idx = rtResolve(path, parent, leaf, leafLen);
     // A directory that already exists is EEXIST before any write check, as on Linux: `mkdir -p
@@ -16362,6 +16374,8 @@ private long rtUnlinkSyscall(const(char)* path, bool dirOnly) {
     if (cgIsPath(path)) return dirOnly ? cgRmdir(path) : negErrno(EPERM);   // A6: rmdir a cgroup
     char[1024] _apu = void;                      // A9.2: /dev/__properties__ -> rtfs backing
     { const(char)* ap = androidPropRewrite(path, _apu.ptr, _apu.length); if (ap !is null) path = ap; }
+    char[1024] _adu = void;                      // A9.3f: /data (or /aroot/data) -> rtfs /.adata
+    { const(char)* ad = androidDataRewrite(path, _adu.ptr, _adu.length); if (ad !is null) path = ad; }
     { const int g = nsWriteGate(path); if (g != 0) return g; }   // appgate: the domain's view
     int parent; const(char)* leaf; size_t leafLen;
     const int idx = rtResolve(path, parent, leaf, leafLen);
@@ -16911,6 +16925,10 @@ private bool chownIsNoop(ulong u, ulong g) {
 }
 
 private long rtChownPath(const(char)* p, ulong u, ulong g) {
+    // A9.3f: a chown under the container's /data lands on the rtfs overlay (/.adata), where it
+    // persists like any rtfs node -- the Android runtime chowns its dalvik-cache.
+    char[1024] _adc = void;
+    if (p !is null) { const(char)* ad = androidDataRewrite(p, _adc.ptr, _adc.length); if (ad !is null) p = ad; }
     if (p !is null) { const int ng = nsWriteGate(p); if (ng != 0) return ng; }   // appgate: the domain's view
     if (p !is null) {
         int rp; const(char)* rl; size_t rll;
@@ -18901,6 +18919,66 @@ private bool androidPropIsPath(const(char)* path) @nogc nothrow {
     i = 0;
     foreach (c; b) { if (path[i] != c) return false; ++i; }
     return path[i] == '\0' || path[i] == '/';
+}
+
+// ── A9.3f: a writable /data for the Android runtime (dalvik-cache, app data) ───────────────────────
+// The mounted image's /data is read-only, but ART must create /data/dalvik-cache and write there.
+// Redirect /data[/...] (and the chroot form /aroot/data[/...]) to a writable rtfs tree /.adata --
+// per-domain by rtfs ownership, so each container gets its own data overlay.  This matches how
+// Waydroid mounts a fresh writable /data over the image.
+private __gshared bool g_adataReady = false;
+// Create an rtfs directory at `p` if absent (its parent must already exist).
+private void androidEnsureDir(const(char)* p) {
+    int parent; const(char)* leaf; size_t ll;
+    const int idx = rtResolve(p, parent, leaf, ll);
+    if (idx < 0 && parent >= 0 && leaf !is null)
+        rtCreate(parent, leaf, ll, RT_DIR, 0x1FF, userCurrentUid(), userCurrentGid());
+}
+private void androidDataEnsureRoot() {
+    if (g_adataReady) return;
+    g_adataReady = true;
+    // The writable /data overlay plus the skeleton Android's init/installd normally lay down, which
+    // the ART runtime expects to exist (it mkdir's leaves under these, not the parents).
+    androidEnsureDir("/.adata\0".ptr);
+    androidEnsureDir("/.adata/dalvik-cache\0".ptr);
+    androidEnsureDir("/.adata/local\0".ptr);
+    androidEnsureDir("/.adata/local/tmp\0".ptr);
+    androidEnsureDir("/.adata/data\0".ptr);
+    androidEnsureDir("/.adata/system\0".ptr);
+    androidEnsureDir("/.adata/misc\0".ptr);
+    androidEnsureDir("/.adata/app\0".ptr);
+}
+// Rewrite /data or /aroot/data (the chroot form) to the writable rtfs /.adata; null = not a data path.
+private const(char)* androidDataRewrite(const(char)* path, char* buf, size_t cap) {
+    const(char)* q = path;
+    static immutable string ar = "/aroot";
+    { size_t i = 0; bool had = true;
+      foreach (c; ar) { if (q[i] != c) { had = false; break; } ++i; }
+      if (had && (q[i] == '/' || q[i] == '\0')) q = q + 6; }   // strip a leading /aroot
+    static immutable string dd = "/data";
+    size_t k = 0;
+    foreach (c; dd) { if (q[k] != c) return null; ++k; }
+    if (q[k] != '/' && q[k] != '\0') return null;
+    androidDataEnsureRoot();
+    static immutable string dst = "/.adata";
+    size_t p = 0;
+    foreach (c; dst) if (p + 1 < cap) buf[p++] = c;
+    size_t r = k; while (q[r] != '\0' && p + 1 < cap) buf[p++] = q[r++];
+    buf[p] = '\0';
+    return buf;
+}
+private bool androidDataIsPath(const(char)* path) @nogc nothrow {
+    const(char)* q = path;
+    static immutable string ar = "/aroot";
+    { size_t i = 0; bool had = true;
+      foreach (c; ar) { if (q[i] != c) { had = false; break; } ++i; }
+      if (had && (q[i] == '/' || q[i] == '\0')) q = q + 6; }
+    static immutable string dd = "/data";
+    size_t k = 0; foreach (c; dd) { if (q[k] != c) break; ++k; }
+    if (k == dd.length && (q[k] == '/' || q[k] == '\0')) return true;
+    static immutable string da = "/.adata";
+    k = 0; foreach (c; da) { if (q[k] != c) return false; ++k; }
+    return q[k] == '/' || q[k] == '\0';
 }
 
 // ── A9.3b: the Android ext4 images mounted into the VFS ─────────────────────────────────────────────

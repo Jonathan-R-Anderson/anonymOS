@@ -140,10 +140,25 @@ static int container_init(const char *root, int argc, char **argv) {
                 _exit(1);
             }
             chdir("/");   /* now inside the Android root */
+            /* A9.3i: make this child's stderr unmistakably visible.  fds 0/1/2 are inherited as the
+             * kernel console (-> serial), but prove the channel and route anything ART writes to fd 2
+             * there too, so startVm()'s pre-CreateJavaVM failures (which AndroidRuntime::start returns
+             * on WITHOUT logging) are captured. */
+            dup2(1, 2);
+            { const char *pb = "[exec-bionic] stderr->serial OK; invoking app_process64 --zygote\n";
+              (void)!write(2, pb, strlen(pb)); }
             char *av[] = { (char *)"/system/bin/app_process64", (char *)"-Xzygote",
                            (char *)"/system/bin", (char *)"--zygote", NULL };
             char *ev[] = { (char *)"PATH=/system/bin", (char *)"ANDROID_ROOT=/system",
                            (char *)"ANDROID_DATA=/data",
+                           /* A9.3i: recent ART derives the boot-image location and the ICU / time-zone
+                            * data paths from these APEX-root env vars; app_process does not default
+                            * them, and startVm() fails SILENTLY (returns -1 with no log) when they are
+                            * unset.  Point each at its flattened APEX dir under /system/apex. */
+                           (char *)"ANDROID_ART_ROOT=/apex/com.android.art",
+                           (char *)"ANDROID_I18N_ROOT=/apex/com.android.i18n",
+                           (char *)"ANDROID_TZDATA_ROOT=/apex/com.android.tzdata",
+                           (char *)"ANDROID_RUNTIME_ROOT=/apex/com.android.runtime",
                            /* A9.3d/e: the bootstrap linker has no linker-config namespaces yet, so
                             * give it an explicit search path -- /system/lib64 plus the APEX lib dirs
                             * (now activated by the /apex -> /system/apex redirect) that hold the

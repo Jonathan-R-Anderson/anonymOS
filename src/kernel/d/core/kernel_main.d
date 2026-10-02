@@ -3585,6 +3585,36 @@ private void mmapFixedEvict(int tid, ulong va, ulong len) {
     removeRegionShared(tid, va, va + len);
 }
 
+// Whether a non-MAP_FIXED mmap may be placed at its caller's address hint [va, va+len).  It is
+// usable only when the range collides with nothing: no tracked region (rangeFreeShared) AND no
+// currently-present page.  The present-page scan matters because the main executable's and the
+// interpreter's PT_LOAD segments are mapped WITHOUT region entries, so a region check alone reports
+// them "free" -- honoring a hint there would overwrite running code (it did: a desktop hint landed
+// on the compositor's image and triple-faulted it).  ART's boot image hint (~0x70000000) sits in
+// genuinely empty low space, so it passes; any hint that overlaps something live falls back to the
+// high arena, as Linux relocates a hint that will not fit.
+private bool taskExecNameIs(int tid, string name) {
+    if (tid < 0 || tid >= MAX_TASKS) return false;
+    auto n = g_taskExecName[tid];
+    if (n is null) return false;
+    size_t i = 0;
+    foreach (c; name) { if (n[i] != c) return false; ++i; }
+    return n[i] == 0;
+}
+private bool mmapHintUsable(int tid, ulong va, ulong len) {
+    import core.addrspace : userPageMapped;
+    // Scope the behavior to the Android runtime, whose boot image is compiled for a fixed base and
+    // which rejects any other address.  Honoring hints for EVERY process triple-faulted the
+    // compositor during its own startup (its toolkits pass hints our page-fault/region model does
+    // not place safely), so the desktop's mmap path must stay byte-identical to before -- only
+    // app_process64 (the Zygote) opts in.
+    if (!taskExecNameIs(tid, "app_process64")) return false;
+    if (!rangeFreeShared(tid, va, va + len)) return false;
+    for (ulong off = 0; off < len; off += 4096)
+        if (userPageMapped(tid, va + off)) return false;
+    return true;
+}
+
 // Reserve `len` bytes of fresh address space in task `tid`'s address space for a non-fixed mmap: the
 // cursor is the highest any live thread of the space holds, and every one of them moves past the
 // reservation, so the cursor survives any single thread exiting.
@@ -4706,6 +4736,14 @@ private void dispatchSyscall(int tid) {
             ulong vaddr;
             if (mflags & MAP_FIXED) {
                 if (rdi == 0 || (rdi & 0xFFF) != 0) { ret = -22; break; }
+                vaddr = rdi;
+            } else if (rdi != 0 && (rdi & 0xFFF) == 0 && mmapHintUsable(tid, rdi, alignedLen)) {
+                // Honor a non-MAP_FIXED address hint when the requested range is genuinely free (Linux
+                // semantics).  ART passes its boot image's compiled base (~0x70000000, well below our
+                // high mmap arena) as a hint and then rejects any other address; without this it
+                // logged "Failed to mmap at expected address" and fell back to a boot-image-less mode
+                // that cannot carry the full boot classpath.  A hint that collides falls through to
+                // the arena, exactly as Linux relocates a hinted map that will not fit.
                 vaddr = rdi;
             } else {
                 vaddr = asMmapReserve(tid, alignedLen);

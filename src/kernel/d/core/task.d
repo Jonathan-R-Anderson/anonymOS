@@ -879,6 +879,28 @@ void clearRegions(ref Task task) {
     rtabDetach(task);
 }
 
+// True when NO region of task `tid`'s address space overlaps [start, end).  Lets a non-MAP_FIXED
+// mmap honor its caller's address hint: Linux places a hinted mapping there when the range is free
+// and elsewhere otherwise.  ART relies on this to load its boot image at the fixed base the image
+// was compiled for (its contents hold absolute pointers relative to that base), so a hint we ignore
+// becomes "Failed to mmap at expected address" and ART drops to a boot-image-less, non-working mode.
+bool rangeFreeShared(int tid, ulong start, ulong end) {
+    if (tid < 0 || tid >= MAX_TASKS) return false;
+    if (end <= start) return false;
+    auto tab = g_tasks[tid].rtab;
+    if (tab is null) return true;
+    foreach (c; 0 .. tab.nchunks) {
+        auto ch = tab.chunks[c];
+        const int lim = (c + 1) * RT_PER_CHUNK <= tab.count ? RT_PER_CHUNK : tab.count - c * RT_PER_CHUNK;
+        foreach (k; 0 .. lim) {
+            auto r = &ch[k];
+            if (r.start < end && start < r.end) return false;   // [start,end) overlaps a live region
+        }
+        if ((c + 1) * RT_PER_CHUNK >= tab.count) break;
+    }
+    return true;
+}
+
 // Find the region that contains vaddr (or null)
 AddrRegion* findRegion(ref Task task, ulong vaddr) {
     auto tab = task.rtab;

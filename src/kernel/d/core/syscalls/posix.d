@@ -18887,6 +18887,125 @@ public void nsIsolationSelfTest() {
 // substrate.  /dev is synthetic (read-only), so the subtree is transparently backed by a real rtfs
 // directory (/.__properties__) -- created on first touch, never shadowing synthetic /dev -- and
 // rtfs files there support MAP_SHARED, so the area round-trips across independent opens/mmaps.
+// ── A9.3g: seed the Android system-property area (bionic format) ───────────────────────────────────
+// bionic reads properties from /dev/__properties__: a serialized `property_info` (property->context
+// map), a per-context `prop_area` (the name->value trie), and `properties_serial`.  Without init's
+// property service these are absent, so __system_property_get returns nothing and ART cannot read
+// ro.product.cpu.abilist64.  Seed a minimal set: one context ("u:object_r:default_prop:s0") that
+// every property maps to, a prop_area with the properties ART/Zygote need, and the serial area.
+private enum uint PROP_AREA_MAGIC   = 0x504f_5250;   // "PROP"
+private enum uint PROP_AREA_VERSION = 0xfc6e_d0ab;
+private enum uint PROP_VALUE_MAX    = 92;
+private enum uint PA_HDR            = 128;            // prop_area header (bytes_used,serial,magic,version,reserved[28])
+
+private void paPut32(ubyte* b, uint off, uint v) @nogc nothrow {
+    b[off]=cast(ubyte)v; b[off+1]=cast(ubyte)(v>>8); b[off+2]=cast(ubyte)(v>>16); b[off+3]=cast(ubyte)(v>>24);
+}
+private uint paGet32(const(ubyte)* b, uint off) @nogc nothrow {
+    return b[off]|(cast(uint)b[off+1]<<8)|(cast(uint)b[off+2]<<16)|(cast(uint)b[off+3]<<24);
+}
+private uint paAlign4(uint x) @nogc nothrow { return (x + 3) & ~3u; }
+
+// Build a prop_area (header + trie) for the given name=value pairs; returns total byte length.
+// prop_bt fields (data_-relative): namelen(0) prop(4) left(8) right(12) children(16) name(20).
+// prop_info fields: serial(0) value[92](4) name(96).  All offsets are data_-relative (data_ = +PA_HDR).
+private uint buildPropArea(const(string)[] names, const(string)[] values, ubyte* o, uint cap) @nogc nothrow {
+    foreach (i; 0 .. cap) o[i] = 0;
+    paPut32(o, 8,  PROP_AREA_MAGIC);
+    paPut32(o, 12, PROP_AREA_VERSION);
+    uint used = 20;                                  // root prop_bt (namelen 0) occupies data_[0..20)
+    uint alloc(uint sz) @nogc nothrow { const uint r = used; used = paAlign4(used + sz); return r; }
+    uint newBt(const(char)* nm, uint nl) @nogc nothrow {
+        const uint off = alloc(20 + nl + 1);
+        paPut32(o, PA_HDR + off, nl);
+        foreach (k; 0 .. nl) o[PA_HDR + off + 20 + k] = cast(ubyte)nm[k];
+        return off;
+    }
+    int btcmp(const(char)* nm, uint nl, uint bo) @nogc nothrow {
+        const uint bl = paGet32(o, PA_HDR + bo);
+        const uint m = nl < bl ? nl : bl;
+        foreach (k; 0 .. m) { const int d = cast(int)cast(ubyte)nm[k] - cast(int)o[PA_HDR + bo + 20 + k]; if (d) return d; }
+        return cast(int)nl - cast(int)bl;
+    }
+    uint findChild(uint po, const(char)* nm, uint nl) @nogc nothrow {
+        uint root = paGet32(o, PA_HDR + po + 16);
+        if (root == 0) { const uint nb = newBt(nm, nl); paPut32(o, PA_HDR + po + 16, nb); return nb; }
+        uint cur = root;
+        while (true) {
+            const int c = btcmp(nm, nl, cur);
+            if (c == 0) return cur;
+            const uint link = (c < 0) ? (PA_HDR + cur + 8) : (PA_HDR + cur + 12);
+            const uint nxt = paGet32(o, link);
+            if (nxt != 0) { cur = nxt; continue; }
+            const uint nb = newBt(nm, nl); paPut32(o, link, nb); return nb;
+        }
+    }
+    foreach (pi; 0 .. names.length) {
+        const string full = names[pi];
+        uint node = 0, s = 0;
+        while (s < full.length) {
+            uint e = s; while (e < full.length && full[e] != '.') ++e;
+            node = findChild(node, full.ptr + s, cast(uint)(e - s));
+            s = (e < full.length) ? e + 1 : e;
+        }
+        uint vlen = cast(uint)values[pi].length; if (vlen > PROP_VALUE_MAX - 1) vlen = PROP_VALUE_MAX - 1;
+        const uint nlen = cast(uint)full.length;
+        const uint io = alloc(4 + PROP_VALUE_MAX + nlen + 1);
+        paPut32(o, PA_HDR + io, vlen << 24);
+        foreach (k; 0 .. vlen) o[PA_HDR + io + 4 + k] = cast(ubyte)values[pi][k];
+        foreach (k; 0 .. nlen) o[PA_HDR + io + 4 + PROP_VALUE_MAX + k] = cast(ubyte)full[k];
+        paPut32(o, PA_HDR + node + 4, io);
+    }
+    paPut32(o, 0, used);
+    return PA_HDR + used;
+}
+
+// Build a minimal serialized property_info: one context, every property mapped to it (root node
+// carries context 0, no children).  Returns total byte length.
+private uint buildPropertyInfo(ubyte* o, uint cap) @nogc nothrow {
+    foreach (i; 0 .. cap) o[i] = 0;
+    static immutable string CTX = "u:object_r:default_prop:s0";
+    static immutable string TYP = "string";
+    uint off = 24;                                   // header: 6 u32
+    const uint contextsOff = off; off += 8;          // [count=1][strOff]
+    const uint typesOff    = off; off += 8;
+    const uint rootOff     = off; off += 36 + 1;     // TrieNodeInternal (9 u32) + name '\0'
+    off = paAlign4(off);
+    const uint ctxStr = off; off += cast(uint)CTX.length + 1;
+    const uint typStr = off; off += cast(uint)TYP.length + 1;
+    const uint total  = paAlign4(off);
+    paPut32(o, 0, 1); paPut32(o, 4, 1); paPut32(o, 8, total);
+    paPut32(o, 12, contextsOff); paPut32(o, 16, typesOff); paPut32(o, 20, rootOff);
+    paPut32(o, contextsOff, 1); paPut32(o, contextsOff + 4, ctxStr);
+    paPut32(o, typesOff, 1);    paPut32(o, typesOff + 4, typStr);
+    // root TrieNodeInternal: namelen 0, context_index 0, type_index 0, all counts 0
+    paPut32(o, rootOff + 4, 0);                      // context_index = 0 (valid; ~0u would be "none")
+    foreach (k; 0 .. CTX.length) o[ctxStr + k] = cast(ubyte)CTX[k];
+    foreach (k; 0 .. TYP.length) o[typStr + k] = cast(ubyte)TYP[k];
+    return total;
+}
+
+private __gshared ubyte[16384] g_paBuf;
+private __gshared ubyte[1024]  g_piBuf;
+private __gshared ubyte[256]   g_psBuf;
+private void androidPropsSeed() {
+    static immutable string[] N = [
+        "ro.product.cpu.abilist64", "ro.product.cpu.abilist32", "ro.product.cpu.abilist",
+        "ro.build.version.sdk", "ro.build.version.release", "ro.dalvik.vm.native.bridge",
+        "ro.vndk.version", "ro.zygote", "ro.build.type", "ro.debuggable" ];
+    static immutable string[] V = [
+        "x86_64", "x86", "x86_64,x86",
+        "33", "13", "0",
+        "33", "zygote64", "userdebug", "1" ];
+    const uint pa = buildPropArea(N, V, g_paBuf.ptr, g_paBuf.length);
+    rtAddFile(".__properties__/u:object_r:default_prop:s0\0".ptr,
+              ".__properties__/u:object_r:default_prop:s0".length, g_paBuf.ptr, pa);
+    const uint pinf = buildPropertyInfo(g_piBuf.ptr, g_piBuf.length);
+    rtAddFile(".__properties__/property_info\0".ptr, ".__properties__/property_info".length, g_piBuf.ptr, pinf);
+    const uint ps = buildPropArea(null, null, g_psBuf.ptr, g_psBuf.length);
+    rtAddFile(".__properties__/properties_serial\0".ptr, ".__properties__/properties_serial".length, g_psBuf.ptr, ps);
+}
+
 private __gshared bool g_apropsReady = false;
 private void androidPropEnsureRoot() {
     if (g_apropsReady) return;
@@ -18894,31 +19013,43 @@ private void androidPropEnsureRoot() {
     const int idx = rtResolve("/.__properties__\0".ptr, parent, leaf, ll);
     if (idx < 0 && parent >= 0 && leaf !is null)
         rtCreate(parent, leaf, ll, RT_DIR, 0x1FF, userCurrentUid(), userCurrentGid());
+    androidPropsSeed();            // A9.3g: lay down the bionic property files
     g_apropsReady = true;
 }
-// Rewrite "/dev/__properties__[/...]" to its rtfs backing "/.__properties__[/...]"; null = not ours.
+// Rewrite "/dev/__properties__[/...]" (or the chroot form "/aroot/dev/__properties__[/...]") to its
+// rtfs backing "/.__properties__[/...]"; null = not ours.
 private const(char)* androidPropRewrite(const(char)* path, char* buf, size_t cap) {
+    const(char)* q = path;
+    static immutable string ar = "/aroot";
+    { size_t a = 0; bool had = true;
+      foreach (c; ar) { if (q[a] != c) { had = false; break; } ++a; }
+      if (had && (q[a] == '/' || q[a] == '\0')) q = q + 6; }   // a chroot'd container reroots under /aroot
     static immutable string pre = "/dev/__properties__";
     size_t i = 0;
-    foreach (c; pre) { if (path[i] != c) return null; ++i; }
-    if (path[i] != '\0' && path[i] != '/') return null;
+    foreach (c; pre) { if (q[i] != c) return null; ++i; }
+    if (q[i] != '\0' && q[i] != '/') return null;
     androidPropEnsureRoot();
     static immutable string dst = "/.__properties__";
     size_t p = 0;
     foreach (c; dst) if (p + 1 < cap) buf[p++] = c;
-    while (path[i] != '\0' && p + 1 < cap) buf[p++] = path[i++];
+    while (q[i] != '\0' && p + 1 < cap) buf[p++] = q[i++];
     buf[p] = 0;
     return buf;
 }
 private bool androidPropIsPath(const(char)* path) @nogc nothrow {
-    static immutable string a = "/dev/__properties__";
+    const(char)* q = path;
+    static immutable string ar = "/aroot";
+    { size_t a = 0; bool had = true;
+      foreach (c; ar) { if (q[a] != c) { had = false; break; } ++a; }
+      if (had && (q[a] == '/' || q[a] == '\0')) q = q + 6; }
+    static immutable string a2 = "/dev/__properties__";
     static immutable string b = "/.__properties__";
     size_t i = 0; bool ma = true;
-    foreach (c; a) { if (path[i] != c) { ma = false; break; } ++i; }
-    if (ma && (path[i] == '\0' || path[i] == '/')) return true;
+    foreach (c; a2) { if (q[i] != c) { ma = false; break; } ++i; }
+    if (ma && (q[i] == '\0' || q[i] == '/')) return true;
     i = 0;
-    foreach (c; b) { if (path[i] != c) return false; ++i; }
-    return path[i] == '\0' || path[i] == '/';
+    foreach (c; b) { if (q[i] != c) return false; ++i; }
+    return q[i] == '\0' || q[i] == '/';
 }
 
 // ── A9.3f: a writable /data for the Android runtime (dalvik-cache, app data) ───────────────────────

@@ -6084,6 +6084,7 @@ private long dispatchLinuxSyscallCall(ulong n, ulong a, ulong b, ulong c,
         case 232: return linux_sys_epoll_pwait(a, b, c, d, 0, 0);  // epoll_wait
         case 233: return linux_sys_epoll_ctl(a, b, c, d);          // was mis-routed to epoll_create!
         case 234: return linux_sys_tgkill(a, b, c);
+        case 297: return linux_sys_rt_tgsigqueueinfo(a, b, c, d);   // ART's VM-init signal-chain path
         // x86_64: 253 = inotify_init, 254 = inotify_add_watch, 255 = inotify_rm_watch.
         // 254 used to route to inotify_init() and 253 was not routed at all -- the same mis-map
         // that case 233 above carries a note about.  Harmless only while every one of these is a

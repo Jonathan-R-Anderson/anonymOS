@@ -14815,6 +14815,14 @@ public long linux_sys_kill(ulong pid, ulong sig) {
 public long linux_sys_tgkill(ulong tgid, ulong tid, ulong sig) {
     return linux_sys_kill(tid, sig);    // thread-group kill: same liveness semantics
 }
+// rt_tgsigqueueinfo(tgid, tid, sig, siginfo): queue `sig` (with a siginfo our best-effort signal
+// model does not carry) to thread `tid` of group `tgid`.  Same liveness semantics as tgkill.  ART's
+// signal-chain / abort path calls this at VM-init; leaving it unrouted returned ENOSYS, which ART
+// treated as a hard failure and crashed the zygote (exit 127).  Route it through the existing
+// delivery so it succeeds for a live target (and reports ESRCH for a dead one) like tgkill.
+public long linux_sys_rt_tgsigqueueinfo(ulong tgid, ulong tid, ulong sig, ulong si) {
+    return linux_sys_tgkill(tgid, tid, sig);
+}
 public long linux_sys_tkill(ulong tid, ulong sig)           { return 0; }
 public long linux_sys_membarrier(ulong cmd, ulong flags, ulong cpu) {
     enum int MEMBARRIER_CMD_QUERY = 0;

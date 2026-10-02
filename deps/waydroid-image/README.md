@@ -38,6 +38,24 @@ unzip -p lineage-20.0-*-MAINLINE-waydroid_x86_64-vendor.zip > vendor.img
 (If a `.zip` contains the image under a subpath rather than at the root, extract that one entry to
 the name above. `unzip -l <zip>` lists the entry; it is normally just `system.img` / `vendor.img`.)
 
+## Testing the ext4 reader in the VM (A9.3a)
+
+The images are too large for the boot ISO, so they are attached to the `anonymos-verify` VM as raw
+disks and read by the kernel's ext4 driver (`core/android/ext4.d`). VirtualBox will not attach a
+raw `.img` directly, so convert to VDI (a copy — the originals here are never touched) and attach to
+the free SATA ports:
+
+```sh
+SP=<scratchpad>
+VBoxManage convertfromraw deps/waydroid-image/system.img $SP/system.vdi --format VDI
+VBoxManage convertfromraw deps/waydroid-image/vendor.img $SP/vendor.vdi --format VDI
+VBoxManage storageattach anonymos-verify --storagectl SATA --port 0 --device 0 --type hdd --medium $SP/system.vdi
+VBoxManage storageattach anonymos-verify --storagectl SATA --port 1 --device 0 --type hdd --medium $SP/vendor.vdi
+```
+
+Boot: the kernel's `ext4SelfTest` finds the Android ext4 among the attached disks and reads
+`build.prop`, logging `[ext4] selftest PASS …`.
+
 ## What happens next (A9.3+)
 
 Once `system.img` and `vendor.img` are here, the next bring-up steps are Android's own userland on

@@ -1663,15 +1663,16 @@ private long execveTask(int tid, ulong pathPtr, ulong argvPtr, ulong envpPtr) {
     if (res.hasInterp) {
         klog("[exec] PT_INTERP="); klog(interpPath.ptr); klog("\n");
         ulong ipPhys = 0, ipSize = 0;
-        if (!findInterpModule(interpPath.ptr, ipPhys, ipSize)) {
-            // A9.3c: Android's interpreter lives in the ext4 image (/system/bin/linker64, with a
-            // bootstrap fallback handled in ext4ExecImage).
-            import core.syscalls.posix : ext4ExecImage;
-            if (!ext4ExecImage(interpPath.ptr, &ipPhys, &ipSize)) {
-                klog("[exec] interp module NOT FOUND\n");
-                return -2;
-            }
+        // A9.3c: an Android binary's interpreter (/system/bin/linker64) lives in the mounted image and
+        // must be used -- NOT the musl ld.so that findInterpModule returns as a fallback, which cannot
+        // link Android's libraries.  Try the image first (resolves only for a chroot'd container);
+        // fall back to the boot-module musl loader for ordinary native binaries.
+        import core.syscalls.posix : ext4ExecImage;
+        if (ext4ExecImage(interpPath.ptr, &ipPhys, &ipSize)) {
             klog("[exec] interp from Android image\n");
+        } else if (!findInterpModule(interpPath.ptr, ipPhys, ipSize)) {
+            klog("[exec] interp module NOT FOUND\n");
+            return -2;
         }
         ulong ipVirt = phys_to_virt(ipPhys);
         auto ires = loadElf(*task, ipVirt, ipPhys, USER_INTERP_BASE, null, 0);

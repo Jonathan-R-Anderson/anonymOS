@@ -18932,6 +18932,24 @@ private uint aVfsResolve(const(char)* path, out int mountSel, out bool isDir) {
     if (isVen) { mountSel = 1; m = ext4AndroidVen(); sub = sub + 7; }   // past "/vendor"
     else       { mountSel = 0; m = ext4AndroidSys(); }
     if (m is null) return 0;
+    // A9.3e: APEX is shipped flattened in this image (/system/apex/<name>/ are directories), so
+    // "activate" it by redirecting /apex/<name>/... to /system/apex/<name>/... -- the libraries the
+    // linker needs (libc, libdl, libc++, libandroidicu, libnativeloader, …) live there.
+    char[1024] apx;
+    if (mountSel == 0) {
+        static immutable string ap = "/apex";
+        bool isApex = true; size_t k = 0;
+        foreach (c; ap) { if (sub[k] != c) { isApex = false; break; } ++k; }
+        if (isApex && sub[k] != '\0' && sub[k] != '/') isApex = false;
+        if (isApex) {
+            size_t p = 0;
+            static immutable string sysap = "/system/apex";
+            foreach (c; sysap) if (p + 1 < apx.length) apx[p++] = c;
+            size_t r = k; while (sub[r] != '\0' && p + 1 < apx.length) apx[p++] = sub[r++];
+            apx[p] = '\0';
+            sub = apx.ptr;
+        }
+    }
     if (sub[0] == '\0') sub = "/\0".ptr;               // the mount root itself
     ubyte[256] inode;
     const uint ino = ext4Resolve(*m, sub, inode.ptr);

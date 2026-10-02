@@ -167,9 +167,15 @@ static int container_init(const char *root, int argc, char **argv) {
                            (char *)"/system/bin", (char *)"--zygote", NULL };
             char *ev[] = { (char *)"PATH=/system/bin", (char *)"ANDROID_ROOT=/system",
                            (char *)"ANDROID_DATA=/data",
-                           /* A9.3d: the bootstrap linker has no linker-config namespaces yet, so give
-                            * it an explicit library search path into the image's /system/lib64. */
-                           (char *)"LD_LIBRARY_PATH=/system/lib64:/system/lib64/vndk-sp:/vendor/lib64",
+                           /* A9.3d/e: the bootstrap linker has no linker-config namespaces yet, so
+                            * give it an explicit search path -- /system/lib64 plus the APEX lib dirs
+                            * (now activated by the /apex -> /system/apex redirect) that hold the
+                            * runtime: libc/libdl/libm (runtime/bionic), libc++/ld-android (runtime),
+                            * libandroidicu (i18n), libnativeloader/libsigchain (art). */
+                           (char *)"LD_LIBRARY_PATH=/system/lib64:/apex/com.android.runtime/lib64:"
+                                   "/apex/com.android.runtime/lib64/bionic:/apex/com.android.art/lib64:"
+                                   "/apex/com.android.i18n/lib64:/apex/com.android.os.statsd/lib64:"
+                                   "/apex/com.android.vndk.current/lib64:/vendor/lib64",
                            NULL };
             execve("/system/bin/app_process64", av, ev);
             printf("[hos-container] exec-bionic: execve app_process64 failed: %s\n", strerror(errno));

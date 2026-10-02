@@ -159,6 +159,62 @@ static int container_init(const char *root, int argc, char **argv) {
                            (char *)"ANDROID_I18N_ROOT=/apex/com.android.i18n",
                            (char *)"ANDROID_TZDATA_ROOT=/apex/com.android.tzdata",
                            (char *)"ANDROID_RUNTIME_ROOT=/apex/com.android.runtime",
+                           /* A9.3j: ART's JNI_CreateJavaVM aborts with "Boot classpath is empty"
+                            * unless BOOTCLASSPATH is exported.  On a device derive_classpath builds
+                            * it at boot from each APEX's etc/classpaths .pb fragments; we derived the same
+                            * set+order from THIS GSI's fragments (read with debugfs).  The first 12
+                            * jars are DEX2OATBOOTCLASSPATH -- the ones the prebuilt boot image in
+                            * /system/framework/<isa>/ (boot.art + boot-*.art) was compiled against,
+                            * so their order must match exactly; the remaining APEX jars follow in
+                            * derive_classpath's (alphabetical-APEX) order. */
+                           (char *)"BOOTCLASSPATH="
+                               "/apex/com.android.art/javalib/core-oj.jar"
+                               ":/apex/com.android.art/javalib/core-libart.jar"
+                               ":/apex/com.android.art/javalib/okhttp.jar"
+                               ":/apex/com.android.art/javalib/bouncycastle.jar"
+                               ":/apex/com.android.art/javalib/apache-xml.jar"
+                               ":/system/framework/framework.jar"
+                               ":/system/framework/framework-graphics.jar"
+                               ":/system/framework/ext.jar"
+                               ":/system/framework/telephony-common.jar"
+                               ":/system/framework/voip-common.jar"
+                               ":/system/framework/ims-common.jar"
+                               ":/apex/com.android.i18n/javalib/core-icu4j.jar"
+                               ":/apex/com.android.adservices/javalib/framework-adservices.jar"
+                               ":/apex/com.android.adservices/javalib/framework-sdksandbox.jar"
+                               ":/apex/com.android.appsearch/javalib/framework-appsearch.jar"
+                               ":/apex/com.android.btservices/javalib/framework-bluetooth.jar"
+                               ":/apex/com.android.conscrypt/javalib/conscrypt.jar"
+                               ":/apex/com.android.ipsec/javalib/android.net.ipsec.ike.jar"
+                               ":/apex/com.android.media/javalib/updatable-media.jar"
+                               ":/apex/com.android.mediaprovider/javalib/framework-mediaprovider.jar"
+                               ":/apex/com.android.ondevicepersonalization/javalib/framework-ondevicepersonalization.jar"
+                               ":/apex/com.android.os.statsd/javalib/framework-statsd.jar"
+                               ":/apex/com.android.permission/javalib/framework-permission.jar"
+                               ":/apex/com.android.permission/javalib/framework-permission-s.jar"
+                               ":/apex/com.android.scheduling/javalib/framework-scheduling.jar"
+                               ":/apex/com.android.sdkext/javalib/framework-sdkextensions.jar"
+                               ":/apex/com.android.tethering/javalib/framework-connectivity.jar"
+                               ":/apex/com.android.tethering/javalib/framework-connectivity-t.jar"
+                               ":/apex/com.android.tethering/javalib/framework-tethering.jar"
+                               ":/apex/com.android.uwb/javalib/framework-uwb.jar"
+                               ":/apex/com.android.wifi/javalib/framework-wifi.jar",
+                           (char *)"DEX2OATBOOTCLASSPATH="
+                               "/apex/com.android.art/javalib/core-oj.jar"
+                               ":/apex/com.android.art/javalib/core-libart.jar"
+                               ":/apex/com.android.art/javalib/okhttp.jar"
+                               ":/apex/com.android.art/javalib/bouncycastle.jar"
+                               ":/apex/com.android.art/javalib/apache-xml.jar"
+                               ":/system/framework/framework.jar"
+                               ":/system/framework/framework-graphics.jar"
+                               ":/system/framework/ext.jar"
+                               ":/system/framework/telephony-common.jar"
+                               ":/system/framework/voip-common.jar"
+                               ":/system/framework/ims-common.jar"
+                               ":/apex/com.android.i18n/javalib/core-icu4j.jar",
+                           (char *)"SYSTEMSERVERCLASSPATH="
+                               "/system/framework/com.android.location.provider.jar"
+                               ":/system/framework/services.jar",
                            /* A9.3d/e: the bootstrap linker has no linker-config namespaces yet, so
                             * give it an explicit search path -- /system/lib64 plus the APEX lib dirs
                             * (now activated by the /apex -> /system/apex redirect) that hold the

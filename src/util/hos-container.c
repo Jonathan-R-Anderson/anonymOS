@@ -80,6 +80,25 @@ static int container_init(const char *root, int argc, char **argv) {
 
     printf(ok ? "[hos-container] A8 PASS: namespaced (pid 1), cgrouped, mnt-ns up\n"
               : "[hos-container] A8 FAIL\n");
+
+    /* A9.1: report whether the Android kernel ABI is reachable from inside the container.  These are
+     * the nodes Android's init/bionic touch before any userland: the three binder contexts, ashmem,
+     * cgroup2, and selinuxfs.  The remaining A9 work is Android's OWN userland (property service,
+     * init, HALs, SurfaceFlinger) plus the system image. */
+    static const char *abi[] = {
+        "/dev/binder", "/dev/hwbinder", "/dev/vndbinder", "/dev/ashmem",
+        "/sys/fs/cgroup/cgroup.controllers", "/sys/fs/selinux/enforce",
+    };
+    int ready = 1;
+    for (unsigned i = 0; i < sizeof abi / sizeof abi[0]; ++i) {
+        int fd = open(abi[i], O_RDONLY | O_CLOEXEC);
+        if (fd >= 0) { close(fd); }
+        else { ready = 0; printf("[hos-container] android-abi MISSING: %s (%s)\n", abi[i], strerror(errno)); }
+    }
+    printf("[hos-container] android-abi: %s\n",
+           ready ? "READY (binder x3, ashmem, cgroup2, selinuxfs reachable in-container)"
+                 : "incomplete");
+
     return ok ? 0 : 1;
 }
 

@@ -38,7 +38,12 @@ anonymOS has none of binder, ashmem, cgroups, or the `CLONE_NEW*` namespace flag
 | **A7 — namespaces** (done; isolation is A7b) | `unshare(CLONE_NEW*)` assigns per-task namespace ids (mnt/pid/net/ipc/uts/user/cgroup/time), `setns` accepts, and `chroot`/`pivot_root` set a real per-task filesystem root applied at open resolution (both were no-ops/EINVAL before). Child tasks inherit the namespace set + root at fork. | A process unshares a mount+pid namespace and `pivot_root`s into an image, after which a path resolves under it. **Done: per-task ns ids + rerooting in posix.d, syscalls 155/161/272/308 routed; `[ns] selftest PASS (… pivot_root into image, rerooted open)`.** |
 | **A7b — namespace isolation** (done; net/clone-time are follow-ons) | Per-pid-ns pid numbering + `getpid`/`getppid` translation (each ns starts at pid 1 → disjoint pid sets), and a per-mnt-ns mount set so `mount`/`umount` in one mnt-ns is scoped to it. | Two pid namespaces see disjoint pid sets; a mount in one mnt-ns is invisible in another. **Done: pid-ns translation table + per-mnt-ns mount registry in posix.d, `getpid`/`getppid`/`mount`/`umount` hooked; `[nsiso] selftest PASS`.** Still open: per-net-ns/ipc stacks, `CLONE_NEW*` at clone-time, `/proc/<pid>/ns/*` fds. |
 | **A8 — container runtime** (done: built-in equivalent) | `hos-container` (`src/util/hos-container.c`) — a static-musl container launcher (the "built-in equivalent" in lieu of vendoring ~100k-line liblxc): it `unshare`s mount/pid/uts/ipc, becomes **pid 1** in its new pid namespace, creates and joins a cgroup, makes a mount private to its mount namespace, optionally `pivot_root`s into a rootfs, and execs the container init. | A real userland process creates a container (new namespaces + cgroup + mount-ns + pid 1) and runs inside it. **Done: runs in the VM — `[hos-container] A8 PASS: namespaced (pid 1), cgrouped, mnt-ns up`. This is the engine `hos-waydroid` drives once an image exists (A9).** |
-| **A9 — Android image + Wayland** | Fetch/verify a Waydroid GSI (system + vendor), and wire Android's SurfaceFlinger/Wayland output into the domain's compositor surface. | The Android launcher renders in the domain; an `.apk` installed with `waydroid app install` launches and draws. |
+| **A9 — Android userland + image (Waydroid path)** | The chosen path (native, no VM): bring up Android's own userland on the A1–A8 container. Broken into sub-phases below. | The Android launcher renders in the domain; an `.apk` launches and draws. |
+| **A9.1 — Android kernel-ABI surface** (done) | selinuxfs stub (`/sys/fs/selinux/{enforce=0,policyvers,checkreqprot,mls}` + statfs magic) so Android init/libselinux find SELinux present-but-permissive; a container-readiness probe confirming the whole kernel ABI is reachable from inside a confined container. | A confined container opens binder×3 + ashmem + cgroup2 + selinuxfs. **Done: in the VM — `[hos-container] android-abi: READY (binder x3, ashmem, cgroup2, selinuxfs reachable in-container)`.** |
+| **A9.2 — Android property service** | `/dev/__properties__` (the modern per-context directory) as a shared, writable area so bionic's `__system_properties_init` maps it and the property service (part of Android init) can publish properties. | A bionic process reads a property the service set. |
+| **A9.3 — bionic + init** | Load and run Android's dynamic linker (`/system/bin/linker64`) + `libc.so`/`libdl.so`; get `init` far enough to mount the image and start `servicemanager` (on the binder that already works). | `servicemanager` comes up and registers with binder. |
+| **A9.4 — HALs + gralloc** | The graphics/allocator HAL surface Android needs (`gralloc`/`mapper`, `ion`/dmabuf) mapped onto our GPU/memory. | SurfaceFlinger allocates a buffer. |
+| **A9.5 — SurfaceFlinger → Wayland + the image** | Fetch/verify a Waydroid GSI (system + vendor) into the ISO/image store, bridge SurfaceFlinger output to the domain's Wayland surface. | The Android launcher renders in the domain; an `.apk` launches and draws. |
 
 Phases A1–A5 are kernel device work; A6–A8 are the Linux-container surface; A9 is image + display.
 A9's display path reuses the domain's existing Wayland plumbing (the compat launcher `hos-waydroid`
@@ -89,16 +94,19 @@ already dispatches `waydroid app …`). None of A2–A9 is a flag: each is a sub
   pid-ns, so two pid namespaces hold disjoint pid sets; each mount namespace has its own mount set,
   so a `mount`/`umount` in one is invisible in another. `[nsiso] selftest PASS` proves both. Still
   open: per-net-ns/ipc stacks, `CLONE_NEW*` at clone-time (vs `unshare`), and `/proc/<pid>/ns/*` fds.
-- **A8 (LXC): the next step, and it IS verifiable here.** liblxc builds against musl; running
-  `lxc-start` inside the anonymOS VM exercises the A1–A7b kernel surface for real. That is the plan,
-  rather than writing it unproven.
-- **A9 (Android image): the real wall is userland, not virtualization.** Waydroid runs Android's own
-  init/Zygote/ART/SurfaceFlinger/HALs as *container* processes on our kernel, and those are built
-  against **bionic** (Android's libc) with Android-specific ABI/SELinux/property-service/gralloc
-  assumptions, while our personality is **musl** — a large userland bring-up. Nested virtualization
-  does not help the container model (Waydroid is not a VM); it instead opens a *different* Android
-  path — booting **android-x86** as a Cloud Hypervisor guest (it brings its own kernel + bionic),
-  which is a VM and so needs a call on the earlier "no VM" preference.
+- **A8 container runtime: done and run in the VM.** `hos-container` (the built-in liblxc equivalent)
+  creates a container — new namespaces, pid 1, a joined cgroup, a private mount — and runs inside it:
+  `[hos-container] A8 PASS`.
+- **A9.1 Android kernel-ABI surface: done and run in the VM.** A selinuxfs stub (permissive) plus a
+  container-readiness probe: `[hos-container] android-abi: READY (binder x3, ashmem, cgroup2,
+  selinuxfs reachable in-container)`. The container now exposes everything Android's kernel ABI needs.
+- **A9.2–A9.5 are the remaining Waydroid bring-up, and they are Android's own userland** (the chosen
+  native, no-VM path): the property service, bionic + `init` + `servicemanager`, the HAL/gralloc
+  surface, and SurfaceFlinger→Wayland plus the GSI image. Those are bionic binaries with
+  Android-specific assumptions on top of our musl personality — a large userland effort, and the
+  full stack cannot boot without the multi-GB system image (which needs real resources/hardware).
 
-This is the honest state: binder IPC, shared memory, cgroup2 and namespaces (surface + isolation)
-are in and proven. A8 (LXC) is buildable+runnable in the VM; A9 (Android userland) is the frontier.
+This is the honest state: binder IPC, shared memory, cgroup2, namespaces (surface + isolation), a
+working container runtime, and the full Android kernel-ABI surface are in and proven in the VM. What
+remains (A9.2+) is Android's userland and image — the frontier, and the part that needs the image to
+actually come up.

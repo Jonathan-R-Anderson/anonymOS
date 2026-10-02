@@ -3128,6 +3128,8 @@ private int namespaceCheckOpen(const(char)* path, int flags) {
     // A8: a container manages its own cgroup subtree under /sys/fs/cgroup, so it must be able to
     // open (and write) cgroup control files even when confined to a domain.
     if (cgIsPath(path)) return 0;
+    // A9.1: Android init reads selinuxfs; let a confined container read it (read-only).
+    if ((need & CAP_RIGHT_WRITE) == 0 && cstrEqPrefix(path, "/sys/fs/selinux")) return 0;
     {   const int v = nsPathVerdict(path, need);
         if (v != 0) return v; }
 
@@ -9881,6 +9883,12 @@ private immutable VFEntry[] g_vfs = [
     { "/sys/fs/cgroup/cgroup.controllers",       "cpu memory io\n"                                    },
     { "/sys/fs/cgroup/cgroup.subtree_control",   "cpu memory\n"                                       },
     { "/sys/fs/cgroup/cgroup.procs",             "1\n"                                                 },
+    // ANDROID A9.1: a minimal selinuxfs so Android's init/libselinux finds SELinux present but
+    // permissive (enforce=0), rather than refusing to boot on a missing policy surface.
+    { "/sys/fs/selinux/enforce",                 "0\n"                                                 },
+    { "/sys/fs/selinux/policyvers",              "33\n"                                                },
+    { "/sys/fs/selinux/checkreqprot",            "0\n"                                                 },
+    { "/sys/fs/selinux/mls",                     "1\n"                                                 },
     { "/sys/power/state",                        "freeze mem disk\n"                                   },
     { "/sys/power/wakeup_count",                 "0\n"                                                 },
     { "/sys/class/tty/tty0/active",              "tty1\n"                                              },
@@ -11146,6 +11154,8 @@ private bool isSyntheticDirectoryPath(const(char)* path) {
            cstrEq(path, "/sys") ||
            cstrEq(path, "/sys/fs") ||
            cstrEq(path, "/sys/fs/cgroup") ||
+           cstrEq(path, "/sys/fs/selinux") ||    // ANDROID A9.1: selinuxfs mount point
+           cstrEq(path, "/sys/kernel") ||
            cstrEq(path, "/sys/class") ||
            cstrEq(path, "/sys/class/net") ||
            cstrEq(path, "/sys/class/net/lo") ||
@@ -16046,11 +16056,14 @@ public long linux_sys_statfs(ulong path, ulong buf) {
     auto s = cast(linux_statfs*)buf; *s = linux_statfs.init;
     s.f_type = 0xEF53; s.f_bsize = 4096; s.f_namelen = 255;
     // A6: paths under /sys/fs/cgroup are a cgroup2 filesystem (LXC checks the statfs magic).
+    // A9.1: paths under /sys/fs/selinux are selinuxfs (libselinux checks the magic).
     if (path != 0) {
         smapBegin();
         const bool isCg = cgIsPath(cast(const(char)*)path);
+        const bool isSel = cstrEqPrefix(cast(const(char)*)path, "/sys/fs/selinux");
         smapEnd();
-        if (isCg) s.f_type = cast(long)CGROUP2_SUPER_MAGIC;
+        if (isCg)       s.f_type = cast(long)CGROUP2_SUPER_MAGIC;
+        else if (isSel) s.f_type = cast(long)0xF97C_FF8C;   // SELINUX_MAGIC
     }
     return 0;
 }

@@ -5829,6 +5829,22 @@ public int mmapCopyFileRange(int fd, ulong off, ubyte* dst, ulong len) {
             }
             return 1;
         }
+        case FileType.FD_EXT4: {
+            // A9.3d: a file in a mounted Android ext4 image -- the dynamic linker mmaps each .so this
+            // way.  Copy the requested range out of the image, zero-filling past EOF (for BSS).
+            const size_t enc = cast(size_t)f.backend;
+            auto m = aVfsMount(cast(int)(enc >> 56));
+            if (m is null) return 0;
+            const uint ino = cast(uint)(enc & 0xFFFF_FFFF);
+            ulong done = 0;
+            while (done < len) {
+                const long n = ext4ReadInodeAt(*m, ino, off + done, dst + done, cast(uint)(len - done));
+                if (n <= 0) break;
+                done += cast(ulong)n;
+            }
+            for (ulong i = done; i < len; ++i) dst[i] = 0;
+            return 1;
+        }
         default:
             return 0;
     }

@@ -18960,16 +18960,24 @@ private uint buildPropArea(const(string)[] names, const(string)[] values, ubyte*
     return PA_HDR + used;
 }
 
-// Build a minimal serialized property_info: one context, every property mapped to it (root node
-// carries context 0, no children).  Returns total byte length.
+// Build a minimal serialized property_info (bionic layout from property_info_parser.h): one context,
+// mapped to the root node's PropertyEntry so every property falls back to it.  Returns byte length.
+//   PropertyInfoAreaHeader: current_version, minimum_supported_version, size, contexts_offset,
+//                           types_offset, root_offset  (6 u32)
+//   contexts/types arrays:  [count][offset...]  (offsets are area-base-relative, to NUL strings)
+//   TrieNodeInternal (28 B): property_entry, num_child_nodes, child_nodes, num_prefixes,
+//                            prefix_entries, num_exact_matches, exact_match_entries
+//   PropertyEntry (16 B):    name_offset, namelen, context_index, type_index
 private uint buildPropertyInfo(ubyte* o, uint cap) @nogc nothrow {
     foreach (i; 0 .. cap) o[i] = 0;
     static immutable string CTX = "u:object_r:default_prop:s0";
     static immutable string TYP = "string";
     uint off = 24;                                   // header: 6 u32
-    const uint contextsOff = off; off += 8;          // [count=1][strOff]
-    const uint typesOff    = off; off += 8;
-    const uint rootOff     = off; off += 36 + 1;     // TrieNodeInternal (9 u32) + name '\0'
+    const uint contextsOff = off; off += 8;          // [count=1][ctxStrOff]
+    const uint typesOff    = off; off += 8;          // [count=1][typStrOff]
+    const uint rootOff     = off; off += 28;         // root TrieNodeInternal
+    const uint rootPE      = off; off += 16;         // root PropertyEntry (its context/type)
+    const uint emptyStr    = off; off += 1;          // "" (the root's name)
     off = paAlign4(off);
     const uint ctxStr = off; off += cast(uint)CTX.length + 1;
     const uint typStr = off; off += cast(uint)TYP.length + 1;
@@ -18978,8 +18986,13 @@ private uint buildPropertyInfo(ubyte* o, uint cap) @nogc nothrow {
     paPut32(o, 12, contextsOff); paPut32(o, 16, typesOff); paPut32(o, 20, rootOff);
     paPut32(o, contextsOff, 1); paPut32(o, contextsOff + 4, ctxStr);
     paPut32(o, typesOff, 1);    paPut32(o, typesOff + 4, typStr);
-    // root TrieNodeInternal: namelen 0, context_index 0, type_index 0, all counts 0
-    paPut32(o, rootOff + 4, 0);                      // context_index = 0 (valid; ~0u would be "none")
+    // root TrieNodeInternal: only property_entry set; no children/prefixes/exact-matches
+    paPut32(o, rootOff + 0, rootPE);
+    // root PropertyEntry: name "" (namelen 0), context index 0, type index 0
+    paPut32(o, rootPE + 0, emptyStr);
+    paPut32(o, rootPE + 4, 0);
+    paPut32(o, rootPE + 8, 0);
+    paPut32(o, rootPE + 12, 0);
     foreach (k; 0 .. CTX.length) o[ctxStr + k] = cast(ubyte)CTX[k];
     foreach (k; 0 .. TYP.length) o[typStr + k] = cast(ubyte)TYP[k];
     return total;
@@ -19004,6 +19017,21 @@ private void androidPropsSeed() {
     rtAddFile(".__properties__/property_info\0".ptr, ".__properties__/property_info".length, g_piBuf.ptr, pinf);
     const uint ps = buildPropArea(null, null, g_psBuf.ptr, g_psBuf.length);
     rtAddFile(".__properties__/properties_serial\0".ptr, ".__properties__/properties_serial".length, g_psBuf.ptr, ps);
+    // bionic's prop_area::map_prop_area refuses a file not owned by root (uid 0, gid 0) and
+    // group/other-writable, so make the seeded property files root-owned and read-only.
+    propSetRoot("/.__properties__/u:object_r:default_prop:s0\0".ptr);
+    propSetRoot("/.__properties__/property_info\0".ptr);
+    propSetRoot("/.__properties__/properties_serial\0".ptr);
+}
+private void propSetRoot(const(char)* path) {
+    int rp; const(char)* rl; size_t rll;
+    const int idx = rtResolve(path, rp, rl, rll);
+    if (idx >= 0) {
+        g_rt[idx].uid = 0; g_rt[idx].gid = 0; g_rt[idx].mode = 0x1A4;  // root:0, 0644
+        klog("[prop] seeded root-owned "); klog(path); klog(" sz="); klog_dec(g_rt[idx].size); klog("\n");
+    } else {
+        klog("[prop] MISS (not found after seed): "); klog(path); klog("\n");
+    }
 }
 
 private __gshared bool g_apropsReady = false;

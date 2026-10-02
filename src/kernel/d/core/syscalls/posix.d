@@ -3130,6 +3130,8 @@ private int namespaceCheckOpen(const(char)* path, int flags) {
     if (cgIsPath(path)) return 0;
     // A9.1: Android init reads selinuxfs; let a confined container read it (read-only).
     if ((need & CAP_RIGHT_WRITE) == 0 && cstrEqPrefix(path, "/sys/fs/selinux")) return 0;
+    // A9.2: a container owns its own property area; allow it to create/map there (per-domain rtfs).
+    if (androidPropIsPath(path)) return 0;
     {   const int v = nsPathVerdict(path, need);
         if (v != 0) return v; }
 
@@ -4247,6 +4249,13 @@ public int sys_open(const(char)* path, int flags) {
     {
         const(char)* rp = nsApplyChroot(path, _rootAbs.ptr, _rootAbs.length);
         if (rp !is null) path = rp;
+    }
+
+    // A9.2: transparently back /dev/__properties__ with a writable rtfs directory.
+    char[1024] _apropAbs = void;
+    {
+        const(char)* ap = androidPropRewrite(path, _apropAbs.ptr, _apropAbs.length);
+        if (ap !is null) path = ap;
     }
 
     // F1: /objects/processes is the live process view = /proc. Rewrite the prefix so
@@ -16232,6 +16241,8 @@ private long rtMkdirSyscall(int dirfd, const(char)* path, ushort mode) {
         path = abs.ptr;
     }
     if (cgIsPath(path)) return cgMkdir(path);   // A6: mkdir a cgroup under /sys/fs/cgroup
+    char[1024] _apm = void;                      // A9.2: /dev/__properties__ -> rtfs backing
+    { const(char)* ap = androidPropRewrite(path, _apm.ptr, _apm.length); if (ap !is null) path = ap; }
     int parent; const(char)* leaf; size_t leafLen;
     const int idx = rtResolve(path, parent, leaf, leafLen);
     // A directory that already exists is EEXIST before any write check, as on Linux: `mkdir -p
@@ -16274,6 +16285,8 @@ private long rtUnlinkSyscall(const(char)* path, bool dirOnly) {
     initFdTable();
     if (path is null) return negErrno(EFAULT);
     if (cgIsPath(path)) return dirOnly ? cgRmdir(path) : negErrno(EPERM);   // A6: rmdir a cgroup
+    char[1024] _apu = void;                      // A9.2: /dev/__properties__ -> rtfs backing
+    { const(char)* ap = androidPropRewrite(path, _apu.ptr, _apu.length); if (ap !is null) path = ap; }
     { const int g = nsWriteGate(path); if (g != 0) return g; }   // appgate: the domain's view
     int parent; const(char)* leaf; size_t leafLen;
     const int idx = rtResolve(path, parent, leaf, leafLen);
@@ -18771,6 +18784,46 @@ public void nsIsolationSelfTest() {
 
     klog(ok ? "[nsiso] selftest PASS (disjoint pid namespaces, getpid translation, per-mnt-ns mount visibility)\n"
             : "[nsiso] selftest FAIL\n");
+}
+
+// ── A9.2: Android property area (/dev/__properties__) ──────────────────────────────────────────────
+// bionic maps a shared, writable area under /dev/__properties__ that Android's property service
+// builds and every process reads.  The property trie is bionic's; the kernel's job is the shared R/W
+// substrate.  /dev is synthetic (read-only), so the subtree is transparently backed by a real rtfs
+// directory (/.__properties__) -- created on first touch, never shadowing synthetic /dev -- and
+// rtfs files there support MAP_SHARED, so the area round-trips across independent opens/mmaps.
+private __gshared bool g_apropsReady = false;
+private void androidPropEnsureRoot() {
+    if (g_apropsReady) return;
+    int parent; const(char)* leaf; size_t ll;
+    const int idx = rtResolve("/.__properties__\0".ptr, parent, leaf, ll);
+    if (idx < 0 && parent >= 0 && leaf !is null)
+        rtCreate(parent, leaf, ll, RT_DIR, 0x1FF, userCurrentUid(), userCurrentGid());
+    g_apropsReady = true;
+}
+// Rewrite "/dev/__properties__[/...]" to its rtfs backing "/.__properties__[/...]"; null = not ours.
+private const(char)* androidPropRewrite(const(char)* path, char* buf, size_t cap) {
+    static immutable string pre = "/dev/__properties__";
+    size_t i = 0;
+    foreach (c; pre) { if (path[i] != c) return null; ++i; }
+    if (path[i] != '\0' && path[i] != '/') return null;
+    androidPropEnsureRoot();
+    static immutable string dst = "/.__properties__";
+    size_t p = 0;
+    foreach (c; dst) if (p + 1 < cap) buf[p++] = c;
+    while (path[i] != '\0' && p + 1 < cap) buf[p++] = path[i++];
+    buf[p] = 0;
+    return buf;
+}
+private bool androidPropIsPath(const(char)* path) @nogc nothrow {
+    static immutable string a = "/dev/__properties__";
+    static immutable string b = "/.__properties__";
+    size_t i = 0; bool ma = true;
+    foreach (c; a) { if (path[i] != c) { ma = false; break; } ++i; }
+    if (ma && (path[i] == '\0' || path[i] == '/')) return true;
+    i = 0;
+    foreach (c; b) { if (path[i] != c) return false; ++i; }
+    return path[i] == '\0' || path[i] == '/';
 }
 
 public long linux_sys_seccomp(ulong op, ulong f, ulong a) { return negErrno(EINVAL); }

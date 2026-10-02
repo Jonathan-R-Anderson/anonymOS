@@ -25,6 +25,7 @@
 #include <sys/mount.h>
 #include <sys/wait.h>
 #include <sys/stat.h>
+#include <sys/mman.h>
 #include <errno.h>
 
 #define CGDIR "/sys/fs/cgroup/hosctr"
@@ -98,6 +99,39 @@ static int container_init(const char *root, int argc, char **argv) {
     printf("[hos-container] android-abi: %s\n",
            ready ? "READY (binder x3, ashmem, cgroup2, selinuxfs reachable in-container)"
                  : "incomplete");
+
+    /* A9.2: the property area.  bionic's __system_properties_init maps a shared, writable region
+     * under /dev/__properties__ that the property service (Android init) builds and every process
+     * reads.  The property trie itself is bionic's; the kernel's job is the shared R/W area.  Prove
+     * that mechanism: create a context file, write it through one shared mmap, and confirm a second
+     * independent mmap sees the same bytes. */
+    const char *PROPDIR = "/dev/__properties__";
+    const char *PROPCTX = "/dev/__properties__/u:object_r:default_prop:s0";
+    mkdir(PROPDIR, 0755);
+    int a9ok = 0;
+    int pf = open(PROPCTX, O_RDWR | O_CREAT, 0644);
+    if (pf >= 0 && ftruncate(pf, 4096) == 0) {
+        void *m1 = mmap(NULL, 4096, PROT_READ | PROT_WRITE, MAP_SHARED, pf, 0);
+        if (m1 != MAP_FAILED) {
+            memcpy(m1, "HOSPROP1", 8);
+            *(unsigned int *)((char *)m1 + 8) = 0xA9000002u;
+            int pf2 = open(PROPCTX, O_RDWR);
+            if (pf2 >= 0) {
+                void *m2 = mmap(NULL, 4096, PROT_READ | PROT_WRITE, MAP_SHARED, pf2, 0);
+                if (m2 != MAP_FAILED) {
+                    a9ok = (memcmp(m2, "HOSPROP1", 8) == 0) &&
+                           (*(unsigned int *)((char *)m2 + 8) == 0xA9000002u);
+                    munmap(m2, 4096);
+                }
+                close(pf2);
+            }
+            munmap(m1, 4096);
+        }
+        close(pf);
+    }
+    printf("[hos-container] prop-area: %s\n",
+           a9ok ? "shared R/W OK (/dev/__properties__ mmap round-trips across opens)"
+                : "unavailable (/dev/__properties__ not writable/shared -- A9.2 kernel work)");
 
     return ok ? 0 : 1;
 }

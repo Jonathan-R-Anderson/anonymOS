@@ -879,6 +879,25 @@ void clearRegions(ref Task task) {
     rtabDetach(task);
 }
 
+// The main thread's user stack: exec (kernel_main.d) maps it eagerly at this fixed address in every
+// process.  RLIMIT_STACK reports 8 MiB (posix.d prlimit64); for an Android binary exec adds a
+// demand-zero region directly below the eager pages so that claim is backed -- bionic hands ART
+// [top - RLIMIT_STACK, top) as the main thread's stack and ART recurses within it.
+enum ulong USER_STACK_BASE     = 0x700000000000UL;
+enum ulong USER_STACK_PAGES    = 256;                            // 1 MiB, eagerly mapped
+enum ulong USER_STACK_TOP      = USER_STACK_BASE + USER_STACK_PAGES * 4096;
+enum ulong USER_STACK_RLIMIT   = 8UL * 1024 * 1024;
+
+// The main-thread stack of `tid`'s address space as /proc/<pid>/maps reports it: the eager pages plus
+// the demand-zero extension below them, when there is one.
+void mainStackRange(int tid, out ulong lo, out ulong hi) {
+    lo = USER_STACK_BASE;
+    hi = USER_STACK_TOP;
+    auto below = findRegionShared(tid, USER_STACK_BASE - 1);
+    if (below !is null && below.type == RegionType.AllocateOnDemand && below.end == USER_STACK_BASE)
+        lo = below.start;
+}
+
 // True when NO region of task `tid`'s address space overlaps [start, end).  Lets a non-MAP_FIXED
 // mmap honor its caller's address hint: Linux places a hinted mapping there when the range is free
 // and elsewhere otherwise.  ART relies on this to load its boot image at the fixed base the image

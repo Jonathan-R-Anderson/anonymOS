@@ -815,6 +815,17 @@ private void exitTask(int tid, int code) {
         klog("[freeze] CLIENT CRASH t="); klog_dec(cast(ulong)tid);
         klog(" code="); klog_dec(cast(ulong)(cast(uint)code & 0xffff));
         klog(" rip="); klog_hex(t.regs[REG_RIP]); klog("\n");
+        // A9.3n: the last few syscalls this task made, oldest -> newest, so an opaque exit_group(127)
+        // shows the sequence that led to it (e.g. clone/wait4 around a failed helper exec).
+        if (tid >= 0 && tid < MAX_TASKS) {
+            klog("[freeze] last syscalls t="); klog_dec(cast(ulong)tid); klog(":");
+            const uint pos = g_sysRingPos[tid];
+            const uint n = pos < SYSRING ? pos : SYSRING;
+            foreach (i; 0 .. n) {
+                klog(" "); klog_dec(g_sysRing[tid][(pos - n + i) & (SYSRING - 1)]);
+            }
+            klog(" (a="); klog_hex(g_lastSysA[tid]); klog(" b="); klog_hex(g_lastSysB[tid]); klog(")\n");
+        }
         crashBacktrace(tid);
     }
     // direct-fb (real-HW): a process died — name + code. If init=weston shows up here
@@ -1660,6 +1671,7 @@ private long execveTask(int tid, ulong pathPtr, ulong argvPtr, ulong envpPtr) {
 
     ulong entryRip = res.entry;
     ulong atBase = 0;
+    bool androidImage = false;          // interpreter is the Android image's linker64 (A9.3c)
     if (res.hasInterp) {
         klog("[exec] PT_INTERP="); klog(interpPath.ptr); klog("\n");
         ulong ipPhys = 0, ipSize = 0;
@@ -1670,6 +1682,7 @@ private long execveTask(int tid, ulong pathPtr, ulong argvPtr, ulong envpPtr) {
         import core.syscalls.posix : ext4ExecImage;
         if (ext4ExecImage(interpPath.ptr, &ipPhys, &ipSize)) {
             klog("[exec] interp from Android image\n");
+            androidImage = true;
         } else if (!findInterpModule(interpPath.ptr, ipPhys, ipSize)) {
             klog("[exec] interp module NOT FOUND\n");
             return -2;
@@ -1690,11 +1703,11 @@ private long execveTask(int tid, ulong pathPtr, ulong argvPtr, ulong envpPtr) {
     // (_main_complete -> _complete -> _normal -> _dispatch -> _<cmd> -> _arguments -> _files …)
     // and the 128 KB stack overflowed mid-completion (esp. inside a forked $() subshell),
     // faulting below the stack region; 1 MB gives the interpreter ample headroom.
-    enum stackPages = 256;
+    enum stackPages = USER_STACK_PAGES;
     ulong stackPhys = alloc_phys_pages(stackPages);
     if (stackPhys == 0) return -12;
     ulong stackSize = stackPages * 4096;
-    ulong stackBase = 0x700000000000UL;
+    ulong stackBase = USER_STACK_BASE;
     ulong stackTop  = stackBase + stackSize;
 
     for (ulong pg = 0; pg < stackPages; pg++)
@@ -1705,6 +1718,15 @@ private long execveTask(int tid, ulong pathPtr, ulong argvPtr, ulong envpPtr) {
                                  RegionPerms.ReadWrite, stackPhys, true);
     if (stackRegion !is null)
         physPagesSetOwner(stackPhys, stackPages, stackRegion.objId, stackRegion.vmoObjId);
+
+    // A9.3n: an Android binary's main thread gets the full RLIMIT_STACK.  bionic's
+    // pthread_getattr_np(main) reports [top - RLIMIT_STACK, top) and ART sizes the main thread's
+    // stack-overflow checks from it, so a recursion past the eager 1 MiB must find memory there
+    // rather than fault the process dead.  Demand-zero: costs a region entry, not memory, until touched.
+    // Native binaries keep the exact layout they have always had.
+    if (androidImage)
+        addRegion(*task, stackTop - USER_STACK_RLIMIT, stackBase, RegionType.AllocateOnDemand,
+                  RegionPerms.ReadWrite, 0, true);
 
     // Seed a Linux-style process stack using auxv from the loaded ELF. argv[0] is
     // the matched boot-module basename (execfn). The environment is the caller's
@@ -5886,12 +5908,19 @@ private bool failTraceTask() {
 
 // DIAGNOSTIC (Firefox bring-up): each task's most recent syscall, for the stall dump below.
 private __gshared ulong[MAX_TASKS] g_lastSysNr, g_lastSysA, g_lastSysB;
+// DIAGNOSTIC (A9.3n): a short ring of each task's last few syscall numbers, dumped by exitTask on a
+// nonzero exit -- an explicit exit_group(127) is otherwise opaque (which syscall sequence led to it,
+// e.g. a clone()/wait4() around a failed helper exec, vs a direct exit).
+private enum SYSRING = 8;
+private __gshared ulong[SYSRING][MAX_TASKS] g_sysRing;
+private __gshared uint[MAX_TASKS] g_sysRingPos;
 
 // Every descriptor a call creates takes that call's close-on-exec flag (posix.d fdNoteCreated).
 private long dispatchLinuxSyscall(ulong n, ulong a, ulong b, ulong c,
                                    ulong d, ulong e, ulong f) {
     {   const int ct = cast(int)g_current_task_id;
-        if (ct >= 0 && ct < MAX_TASKS) { g_lastSysNr[ct] = n; g_lastSysA[ct] = a; g_lastSysB[ct] = b; } }
+        if (ct >= 0 && ct < MAX_TASKS) { g_lastSysNr[ct] = n; g_lastSysA[ct] = a; g_lastSysB[ct] = b;
+            g_sysRing[ct][g_sysRingPos[ct] & (SYSRING - 1)] = n; ++g_sysRingPos[ct]; } }
     // Calls that move a descriptor's file offset run against the offset its open file description
     // shares with its dups (posix.d ofdLoad: `cmd >log 2>&1` wrote stdout and stderr at two
     // independent offsets of one file, each overwriting the other).
@@ -6085,6 +6114,7 @@ private long dispatchLinuxSyscallCall(ulong n, ulong a, ulong b, ulong c,
         case 233: return linux_sys_epoll_ctl(a, b, c, d);          // was mis-routed to epoll_create!
         case 234: return linux_sys_tgkill(a, b, c);
         case 297: return linux_sys_rt_tgsigqueueinfo(a, b, c, d);   // ART's VM-init signal-chain path
+        case 203: return linux_sys_sched_setaffinity(a, b, c);      // thread pinning (no-op 0; was ENOSYS)
         // x86_64: 253 = inotify_init, 254 = inotify_add_watch, 255 = inotify_rm_watch.
         // 254 used to route to inotify_init() and 253 was not routed at all -- the same mis-map
         // that case 233 above carries a note about.  Harmless only while every one of these is a

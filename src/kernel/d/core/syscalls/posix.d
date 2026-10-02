@@ -15,7 +15,8 @@ import core.task : g_tasks, MAX_TASKS, linuxPidForTask, linuxTidForTask,
                    g_taskPgid, g_taskSigCustom, deliverSignalToGroup, g_taskExecName,
                    g_sigHandler, g_sigRestorer, domainRecordWrite,   // DOMAIN_MANAGER DM6.2
                    g_taskPendingSig,                                 // ITIMER_REAL -> SIGALRM
-                   g_sigFlags, g_sigAltSp, g_sigAltSize, g_sigAltOn, sigProc, sigIgnored;
+                   g_sigFlags, g_sigAltSp, g_sigAltSize, g_sigAltOn, sigProc, sigIgnored,
+                   mainStackRange, USER_STACK_TOP, USER_STACK_RLIMIT;  // A9.3n: /proc/<pid>/stat+maps
 import core.objmgr : ObjType, ObjHeader, objAlloc, objRetain, objRelease, objGet,
                      g_objOps, g_objOpsDispatch; // Phase 2/5 object mgr
 import core.cap : Capability, CAP_INVALID,
@@ -3722,6 +3723,16 @@ private void pbHex32(ref size_t pos, uint v) {
         g_procBuf[pos++] = HEX[(v >> (i * 4)) & 0xF];
     }
 }
+// An address the way /proc/<pid>/maps prints one (%08lx): lowercase hex, at least 8 digits.
+private void pbHexAddr(ref size_t pos, ulong v) {
+    static immutable string HEX = "0123456789abcdef";
+    int digits = 8;
+    while (digits < 16 && (v >> (digits * 4)) != 0) ++digits;
+    foreach_reverse (i; 0 .. digits) {
+        if (pos >= g_procBuf.length - 1) return;
+        g_procBuf[pos++] = HEX[(v >> (i * 4)) & 0xF];
+    }
+}
 private void pbNum(ref size_t pos, long n) {
     if (n < 0) { if (pos < g_procBuf.length - 1) g_procBuf[pos++] = '-'; n = -n; }
     char[24] tmp = void; int ti = 0;
@@ -4261,7 +4272,19 @@ private size_t procSynth(int pid, const(char)* sub, size_t subLen) {
         if (pos < g_procBuf.length - 1) g_procBuf[pos++] = state; pbStr(pos, " ".ptr);
         pbNum(pos, ppid); pbStr(pos, " ".ptr); pbNum(pos, pid);
         pbStr(pos, " 0 0 -1 0 0 0 0 0 0 0 0 0 20 0 1 0 0 4194304 256 ".ptr);
-        pbStr(pos, "0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0\n".ptr);
+        // 25 rsslim, 26 startcode, 27 endcode, 28 startstack -- an address inside the main stack:
+        // bionic's pthread_getattr_np(main) looks it up in /proc/self/maps (below), then 29..40.
+        ulong stLo, stHi;
+        mainStackRange(tid, stLo, stHi);
+        pbStr(pos, "0 0 0 ".ptr); pbNum(pos, cast(long)(stHi - 8));
+        pbStr(pos, " 0 0 0 0 0 0 0 0 0 0 0 0\n".ptr);
+    } else if (subEq(sub, subLen, "maps")) {
+        // A9.3n: the main thread's stack, the one line bionic needs -- it hunts this file for the
+        // region holding stat's startstack and async_safe_fatal()s ("stack not found") without it.
+        ulong stLo, stHi;
+        mainStackRange(tid, stLo, stHi);
+        pbHexAddr(pos, stLo); pbStr(pos, "-".ptr); pbHexAddr(pos, stHi);
+        pbStr(pos, " rw-p 00000000 00:00 0                          [stack]\n".ptr);
     } else if (subEq(sub, subLen, "comm")) {
         pbStr(pos, comm); if (pos < g_procBuf.length - 1) g_procBuf[pos++] = '\n';
     } else if (subEq(sub, subLen, "cmdline")) {
@@ -14456,8 +14479,8 @@ public long linux_sys_prlimit64(ulong pid, ulong resource, ulong new_limit, ulon
     limit.rlim_max = RLIM_INFINITY;
 
     if (resource == RLIMIT_STACK) {
-        limit.rlim_cur = 8UL * 1024UL * 1024UL;
-        limit.rlim_max = 8UL * 1024UL * 1024UL;
+        limit.rlim_cur = USER_STACK_RLIMIT;     // exec backs this for Android binaries (core.task)
+        limit.rlim_max = USER_STACK_RLIMIT;
     } else if (resource == RLIMIT_NOFILE) {
         limit.rlim_cur = 1024;
         limit.rlim_max = 1024;
@@ -18779,6 +18802,16 @@ private const(char)* nsApplyChroot(const(char)* path, char* buf, size_t cap) @no
     const size_t rl = g_rootLenTab[t];
     if (rl == 0) return null;             // no chroot in effect
     if (path[0] != '/') return null;      // only absolute paths are rerooted here
+    // A9.3n: /proc, /sys and /dev are the kernel's own pseudo-filesystems, present in every root --
+    // what a container runtime's proc/sysfs/devtmpfs mounts inside the rootfs provide on Linux.
+    // Rerooted, bionic's fopen("/proc/self/stat") became /aroot/proc/self/stat on the read-only
+    // image -> ENOENT -> async_safe_fatal -> abort() -> the zygote's "silent" exit 127.
+    static immutable string[3] passthru = ["/proc", "/sys", "/dev"];
+    foreach (pre; passthru) {
+        size_t k = 0;
+        while (k < pre.length && path[k] == pre[k]) ++k;
+        if (k == pre.length && (path[k] == '/' || path[k] == '\0')) return null;
+    }
     size_t p = 0;
     foreach (i; 0 .. rl) if (p + 1 < cap) buf[p++] = g_rootTab[t][i];
     size_t i = 0;

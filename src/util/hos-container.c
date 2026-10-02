@@ -134,19 +134,22 @@ static int container_init(const char *root, int argc, char **argv) {
                 : "unavailable (/dev/__properties__ not writable/shared -- A9.2 kernel work)");
 
     /* A9.3b: the Android system image is mounted read-only at /aroot.  Prove it by reading a real
-     * Android ELF binary (app_process64 -- the Zygote/app host) by path, straight out of the ext4. */
-    const char *APP = "/aroot/system/bin/app_process64";
+     * Android ELF binary (app_process64 -- the Zygote/app host) by its direct path, and A9.3c: again
+     * through the /aroot/bin -> /system/bin symlink, exercising ext4 symlink following. */
+    const char *APP = "/aroot/system/bin/app_process64";   /* direct, real file   */
+    const char *LNK = "/aroot/bin/app_process64";          /* via /bin -> /system/bin symlink */
+    int elfDirect = 0, elfLink = 0;
     int lf = open(APP, O_RDONLY);
-    if (lf >= 0) {
-        unsigned char h[8] = {0};
-        int rn = (int)read(lf, h, sizeof h);
-        close(lf);
-        int isElf = rn >= 5 && h[0] == 0x7f && h[1] == 'E' && h[2] == 'L' && h[3] == 'F';
-        printf("[hos-container] android-image: %s (%s read %d bytes, ELF=%d, 64-bit=%d)\n",
-               isElf ? "MOUNTED" : "unreadable", APP, rn, isElf, isElf ? (h[4] == 2) : 0);
-    } else {
-        printf("[hos-container] android-image: /aroot not mounted (%s)\n", strerror(errno));
-    }
+    if (lf >= 0) { unsigned char h[8] = {0}; int rn = (int)read(lf, h, sizeof h); close(lf);
+        elfDirect = rn >= 5 && h[0]==0x7f && h[1]=='E' && h[2]=='L' && h[3]=='F' && h[4]==2; }
+    int sf = open(LNK, O_RDONLY);
+    if (sf >= 0) { unsigned char h[8] = {0}; int rn = (int)read(sf, h, sizeof h); close(sf);
+        elfLink = rn >= 5 && h[0]==0x7f && h[1]=='E' && h[2]=='L' && h[3]=='F' && h[4]==2; }
+    if (elfDirect)
+        printf("[hos-container] android-image: MOUNTED (app_process64 is a 64-bit ELF; /bin symlink follow=%s)\n",
+               elfLink ? "OK" : "no");
+    else
+        printf("[hos-container] android-image: /aroot not readable (%s)\n", strerror(errno));
 
     return ok ? 0 : 1;
 }

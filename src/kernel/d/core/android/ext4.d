@@ -189,24 +189,64 @@ private uint dirLookup(const ref Ext4Mount m, const(ubyte)* dirInode, const(char
 }
 
 /// Resolve an absolute path to its inode number (0 = not found), loading its inode into `inodeOut`.
+private enum int EXT4_LINK_MAX = 16;
+
+// Read a symlink inode's target into `out_` (NUL-terminated); returns its length, or 0.  Short
+// targets (< 60 bytes) live inline in i_block; longer ones in the first data block.
+private uint readLink(const ref Ext4Mount m, const(ubyte)* inode, char* out_, uint cap) {
+    const ulong sz = inodeSize(inode);
+    if (sz == 0 || sz + 1 >= cap) return 0;
+    if (sz < 60) {
+        foreach (k; 0 .. cast(uint)sz) out_[k] = cast(char)inode[0x28 + k];
+    } else {
+        ubyte[MAX_BLOCK] blk;
+        const ulong phys = mapBlock(m, inode, 0);
+        if (phys == 0 || !readBlock(m, phys, blk.ptr)) return 0;
+        foreach (k; 0 .. cast(uint)sz) out_[k] = cast(char)blk[k];
+    }
+    out_[cast(uint)sz] = '\0';
+    return cast(uint)sz;
+}
+
 uint ext4Resolve(const ref Ext4Mount m, const(char)* path, ubyte* inodeOut) {
     if (!m.ok) return 0;
+    char[1024] work;
+    { uint k = 0; while (path[k] != '\0' && k + 1 < work.length) { work[k] = path[k]; ++k; } work[k] = '\0'; }
+    int hops = 0;
     uint cur = ROOT_INO;
     if (!readInode(m, cur, inodeOut)) return 0;
-    uint i = 0;
-    if (path[i] == '/') ++i;
-    while (path[i] != '\0') {
+    uint i = (work[0] == '/') ? 1 : 0;
+    while (work[i] != '\0') {
         uint j = i;
-        while (path[j] != '\0' && path[j] != '/') ++j;
+        while (work[j] != '\0' && work[j] != '/') ++j;
         const uint clen = j - i;
         if (clen > 0) {
-            const uint child = dirLookup(m, inodeOut, path + i, clen);
+            const uint child = dirLookup(m, inodeOut, work.ptr + i, clen);
             if (child == 0) return 0;
             cur = child;
             if (!readInode(m, cur, inodeOut)) return 0;
+            if ((rd16(inodeOut, 0) & 0xF000) == 0xA000) {        // a symlink -- splice its target in
+                if (++hops > EXT4_LINK_MAX) return 0;
+                char[512] tgt;
+                const uint tl = readLink(m, inodeOut, tgt.ptr, tgt.length);
+                if (tl == 0) return 0;
+                char[1024] nw; uint p = 0;
+                if (tgt[0] != '/')                                // relative: keep the prefix up to here
+                    foreach (k; 0 .. i) if (p + 1 < nw.length) nw[p++] = work[k];
+                if (p > 0 && nw[p-1] != '/' && p + 1 < nw.length) nw[p++] = '/';
+                foreach (k; 0 .. tl) if (p + 1 < nw.length) nw[p++] = tgt[k];
+                uint r = j;                                       // append the still-unresolved remainder
+                while (work[r] != '\0' && p + 1 < nw.length) nw[p++] = work[r++];
+                nw[p] = '\0';
+                foreach (k; 0 .. p + 1) work[k] = nw[k];
+                cur = ROOT_INO;                                   // nw is a full path from the image root
+                if (!readInode(m, cur, inodeOut)) return 0;
+                i = (work[0] == '/') ? 1 : 0;
+                continue;
+            }
         }
         i = j;
-        if (path[i] == '/') ++i;
+        if (work[i] == '/') ++i;
     }
     return cur;
 }

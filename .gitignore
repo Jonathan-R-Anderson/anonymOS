@@ -111,3 +111,7 @@ _at.png
 deps/wine/
 deps/darling/
 deps/waydroid/
+# Android GSI (Waydroid) system+vendor images -- multi-GB, user-provided (see deps/waydroid-image/README.md)
+deps/waydroid-image/*.img
+deps/waydroid-image/*.zip
+!deps/waydroid-image/README.md

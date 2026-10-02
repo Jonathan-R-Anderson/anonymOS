@@ -1258,6 +1258,8 @@ private __gshared char[256][SCRIPT_DEPTH] g_scrArg = '\0';
 private __gshared char[512][SCRIPT_DEPTH] g_scrPath = '\0';
 private __gshared ulong[EXEC_ARG_MAX + 4][SCRIPT_DEPTH] g_scrArgv;
 
+__gshared char[256] g_ext4ExecName;   // A9.3c: kernel-memory basename for an ext4-image exec
+
 private long execveTask(int tid, ulong pathPtr, ulong argvPtr, ulong envpPtr) {
     auto task = &g_tasks[tid];
 
@@ -1362,6 +1364,23 @@ private long execveTask(int tid, ulong pathPtr, ulong argvPtr, ulong envpPtr) {
                 execName = "store-app".ptr;
                 storeIdx = appIdx;
             }
+        }
+    }
+
+    // A9.3c: a binary in a mounted Android ext4 image (the container pivot_root'd into /aroot, so
+    // its "/system/bin/..." reroots there).  Read it into a contiguous blob and load it like a module.
+    if (modPhys == 0) {
+        import core.syscalls.posix : ext4ExecImage;
+        ulong ep2, es2;
+        if (ext4ExecImage(path, &ep2, &es2)) {
+            modPhys = ep2; modSize = es2;
+            // `path` is a user pointer; execName is read during stack seeding AFTER the CR3 switch,
+            // so copy the basename into kernel memory that survives the address-space change.
+            const(char)* bn = cstrBasenameK(path);
+            size_t k = 0;
+            while (bn[k] != 0 && k + 1 < g_ext4ExecName.length) { g_ext4ExecName[k] = bn[k]; ++k; }
+            g_ext4ExecName[k] = 0;
+            execName = g_ext4ExecName.ptr;
         }
     }
 
@@ -1645,8 +1664,14 @@ private long execveTask(int tid, ulong pathPtr, ulong argvPtr, ulong envpPtr) {
         klog("[exec] PT_INTERP="); klog(interpPath.ptr); klog("\n");
         ulong ipPhys = 0, ipSize = 0;
         if (!findInterpModule(interpPath.ptr, ipPhys, ipSize)) {
-            klog("[exec] interp module NOT FOUND\n");
-            return -2;
+            // A9.3c: Android's interpreter lives in the ext4 image (/system/bin/linker64, with a
+            // bootstrap fallback handled in ext4ExecImage).
+            import core.syscalls.posix : ext4ExecImage;
+            if (!ext4ExecImage(interpPath.ptr, &ipPhys, &ipSize)) {
+                klog("[exec] interp module NOT FOUND\n");
+                return -2;
+            }
+            klog("[exec] interp from Android image\n");
         }
         ulong ipVirt = phys_to_virt(ipPhys);
         auto ires = loadElf(*task, ipVirt, ipPhys, USER_INTERP_BASE, null, 0);

@@ -151,6 +151,33 @@ static int container_init(const char *root, int argc, char **argv) {
     else
         printf("[hos-container] android-image: /aroot not readable (%s)\n", strerror(errno));
 
+    /* A9.3c: try to actually EXEC a real Android binary from the image.  chroot into /aroot so the
+     * binary's interpreter (/system/bin/linker64) and libraries resolve inside the image, then
+     * execve app_process64.  The kernel's [exec] log lines report how far the load gets; whatever
+     * fails is the next concrete bring-up step.  Done in a child so this reporter survives. */
+    if (elfDirect) {
+        pid_t ep = fork();
+        if (ep == 0) {
+            if (chroot("/aroot") != 0) {
+                printf("[hos-container] exec-bionic: chroot /aroot failed: %s\n", strerror(errno));
+                _exit(1);
+            }
+            chdir("/");   /* now inside the Android root */
+            char *av[] = { (char *)"/system/bin/app_process64", (char *)"-Xzygote",
+                           (char *)"/system/bin", (char *)"--zygote", NULL };
+            char *ev[] = { (char *)"PATH=/system/bin", (char *)"ANDROID_ROOT=/system",
+                           (char *)"ANDROID_DATA=/data", NULL };
+            execve("/system/bin/app_process64", av, ev);
+            printf("[hos-container] exec-bionic: execve app_process64 failed: %s\n", strerror(errno));
+            _exit(1);
+        }
+        int est = 0;
+        waitpid(ep, &est, 0);
+        printf("[hos-container] exec-bionic: attempt complete (child %s %d)\n",
+               WIFEXITED(est) ? "exit" : "signal",
+               WIFEXITED(est) ? WEXITSTATUS(est) : WTERMSIG(est));
+    }
+
     return ok ? 0 : 1;
 }
 

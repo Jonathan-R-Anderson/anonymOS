@@ -18657,6 +18657,8 @@ private const(char)* nsApplyChroot(const(char)* path, char* buf, size_t cap) @no
 
 private bool nsPathIsDir(const(char)* path) {
     if (isSyntheticDirectoryPath(path)) return true;
+    // A9.3c: a mounted Android image path (/aroot[/vendor]/...) is a directory when its ext4 inode is.
+    if (aVfsIsPath(path)) { int sel; bool isDir; return aVfsResolve(path, sel, isDir) != 0 && isDir; }
     int parent; const(char)* leaf; size_t ll;
     const int idx = rtResolve(path, parent, leaf, ll);
     return idx >= 0 && g_rt[idx].kind == RT_DIR;
@@ -18925,6 +18927,56 @@ private uint aVfsResolve(const(char)* path, out int mountSel, out bool isDir) {
 
 private Ext4Mount* aVfsMount(int sel) @nogc nothrow {
     return (sel == 1) ? ext4AndroidVen() : ext4AndroidSys();
+}
+
+// A9.3c: read an executable out of a mounted Android image into a contiguous physical buffer, so the
+// kernel's ELF loader (which wants a contiguous blob, like a boot module) can exec it.  `path` is
+// rerooted by the caller's chroot first, so a pivot_root'd container's "/system/bin/linker64"
+// resolves to /aroot/system/bin/linker64.  A missing APEX linker64 falls back to the bootstrap one.
+// Returns true with *physOut/*sizeOut set; the caller owns the pages.
+public bool ext4ExecImage(const(char)* path, ulong* physOut, ulong* sizeOut) {
+    import memory.mm : alloc_phys_pages;
+    char[1024] rbuf;
+    const(char)* rp = nsApplyChroot(path, rbuf.ptr, rbuf.length);
+    const(char)* ep = (rp !is null) ? rp : path;
+    if (!aVfsIsPath(ep)) return false;
+    int sel; bool isDir;
+    uint ino = aVfsResolve(ep, sel, isDir);
+    // Android's /system/bin/linker64 is a symlink into the (inactive) APEX; fall back to the
+    // bootstrap linker that lives in the image, which is how Android itself boots before APEX.
+    if (ino == 0) {
+        static immutable string tail = "/system/bin/linker64";
+        size_t L = 0; while (ep[L] != '\0') ++L;
+        bool endsLinker = (L >= tail.length);
+        if (endsLinker) foreach (k; 0 .. tail.length) if (ep[L - tail.length + k] != tail[k]) { endsLinker = false; break; }
+        if (endsLinker) {
+            char[1024] bb; size_t p = 0;
+            foreach (k; 0 .. L - tail.length) if (p + 1 < bb.length) bb[p++] = ep[k];
+            static immutable string bl = "/system/bin/bootstrap/linker64";
+            foreach (c; bl) if (p + 1 < bb.length) bb[p++] = c;
+            bb[p] = '\0';
+            ino = aVfsResolve(bb.ptr, sel, isDir);
+        }
+    }
+    if (ino == 0 || isDir) return false;
+    auto m = aVfsMount(sel);
+    if (m is null) return false;
+    uint mode; ulong sz;
+    if (!ext4InodeInfo(*m, ino, &mode, &sz) || sz == 0) return false;
+    const uint pages = cast(uint)((sz + 4095) / 4096);
+    const ulong phys = alloc_phys_pages(pages);
+    if (phys == 0) return false;
+    auto dst = cast(ubyte*)phys_to_virt(phys);
+    ulong off = 0;
+    while (off < sz) {
+        uint want = (sz - off > 0x10000) ? 0x10000 : cast(uint)(sz - off);
+        const long got = ext4ReadInodeAt(*m, ino, off, dst + off, want);
+        if (got <= 0) break;
+        off += cast(ulong)got;
+    }
+    if (off < sz) return false;
+    *physOut = phys; *sizeOut = sz;
+    return true;
 }
 
 public long linux_sys_seccomp(ulong op, ulong f, ulong a) { return negErrno(EINVAL); }

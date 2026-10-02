@@ -1458,6 +1458,11 @@ private struct LocalSocket
     // ORG P10: the object id of the fd backing this socket (for the peer Weak edge
     // E9 and the SCM in-flight StrongRef edge E10).  0 until the fd is published.
     uint fdObjId;
+    // A9.3h: Android's liblog connects a SOCK_DGRAM to /dev/socket/logdw and writes log records,
+    // but anonymOS runs no logd.  When true this endpoint is a kernel log SINK: connect() succeeds
+    // with no peer, and every datagram is decoded (bionic logdw wire format) and printed to the
+    // kernel log instead of delivered -- which is what makes ART's own diagnostics visible.
+    bool isLogSink;
 }
 
 __gshared LocalSocket[localSocketMax] g_localSockets;
@@ -1602,6 +1607,49 @@ private bool unixAddrEqualsLiteral(const(sockaddr_un)* addr, size_t len, string 
         if (addr.sun_path[i] != literal[i]) return false;
     }
     return true;
+}
+
+// A9.3h: true when this AF_UNIX address is Android's log-writer socket.  liblog connects a
+// SOCK_DGRAM to "/dev/socket/logdw"; the chrooted container sees exactly that path, so a literal
+// match is enough.  We answer as an in-kernel sink (see LocalSocket.isLogSink).
+private bool sockPathIsLogd(const(sockaddr_un)* addr, size_t len)
+{
+    return unixAddrEqualsLiteral(addr, len, "/dev/socket/logdw");
+}
+
+// A9.3h: print one bionic logdw datagram to the kernel log.  The record begins with a small binary
+// header (android_log_header_t: id, tid, realtime -- then a priority byte and NUL-separated tag +
+// message for text buffers), but the exact header size and field order have drifted across Android
+// versions, and the GSI we run does not match the obvious offset model.  Since the aim is simply to
+// SEE ART's diagnostics, we extract the printable runs: walk the bytes, emit printable ones, and
+// collapse each run of binary/NUL bytes to a single space.  That yields "<tag> <message>" cleanly
+// regardless of the header's shape.  A module-level scratch buffer is used because a function-local
+// __gshared is broken under betterC.  Output per datagram is capped so a chatty log cannot flood.
+private __gshared ubyte[8192] g_logdScratch;
+private void logSinkDrain(const(ubyte)* data, size_t len)
+{
+    if (data is null || len == 0) return;
+    // Pre-scan: a logd record carries a few binary header bytes that are occasionally printable, so
+    // skip datagrams with almost no text (the 1-2 byte control writes and header fragments) -- only
+    // records with a real tag/message are worth a line.
+    size_t printable = 0;
+    foreach (i; 0 .. len) { const ubyte b = data[i]; if (b >= 0x20 && b < 0x7f) ++printable; }
+    if (printable < 4) return;
+    klog("[logd] ");
+    bool lastGap = true;
+    size_t emitted = 0;
+    enum size_t CAP = 400;
+    foreach (i; 0 .. len) {
+        if (emitted >= CAP) { klog(" ..."); break; }
+        const ubyte b = data[i];
+        if (b >= 0x20 && b < 0x7f) {
+            char[2] c; c[0] = cast(char)b; c[1] = 0; klog(c.ptr);
+            lastGap = false; ++emitted;
+        } else if (!lastGap) {
+            klog(" "); lastGap = true; ++emitted;
+        }
+    }
+    klog("\n");
 }
 
 // True once some task holds an AF_UNIX socket in the listener state bound to `path`.
@@ -1958,6 +2006,13 @@ private ssize_t localSocketWrite(File* f, const(void)* buffer, size_t length)
     if (buffer is null && length != 0)
     {
         return negErrno(EFAULT);
+    }
+    // A9.3h: a log sink swallows the write straight into the kernel log (the write() path; sendmsg
+    // gathers its iovecs first -- see sys_sendmsg -- so a multi-iovec record decodes as one datagram).
+    if (sock.isLogSink)
+    {
+        logSinkDrain(cast(const(ubyte)*)buffer, length);
+        return cast(ssize_t)length;
     }
     if (sock.state != LocalSocketState.connected)
     {
@@ -13637,6 +13692,21 @@ public int sys_connect(int sockfd, const(sockaddr)* addr, uint addrlen) {
         if (g != 0) return g;
     }
 
+    // A9.3h: Android's log writer -- answer as an in-kernel sink.  There is no logd to listen, so
+    // mark the socket connected with no peer; every datagram then routes into logSinkDrain.  Done
+    // before findUnixListener so it never trips the ECONNREFUSED path.
+    if (sockPathIsLogd(un, pathLen)) {
+        client.state = LocalSocketState.connected;
+        client.isLogSink = true;
+        client.peerId = -1;
+        static __gshared bool g_logdAnnounced = false;
+        if (!g_logdAnnounced) {
+            g_logdAnnounced = true;
+            klog("[logd] sink attached: /dev/socket/logdw -> kernel log\n");
+        }
+        return 0;
+    }
+
     auto listener = findUnixListener(un, pathLen);
     if (listener is null) return negErrno(ECONNREFUSED);
 
@@ -13806,6 +13876,26 @@ public ssize_t sys_sendmsg(int sockfd, msghdr* msg, int flags) {
     if (f.type != FileType.FD_SOCKET) return negErrno(ENOTSOCK);
     {   auto insock = fileSocket(f);
         if (inetIsInet(insock)) return inetSendMsg(insock, msg);
+    }
+
+    // A9.3h: a log-sink socket swallows the datagram into the kernel log.  Gather the iovecs into
+    // one buffer first so a bionic logdw record (header + priority + tag + message, spread across
+    // several iovecs) decodes as a single datagram, then report the whole length as sent.
+    {
+        auto lsock = fileSocket(f);
+        if (lsock !is null && lsock.isLogSink) {
+            size_t total = 0, req = 0;
+            foreach (i; 0 .. msg.msg_iovlen) {
+                auto iov = &msg.msg_iov[i];
+                req += iov.iov_len;
+                if (iov.iov_len == 0 || iov.iov_base is null) continue;
+                const size_t room = g_logdScratch.length - total;
+                const size_t n = iov.iov_len < room ? iov.iov_len : room;
+                if (n > 0) { memcpy(g_logdScratch.ptr + total, iov.iov_base, n); total += n; }
+            }
+            logSinkDrain(g_logdScratch.ptr, total);
+            return cast(ssize_t)req;
+        }
     }
 
     // SCM_RIGHTS: copy any passed File descriptors into the peer's queue so the

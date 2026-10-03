@@ -70,6 +70,8 @@ enum uint BR_NOOP                 = 0x0000_720C;  // _IO('r',12)
 enum uint BR_DEAD_BINDER          = 0x8008_720F;  // _IOR('r',15, binder_uintptr_t) -- carries a cookie
 enum uint BR_CLEAR_DEATH_NOTIFICATION_DONE = 0x8008_7210; // _IOR('r',16, binder_uintptr_t)
 enum uint BR_FAILED_REPLY         = 0x0000_7211;
+enum uint BR_INCREFS              = 0x8010_7207;  // _IOR('r',7, binder_ptr_cookie) -- take a weak ref
+enum uint BR_ACQUIRE              = 0x8010_7208;  // _IOR('r',8, binder_ptr_cookie) -- take a strong ref
 
 // Transaction flags (binder_transaction_data.flags).
 enum uint TF_ONE_WAY = 0x01;   // asynchronous: no reply, no transaction stack entry
@@ -148,6 +150,11 @@ private struct BinderProc {
     // binder (framework), hwbinder (HALs), vndbinder (vendor) -- each with its own context manager
     // and handle-0; binderfs can add more.  A proc only ever reaches procs in its own context.
     int  ctx;
+    // A9.5: fds referring to this proc -- fork and dup share it (posix.d's fdInstanceRef); only the
+    // last close frees it.  vold forks helpers: the child's exit closed its inherited copy, freed the
+    // proc under the parent, and vold's next BINDER_WRITE_READ got EINVAL ("getAndExecuteCommand
+    // returned unexpected error -22, aborting").
+    int  fdRefs;
 }
 
 // BINDER_VM_MAX caps a proc's receive region.  libbinder uses ~1 MiB by default and at most 4 MiB.
@@ -222,6 +229,26 @@ public bool binderPollReadable(int id) {
     return false;
 }
 
+/// DIAGNOSTIC (A9.5): one task's binder state for the [adump] lines -- its proc (context, whether it is
+/// that context's manager, queued proc work) and its thread (calls awaiting a reply, calls being
+/// serviced, queued thread work).
+public void binderDebugTask(int id, int tid) {
+    import core.io : klog, klog_dec;
+    if (id < 0 || id >= MAX_PROCS || !g_procs[id].used) { klog(" bp=?"); return; }
+    const auto p = &g_procs[id];
+    klog(" bp="); klog_dec(cast(ulong)id); klog("/c"); klog_dec(cast(ulong)p.ctx);
+    if (g_ctx[p.ctx].contextMgr == id) klog("/MGR");
+    else if (g_ctx[p.ctx].contextMgr < 0) klog("/nomgr");
+    klog(" pm="); klog_dec(cast(ulong)p.mailLen);
+    foreach (i; 0 .. MAX_BTHREADS) {
+        const auto th = &g_bthreads[i];
+        if (!th.used || th.proc != id || th.tid != tid) continue;
+        klog(" out="); klog_dec(cast(ulong)th.outstanding);
+        klog(" in="); klog_dec(cast(ulong)th.inN);
+        klog(" tm="); klog_dec(cast(ulong)th.mailLen);
+    }
+}
+
 /// BINDER_THREAD_EXIT: the thread leaves; callers still waiting on it get BR_DEAD_REPLY.
 public void binderThreadExit(int id, int tid) {
     foreach (i; 0 .. MAX_BTHREADS) {
@@ -265,6 +292,8 @@ private struct Node {
     ulong ptr;          // the owner's local binder pointer (its BBinder weak ref)
     ulong cookie;       // the owner's cookie (its BBinder)
     int   strongRefs;
+    bool  increfsSent;  // A9.5: the owner was told (BR_INCREFS / BR_ACQUIRE) that a remote ref exists
+    bool  acquireSent;
     int   subN;
     int[MAX_DEATH]   subProc;    // subscriber proc indices
     ulong[MAX_DEATH] subCookie;  // the cookie each subscriber wants echoed back on death
@@ -283,6 +312,7 @@ public int binderAlloc(int ctx) {
             g_procs[i] = BinderProc.init;
             g_procs[i].used = true;
             g_procs[i].ctx  = ctx;
+            g_procs[i].fdRefs = 1;
             return i;
         }
     }
@@ -291,8 +321,19 @@ public int binderAlloc(int ctx) {
 
 /// Release a binder proc on close (or on a crash).  A3: every node this proc owned now has a dead
 /// owner, so fire a death notification to each subscriber before dropping those nodes.
+/// Another fd now refers to binder proc `id` (a fork-copied or dup'd binder fd).
+public void binderRef(int id) {
+    if (id >= 0 && id < MAX_PROCS && g_procs[id].used) ++g_procs[id].fdRefs;
+}
+
+/// An fd referring to binder proc `id` closed: the proc goes with the last one (binderDestroy).
 public void binderFree(int id) {
     if (id < 0 || id >= MAX_PROCS || !g_procs[id].used) return;
+    if (--g_procs[id].fdRefs > 0) return;
+    binderDestroy(id);
+}
+
+private void binderDestroy(int id) {
     foreach (n; 0 .. MAX_NODES) {
         if (!g_nodes[n].used || g_nodes[n].owner != id) continue;
         foreach (s; 0 .. g_nodes[n].subN) {
@@ -458,6 +499,31 @@ private int handleResolve(int proc, uint handle) {
     return g_procs[proc].handleNode[handle];
 }
 
+// A9.5: the calling binder thread of the binderWriteRead in progress (translateObject needs it).
+private __gshared int g_curThread = -1;
+
+// A9.5: tell a node's owner that a remote reference to it now exists, as real binder does the first
+// time a node is referenced from another proc: BR_INCREFS (weak) and, for a strong reference,
+// BR_ACQUIRE -- libbinder answers with incWeak/incStrong on the object.  That ref is what keeps a
+// published BBinder alive: vold publishes addService(name, new VoldNativeService()), so once the
+// Parcel's temporary reference is dropped the service would be freed while servicemanager still hands
+// it out.  Queued to the sending thread when it is the owner's (it reads them while it waits for its
+// reply, before the Parcel goes away), else to the owner proc.  The refs are never released yet (no
+// BR_RELEASE / BR_DECREFS): a remotely-referenced object stays alive -- leaked, never used after free.
+private void nodeTellOwner(int nidx, bool strong) {
+    auto nd = &g_nodes[nidx];
+    if (nd.increfsSent && (!strong || nd.acquireSent)) return;
+    BinderTxData pc; pc.target = nd.ptr; pc.cookie = nd.cookie;
+    const int t = g_curThread;
+    const bool own = t >= 0 && t < MAX_BTHREADS && g_bthreads[t].used && g_bthreads[t].proc == nd.owner;
+    if (!nd.increfsSent) {
+        nd.increfsSent = own ? tmailPush(t, BR_INCREFS, pc, -1) : mailPush(nd.owner, BR_INCREFS, pc);
+    }
+    if (strong && !nd.acquireSent) {
+        nd.acquireSent = own ? tmailPush(t, BR_ACQUIRE, pc, -1) : mailPush(nd.owner, BR_ACQUIRE, pc);
+    }
+}
+
 // Translate one flat_binder_object in place as it crosses from `sender` to `target`.  A local
 // BINDER becomes a HANDLE in the target; a HANDLE becomes a BINDER when it returns to the owner, or
 // is re-expressed as a handle in the target otherwise.  false => the object cannot cross (a bad
@@ -470,6 +536,7 @@ private bool translateObject(int sender, int target, FlatBinderObject* fo) {
             const int nidx = nodeFindOrCreate(sender, fo.payload, fo.cookie);
             if (nidx < 0) return false;
             ++g_nodes[nidx].strongRefs;
+            if (target != sender) nodeTellOwner(nidx, fo.type == BINDER_TYPE_BINDER);
             const int h = handleForNode(target, nidx);
             if (h < 0) return false;
             fo.type    = (fo.type == BINDER_TYPE_WEAK_BINDER) ? BINDER_TYPE_WEAK_HANDLE : BINDER_TYPE_HANDLE;
@@ -523,7 +590,7 @@ private long deliverTxn(int sender, int target, ref BinderTxData tx, bool isRepl
     const uint osz = (tx.offsets_size > BINDER_VM_MAX) ? 0 : cast(uint)tx.offsets_size;
     const uint dAligned = (dsz + 7) & ~7u;
     const long base = bufAlloc(target, dAligned + osz);
-    if (base < 0) return -1;
+    if (base < 0) { btrace(sender, target, tx, isReply, null, 0, 0, "NOBUF"); return -1; }
     auto region = cast(ubyte*)phys_to_virt(g_procs[target].regionPhys) + cast(uint)base;
     if (dsz > 0 && copyin !is null) copyin(tx.data_buffer,  region,            dsz);
     if (osz > 0 && copyin !is null) copyin(tx.data_offsets, region + dAligned, osz);
@@ -531,9 +598,12 @@ private long deliverTxn(int sender, int target, ref BinderTxData tx, bool isRepl
     const uint noff = osz / 8;
     foreach (k; 0 .. noff) {
         const ulong offVal = rdU64(region + dAligned, k * 8);
-        if (offVal + FlatBinderObject.sizeof > dsz) return -1;
-        if (!translateObject(sender, target, cast(FlatBinderObject*)(region + offVal))) return -1;
+        if (offVal + FlatBinderObject.sizeof > dsz) { btrace(sender, target, tx, isReply, region, dsz, noff, "BADOFF"); return -1; }
+        if (!translateObject(sender, target, cast(FlatBinderObject*)(region + offVal))) {
+            btrace(sender, target, tx, isReply, region, dsz, noff, "XLATE"); return -1;
+        }
     }
+    btrace(sender, target, tx, isReply, region, dsz, noff, null);
     tx.data_size    = dsz;
     tx.offsets_size = osz;
     tx.data_buffer  = g_procs[target].regionUserBase + cast(ulong)base;
@@ -541,6 +611,25 @@ private long deliverTxn(int sender, int target, ref BinderTxData tx, bool isRepl
     const uint code = isReply ? BR_REPLY : BR_TRANSACTION;
     if (toThread >= 0) return tmailPush(toThread, code, tx, fromThread) ? 0 : -1;
     return mailPush(target, code, tx, fromThread) ? 0 : -1;
+}
+
+// DIAGNOSTIC (A9.5): a bounded trace of binder traffic -- sender/target proc, the call's handle and
+// code (or a reply), its size, object count, and the first data word (an AIDL reply's exception code;
+// a call's interface-token header).
+private __gshared uint g_btraceN = 0;
+private void btrace(int sender, int target, const ref BinderTxData tx, bool isReply, const(ubyte)* data,
+                    uint dsz, uint noff, string fail) {
+    if (g_btraceN >= 400) return;
+    ++g_btraceN;
+    klog(isReply ? "[brp] p" : "[btx] p"); klog_dec(cast(ulong)sender);
+    klog("->p"); klog_dec(cast(ulong)target);
+    if (!isReply) { klog(" ptr="); klog_hex(tx.target); klog(" code="); klog_hex(tx.code); }
+    klog(" fl="); klog_hex(tx.flags);
+    klog(" sz="); klog_dec(cast(ulong)dsz); klog(" obj="); klog_dec(cast(ulong)noff);
+    if (data !is null && dsz >= 4) { klog(" w0="); klog_hex(rdU32(data, 0)); }
+    if (data !is null && dsz >= 8) { klog(" w1="); klog_hex(rdU32(data, 4)); }
+    if (fail !is null) { klog(" FAIL="); klog(fail.ptr); }
+    klog("\n");
 }
 
 private bool mailPush(int id, uint code, const ref BinderTxData tx, int fromThread = -1) {
@@ -607,6 +696,7 @@ public long binderWriteRead(int id, const(ubyte)* wbuf, ulong wsize, ulong* wcon
     ulong rpos = 0;
     ulong wpos = 0;
     const int me = threadFor(id, tid);   // -1 only when the thread table is full
+    g_curThread = me;
 
     // Process the write command stream.
     while (wpos + 4 <= wsize) {
@@ -684,12 +774,18 @@ public long binderWriteRead(int id, const(ubyte)* wbuf, ulong wsize, ulong* wcon
                 const uint origFlags = tx.flags;
                 // Route by target: handle 0 is the context manager; any other handle resolves
                 // through this proc's handle table to the owning proc (A3).
-                int tgt = -1;
-                if (tx.target == 0) tgt = g_ctx[g_procs[id].ctx].contextMgr;
+                int tgt = -1, tnode = -1;
+                if (tx.target == 0) { tgt = g_ctx[g_procs[id].ctx].contextMgr; tnode = g_ctx[g_procs[id].ctx].ctxMgrNode; }
                 else {
                     const int nidx = handleResolve(id, cast(uint)tx.target);
-                    if (nidx >= 0) tgt = g_nodes[nidx].owner;
+                    if (nidx >= 0) { tgt = g_nodes[nidx].owner; tnode = nidx; }
                 }
+                // A9.5: the receiver names the object by ITS OWN pointers, as real binder delivers it:
+                // target.ptr = the node's binder (weakref) pointer, cookie = its BBinder.  libbinder
+                // dereferences both (attemptIncStrong on target.ptr, then cookie->transact()); handing
+                // over the caller's handle number instead crashed vold on vdc's first call (handle 1 ->
+                // weakref at 0x1, mWeak at 0x5).  Calls to the context manager (ptr 0) never noticed.
+                if (tnode >= 0) { tx.target = g_nodes[tnode].ptr; tx.cookie = g_nodes[tnode].cookie; }
                 tx.sender_pid  = senderPid;      // the driver fills these, never the sender
                 tx.sender_euid = senderEuid;
                 // A synchronous call carries this thread, so the BC_REPLY comes back to it.  A call
@@ -702,6 +798,7 @@ public long binderWriteRead(int id, const(ubyte)* wbuf, ulong wsize, ulong* wcon
                     if (caller >= 0 && g_bthreads[caller].used && g_bthreads[caller].proc == tgt)
                         toThread = caller;
                 }
+                if (tgt < 0) btrace(id, -1, tx, false, null, 0, 0, "NOTARGET");
                 if (tgt >= 0 && deliverTxn(id, tgt, tx, false, copyin, toThread, sync ? me : -1) == 0) {
                     if (sync && me >= 0) ++g_bthreads[me].outstanding;
                     putU32(rbuf, rsize, rpos, BR_TRANSACTION_COMPLETE);
@@ -724,6 +821,7 @@ public long binderWriteRead(int id, const(ubyte)* wbuf, ulong wsize, ulong* wcon
                     if (destThread >= 0 && g_bthreads[destThread].used) dest = g_bthreads[destThread].proc;
                     else destThread = -1;
                 }
+                if (dest < 0) btrace(id, -1, tx, true, null, 0, 0, "NODEST");
                 if (dest >= 0 && deliverTxn(id, dest, tx, true, copyin, destThread, -1) == 0)
                     putU32(rbuf, rsize, rpos, BR_TRANSACTION_COMPLETE);
                 else
@@ -766,13 +864,15 @@ public long binderWriteRead(int id, const(ubyte)* wbuf, ulong wsize, ulong* wcon
         } else break;
         const uint code = src.code;
         const bool isDeath = (code == BR_DEAD_BINDER || code == BR_CLEAR_DEATH_NOTIFICATION_DONE);
-        const ulong need = payloadless(code) ? 4 : isDeath ? (4 + 8) : (4 + BinderTxData.sizeof);
+        const bool isRef   = (code == BR_INCREFS || code == BR_ACQUIRE);   // binder_ptr_cookie
+        const ulong need = payloadless(code) ? 4 : isDeath ? (4 + 8) : isRef ? (4 + 16) : (4 + BinderTxData.sizeof);
         if (rpos + need > rsize) break;
         const Mail m = *src;
         if (fromOwn) { g_bthreads[me].mailHead = (g_bthreads[me].mailHead + 1) % TMAIL_CAP; --g_bthreads[me].mailLen; }
         else         { g_procs[id].mailHead = (g_procs[id].mailHead + 1) % MAILBOX_CAP; --g_procs[id].mailLen; }
         putU32(rbuf, rsize, rpos, m.code);
         if (isDeath) putU64(rbuf, rsize, rpos, m.tx.cookie);
+        else if (isRef) { putU64(rbuf, rsize, rpos, m.tx.target); putU64(rbuf, rsize, rpos, m.tx.cookie); }
         else if (!payloadless(code)) putTx(rbuf, rsize, rpos, m.tx);
         if (me >= 0) {
             if (code == BR_TRANSACTION && m.fromThread > 0 && g_bthreads[me].inN < MAX_TXSTACK)
@@ -788,7 +888,7 @@ public long binderWriteRead(int id, const(ubyte)* wbuf, ulong wsize, ulong* wcon
 
 // ---- boot self-test --------------------------------------------------------------------------
 
-import core.io : klog, klog_hex;
+import core.io : klog, klog_hex, klog_dec;
 
 // A test copy-in: the self-test has no user context, so a "user address" is a kernel pointer.
 private ulong testCopyIn(ulong uaddr, ubyte* dst, ulong n) @nogc nothrow {
@@ -813,6 +913,8 @@ private bool testFindTxn(const(ubyte)* b, ulong len, uint want, ref BinderTxData
             p += BinderTxData.sizeof;
         } else if (code == BR_DEAD_BINDER || code == BR_CLEAR_DEATH_NOTIFICATION_DONE) {
             p += 8;
+        } else if (code == BR_INCREFS || code == BR_ACQUIRE) {
+            p += 16;
         }
         // BR_NOOP / BR_TRANSACTION_COMPLETE carry no payload.
     }
@@ -820,6 +922,24 @@ private bool testFindTxn(const(ubyte)* b, ulong len, uint want, ref BinderTxData
 }
 
 // Scan a BR return stream for a BR_DEAD_BINDER and read its cookie; false if absent.
+// The ptr/cookie of the first `want` (BR_INCREFS / BR_ACQUIRE) in a read stream.
+private bool testFindRef(const(ubyte)* b, ulong len, uint want, ref ulong ptr, ref ulong cookie) @nogc nothrow {
+    ulong p = 0;
+    while (p + 4 <= len) {
+        const uint code = rdU32(b, p); p += 4;
+        if (code == BR_INCREFS || code == BR_ACQUIRE) {
+            if (p + 16 > len) break;
+            if (code == want) { ptr = rdU64(b, p); cookie = rdU64(b, p + 8); return true; }
+            p += 16;
+        } else if (code == BR_DEAD_BINDER || code == BR_CLEAR_DEATH_NOTIFICATION_DONE) {
+            p += 8;
+        } else if (code == BR_TRANSACTION || code == BR_REPLY) {
+            if (p + BinderTxData.sizeof > len) break;
+            p += BinderTxData.sizeof;
+        }
+    }
+    return false;
+}
 private bool testFindDead(const(ubyte)* b, ulong len, ref ulong cookie) @nogc nothrow {
     ulong p = 0;
     while (p + 4 <= len) {
@@ -830,6 +950,8 @@ private bool testFindDead(const(ubyte)* b, ulong len, ref ulong cookie) @nogc no
             return true;
         } else if (code == BR_CLEAR_DEATH_NOTIFICATION_DONE) {
             p += 8;
+        } else if (code == BR_INCREFS || code == BR_ACQUIRE) {
+            p += 16;
         } else if (code == BR_TRANSACTION || code == BR_REPLY) {
             if (p + BinderTxData.sizeof > len) break;
             p += BinderTxData.sizeof;
@@ -888,6 +1010,12 @@ private bool binderSelfTestA3() {
     putTx(wb0.ptr, wb0.length, w0, t0);
     ubyte[256] rbCl0 = 0; ulong rc0 = 0;
     ok = ok && (binderWriteRead(cl, wb0.ptr, w0, null, rbCl0.ptr, rbCl0.length, &rc0, &testCopyIn) == 0);
+    // A9.5: the client's object now has a remote reference, so the client itself is told to hold it
+    // (BR_INCREFS + BR_ACQUIRE naming its own ptr/cookie), in the sending call's read stream.
+    {   ulong rp = 0, rck = 0;
+        ok = ok && testFindRef(rbCl0.ptr, rc0, BR_INCREFS, rp, rck) && rp == 0xA000 && rck == 0xC0DE;
+        rp = 0; rck = 0;
+        ok = ok && testFindRef(rbCl0.ptr, rc0, BR_ACQUIRE, rp, rck) && rp == 0xA000 && rck == 0xC0DE; }
 
     ubyte[256] rbSv0 = 0; ulong rcSv0 = 0;
     ok = ok && (binderWriteRead(sv, null, 0, null, rbSv0.ptr, rbSv0.length, &rcSv0, &testCopyIn) == 0);
@@ -935,6 +1063,8 @@ private bool binderSelfTestA3() {
     if (ok && testFindTxn(rbCl2.ptr, rcCl2, BR_TRANSACTION, got2)) {
         auto f2 = testFirstFlat(got2);
         ok = ok && (f2.type == BINDER_TYPE_BINDER) && (f2.payload == 0xA000) && (f2.cookie == 0xC0DE);
+        // ...and the call itself names the client's object by its own ptr/cookie, not the handle.
+        ok = ok && (got2.target == 0xA000) && (got2.cookie == 0xC0DE);
         binderFreeBuffer(cl, got2.data_buffer);
     } else ok = false;
 
@@ -1112,4 +1242,5 @@ public void binderSelfTest() {
 
     if (ok) klog("[binder] selftest PASS (A1+A2+A3+A3b+A4: version 8, mmap region, data round-trip, handle translation, reply routing, fd passing, death notify, independent contexts)\n");
     else    klog("[binder] selftest FAIL\n");
+    g_btraceN = 0;   // the traffic trace budget is for real processes
 }

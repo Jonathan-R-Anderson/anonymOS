@@ -342,6 +342,9 @@ public void fdInstanceRef(File* f) @nogc nothrow {
     } else if (f.type == FileType.FD_TIMERFD) {
         int tid = cast(int)cast(size_t)f.backend;
         if (tid >= 0 && tid < TIMERFD_MAX && g_timerfds[tid].inUse) ++g_timerfds[tid].refs;
+    } else if (f.type == FileType.FD_BINDER) {
+        import core.android.binder : binderRef;   // A9.5: the binder proc goes with its LAST fd
+        binderRef(cast(int)cast(size_t)f.backend);
     }
 }
 
@@ -828,7 +831,8 @@ public bool localBlockingRecvFd(ulong fd) @nogc nothrow {
     if (f.flags & 0x800 /*O_NONBLOCK*/) return false;   // genuine non-blocking socket: real EAGAIN
     auto s = fileSocket(f);
     if (s is null || inetIsInet(s)) return false;
-    if (s.state != LocalSocketState.connected) return false;
+    const bool dgramBound = (s.type & 0xF) == SOCK_DGRAM && s.state == LocalSocketState.bound;   // A9.5
+    if (s.state != LocalSocketState.connected && !dgramBound) return false;
     return socketBufferReadable(s.rx) == 0 && !s.peerClosed;
 }
 
@@ -2071,7 +2075,12 @@ private ssize_t localSocketRead(File* f, void* buffer, size_t length)
     {
         return negErrno(EFAULT);
     }
-    if (sock.state != LocalSocketState.connected && sock.state != LocalSocketState.closed)
+    // A9.5: a BOUND datagram socket receives whatever is sent to its address (Android's logd reads
+    // /dev/socket/logdw this way): no data is EAGAIN -- a blocking recv then parks -- not ENOTCONN,
+    // which had logd's writer thread spinning on recvmsg.
+    const bool dgramBound = sock.domain == AF_UNIX && (sock.type & 0xF) == SOCK_DGRAM
+                            && sock.state == LocalSocketState.bound;
+    if (sock.state != LocalSocketState.connected && sock.state != LocalSocketState.closed && !dgramBound)
     {
         return negErrno(ENOTCONN);
     }
@@ -13085,6 +13094,7 @@ import core.ticks : getTickCount, get_ticks, pitMs;
 import core.bundle;
 import core.globals : hhdm_offset;
 
+private __gshared ubyte[65536] g_writevGather;   // sys_writev's one-datagram gather buffer (.bss)
 public long sys_writev(int fd, const(iovec)* iov, int iovcnt) {
     if (iov == null && iovcnt > 0) return negErrno(14); // EFAULT
     // A TAP takes ONE frame per write: gather the iovecs (virtio-net header + frame) first.
@@ -13101,7 +13111,28 @@ public long sys_writev(int fd, const(iovec)* iov, int iovcnt) {
         }
         return sys_write(fd, frame.ptr, n);
     }
-    
+    // A9.5: a datagram / seqpacket AF_UNIX socket takes ONE message per writev -- gather the iovecs.
+    // Android's liblog writes each record as writev(header, priority, tag, message) to
+    // /dev/socket/logdw; split into four writes, the in-kernel log sink printed the tag alone and lost
+    // the message (and a real datagram peer would receive four messages).
+    if (iovcnt > 1 && fd >= 0 && fd < 1024 && g_fdTable !is null && g_fdTable[fd].type == FileType.FD_SOCKET) {
+        auto us = fileSocket(&g_fdTable[fd]);
+        if (us !is null && us.domain == AF_UNIX && (us.type & 0xF) != SOCK_STREAM) {
+            size_t n = 0;
+            for (int i = 0; i < iovcnt; i++) {
+                const size_t k = iov[i].iov_len;
+                if (n + k > g_writevGather.length) return negErrno(EMSGSIZE);
+                if (k != 0) {
+                    smapBegin();
+                    memcpy(g_writevGather.ptr + n, iov[i].iov_base, k);
+                    smapEnd();
+                }
+                n += k;
+            }
+            return sys_write(fd, g_writevGather.ptr, n);
+        }
+    }
+
     long total = 0;
     for (int i = 0; i < iovcnt; i++) {
         long res = sys_write(fd, iov[i].iov_base, iov[i].iov_len);
@@ -16924,6 +16955,14 @@ public long linux_sys_unlinkat(ulong d, ulong p, ulong f) {
 private long rtRenameSyscall(const(char)* oldp, const(char)* newp) {
     initFdTable();
     if (oldp is null || newp is null) return negErrno(EFAULT);
+    // A9.5: both ends through the Android overlays, as open/mkdir/unlink do -- derive_classpath writes
+    // /data/system/environ/classpath as a temp file renamed into place, and the un-rewritten rename
+    // found neither (ENOENT), so init's load_exports had no BOOTCLASSPATH.
+    char[1024] _apo = void, _apn = void, _ado = void, _adn = void;
+    { const(char)* ap = androidPropRewrite(oldp, _apo.ptr, _apo.length); if (ap !is null) oldp = ap; }
+    { const(char)* ap = androidPropRewrite(newp, _apn.ptr, _apn.length); if (ap !is null) newp = ap; }
+    { const(char)* ad = androidDataRewrite(oldp, _ado.ptr, _ado.length); if (ad !is null) oldp = ad; }
+    { const(char)* ad = androidDataRewrite(newp, _adn.ptr, _adn.length); if (ad !is null) newp = ad; }
     { const int g = nsWriteGate(oldp); if (g != 0) return g; }   // appgate: both ends must be
     { const int g = nsWriteGate(newp); if (g != 0) return g; }   // writable in the domain's view
     int op; const(char)* ol; size_t oll;
@@ -16965,6 +17004,8 @@ public long linux_sys_link(ulong o, ulong n_)    { return negErrno(EROFS); }
 private long rtSymlinkCreate(const(char)* target, const(char)* linkPath) {
     initFdTable();
     if (target is null || linkPath is null) return negErrno(EFAULT);
+    char[1024] _adl = void;                      // A9.5: a link in an Android overlay (/data, /dev, ...)
+    { const(char)* ad = androidDataRewrite(linkPath, _adl.ptr, _adl.length); if (ad !is null) linkPath = ad; }
     { const int g = nsWriteGate(linkPath); if (g != 0) return g; }   // appgate: the domain's view
     int parent; const(char)* leaf; size_t leafLen;
     const int existing = rtResolve(linkPath, parent, leaf, leafLen);
@@ -19858,6 +19899,50 @@ private const(char)* androidPropRewrite(const(char)* path, char* buf, size_t cap
     buf[p] = 0;
     return buf;
 }
+// DIAGNOSTIC (A9.5): every property-area file holding `key` (domain copies included) and the value
+// stored with it -- prop_info is {serial, value[92], name[]}, so the value sits 92 bytes before the name.
+public void androidPropDebugScan(string key) {
+    int rp; const(char)* rl; size_t rll;
+    const int dir = rtResolve("/.__properties__\0".ptr, rp, rl, rll);
+    if (dir < 0) { klog("[propscan] no /.__properties__\n"); return; }
+    bool any = false;
+    foreach (i; 1 .. g_rtNodes) {
+        if (g_rt[i].kind != RT_REG || g_rt[i].parent != dir || g_rt[i].data is null) continue;
+        const(ubyte)* d = cast(const(ubyte)*)g_rt[i].data;
+        const size_t sz = g_rt[i].size;
+        for (size_t o = 96; o + key.length < sz; ++o) {
+            bool m = true;
+            foreach (k; 0 .. key.length) if (d[o + k] != key[k]) { m = false; break; }
+            if (!m || d[o + key.length] != 0) continue;
+            any = true;
+            klog("[propscan] "); klog(key.ptr); klog(" in ");
+            foreach (k; 0 .. g_rt[i].nameLen) { char[2] c = [g_rt[i].name[k], 0]; klog(c.ptr); }
+            klog(" node="); klog_dec(cast(ulong)i); klog(" dom="); klog_dec(cast(ulong)g_rt[i].ownerDom);
+            klog(" size="); klog_dec(sz); klog(" @"); klog_hex(o); klog(" val='");
+            foreach (k; 0 .. 92) { const ubyte b = d[o - 92 + k]; if (b == 0) break; char[2] c = [cast(char)b, 0]; klog(c.ptr); }
+            klog("'\n");
+        }
+    }
+    if (!any) {
+        uint files = 0, hsm = 0;
+        foreach (i; 1 .. g_rtNodes)
+            if (g_rt[i].kind == RT_REG && g_rt[i].parent == dir) {
+                ++files;
+                // the area for hwservicemanager.* (u:object_r:hwservicemanager_prop:s0)
+                static immutable string want = "u:object_r:hwservicemanager_prop:s0";
+                if (g_rt[i].nameLen == want.length) {
+                    bool same = true;
+                    foreach (k; 0 .. want.length) if (g_rt[i].name[k] != want[k]) { same = false; break; }
+                    if (same) { hsm = cast(uint)i; }
+                }
+            }
+        klog("[propscan] "); klog(key.ptr); klog(": not in any of "); klog_dec(files);
+        klog(" area files; hwservicemanager_prop node="); klog_dec(hsm);
+        if (hsm) { klog(" size="); klog_dec(g_rt[hsm].size); klog(" vres="); klog_dec(g_rt[hsm].vres);
+                   klog(" bytesUsed="); klog_dec(paGet32(g_rt[hsm].data, 0)); }
+        klog("\n");
+    }
+}
 private bool androidPropIsPath(const(char)* path) @nogc nothrow {
     const(char)* q = path;
     static immutable string ar = "/aroot";
@@ -19912,6 +19997,7 @@ private void androidDataEnsureRoot() {
     androidEnsureDir("/.aapex\0".ptr);
     androidEnsureDir("/.adata_mirror\0".ptr);
     androidEnsureDir("/.aover\0".ptr);
+    androidEnsureDir("/.adev\0".ptr);
 }
 // The writable per-container overlays over the read-only image: /data (A9.3f), and /linkerconfig
 // (A9.3n) -- on a device init runs linkerconfig into a tmpfs there; the container runtime
@@ -19970,9 +20056,42 @@ private bool androidApexLooseFile(const(char)* q, out size_t leafAt) @nogc nothr
     leafAt = ap.length;
     return true;
 }
+// A9.5: an Android task's /dev -- the host's device nodes stay the host's (binder, kmsg, null,
+// urandom, ptmx, dri, ...); every other name is the container's own, in a writable /.adev.  init lays
+// out a whole tree there (/dev/cgroup_info/cgroup.rc, which libprocessgroup in every process reads,
+// /dev/cpuset, /dev/memcg, /dev/boringssl, /dev/sys, /dev/block for vold, ...) and the read-only host
+// /dev refused all of it -- SetupCgroups failed, so netd found no cgroup v2 root and exited, and its
+// 'onrestart restart zygote' kept killing the zygote.
+private bool androidDevIsHost(const(char)* c) @nogc nothrow {
+    static immutable string[25] HOST = [
+        "ashmem", "binder", "binderfs", "hwbinder", "vndbinder", "kmsg", "null", "zero", "random",
+        "urandom", "ptmx", "pts", "tty", "dri", "fb0", "input", "snd", "kvm", "net", "bus",
+        "stdin", "stdout", "stderr", "fd", "socket"];
+    size_t n = 0;
+    while (c[n] != 0 && c[n] != '/') ++n;
+    foreach (h; HOST) {
+        if (h.length != n) continue;
+        bool same = true;
+        foreach (k; 0 .. n) if (c[k] != h[k]) { same = false; break; }
+        if (same) return true;
+    }
+    if (n >= 5 && c[0] == 'v' && c[1] == 'i' && c[2] == 'd' && c[3] == 'e' && c[4] == 'o') return true;   // video*
+    if (n >= 3 && c[0] == 't' && c[1] == 't' && c[2] == 'y') return true;                                // tty*
+    if (n == 14 && c[0] == '_') return true;                                                             // __properties__
+    return false;
+}
 private const(char)* androidDataRewrite(const(char)* path, char* buf, size_t cap) {
     const(char)* q = androidStripAroot(path);
     const bool actx = androidOverlayContext(path, q);
+    if (actx && q[0] == '/' && q[1] == 'd' && q[2] == 'e' && q[3] == 'v' && q[4] == '/' && q[5] != 0
+        && !androidDevIsHost(q + 5)) {
+        androidDataEnsureRoot();
+        size_t p = 0;
+        foreach (c; "/.adev") if (p + 1 < cap) buf[p++] = c;
+        for (size_t r = 4; q[r] != 0 && p + 1 < cap; ++r) buf[p++] = q[r];
+        buf[p] = 0;
+        return buf;
+    }
     {   size_t leafAt;
         if (actx && androidApexLooseFile(q, leafAt)) {
             androidDataEnsureRoot();
@@ -20008,6 +20127,7 @@ private bool androidDataIsPath(const(char)* path) @nogc nothrow {
     }
     { size_t la; if (actx && androidApexLooseFile(q, la)) return true; }
     if (androidPrefixLen(q, "/.aapex") != 0) return true;   // A9.5: apexd's loose /apex files
+    if (androidPrefixLen(q, "/.adev") != 0) return true;    // A9.5: the container's own /dev names
     return androidPrefixLen(q, "/.aattr") != 0;   // A9.4: per-process SELinux attr files
 }
 

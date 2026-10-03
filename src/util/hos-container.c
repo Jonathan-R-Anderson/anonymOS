@@ -208,7 +208,12 @@ static int container_init(const char *root, int argc, char **argv) {
      * execve app_process64.  The kernel's [exec] log lines report how far the load gets; whatever
      * fails is the next concrete bring-up step.  Done in a child so this reporter survives. */
     if (elfDirect) {
-        pid_t ep = fork();
+        /* A9.5: under --android-init, Android's init must be the container's pid 1, as under LXC --
+         * it checks getpid() == 1 (CgroupSetup refused: "Cgroup setup can be done only by init
+         * process", so no /dev/cgroup_info/cgroup.rc and every cgroup lookup failed) and it reaps
+         * the container's orphans.  So this process (pid 1 of the new pid namespace) execs it
+         * directly instead of forking a child for it. */
+        pid_t ep = g_android_init ? 0 : fork();
         if (ep == 0) {
             if (chroot("/aroot") != 0) {
                 printf("[hos-container] exec-bionic: chroot /aroot failed: %s\n", strerror(errno));

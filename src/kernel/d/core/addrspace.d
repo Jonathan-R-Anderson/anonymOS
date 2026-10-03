@@ -231,6 +231,14 @@ bool walkAndCopyUserPages(ulong srcPml4, ulong dstPml4, Task* dstTask = null) {
                     // points at the same frame with identical flags — no CoW,
                     // no refcount (free_phys_page already refuses such pages).
                     bool poolPage    = (srcPage >= 0x100000 && srcPage < g_next_phys_alloc);
+                    // A9.5: a shared file map stays shared -- the child maps the same frame with the
+                    // same flags (a read-only one keeps its CoW bit) and holds its own reference, as
+                    // the mapping that created it did (its munmap / exit drops it).
+                    if (poolPage && region !is null && region.sharedMap) {
+                        physPageRefInc(srcPage);
+                        dpt[d] = spt[d];
+                        continue;
+                    }
                     bool privatePage = poolPage && (region !is null) && region.owned;
 
                     if (!privatePage) {

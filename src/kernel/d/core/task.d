@@ -100,6 +100,11 @@ struct AddrRegion {
     // device/shared map.  MADV_DONTNEED must make such pages read back as zeros; a file-backed private
     // page would instead revert to the file, which this kernel cannot do, so it is left alone.
     bool        anon;
+    // A9.5: a MAP_SHARED map of an rtfs file -- its pages are the FILE's frames (refcounted per
+    // mapping), so fork must keep them shared, never copy-on-write: CoW gave Android's init a private
+    // copy of every property area on its first fork, and no property it set afterwards reached any
+    // other process (init.svc.*, apexd.status, hwservicemanager.ready ...).
+    bool        sharedMap;
     // Phase 3 (roadmap/OBJECT_OS_ROADMAP.md): id of the core.objmgr MemRegion
     // object mirroring this region (0 = none/not yet registered).
     uint        objId;

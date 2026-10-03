@@ -486,6 +486,15 @@ private void androidTaskDump() {
     if (!any) return;
     g_adumpNextMs = now + 10_000;
     ++g_adumpN;
+    if (g_adumpN >= 2 && g_adumpN <= 4) {
+        import core.syscalls.posix : androidPropDebugScan;
+        androidPropDebugScan("hwservicemanager.ready");
+        androidPropDebugScan("apexd.status");
+        androidPropDebugScan("odsign.key.done");
+        androidPropDebugScan("init.svc.hwservicemanager");
+        androidPropDebugScan("vold.has_adoptable");
+        androidPropDebugScan("ro.build.fingerprint");
+    }
     foreach (i; 1 .. MAX_TASKS) {
         if (!g_tasks[i].active || g_tasks[i].exited || !g_taskAndroid[i]) continue;
         klog("[adump] t="); klog_dec(cast(ulong)i);
@@ -494,7 +503,10 @@ private void androidTaskDump() {
         klog(g_tasks[i].waiting ? " WAIT" : " run");
         if (g_pollBlocked[i]) klog(" poll");
         if (g_futexWaitActive[i]) { klog(" futex@"); klog_hex(g_futexWaitUaddr[i]); }
-        if (g_binderWaitProc[i] != 0) klog(" binder");
+        if (g_binderWaitProc[i] != 0) {
+            import core.android.binder : binderDebugTask;
+            klog(" binder"); binderDebugTask(g_binderWaitProc[i] - 1, cast(int)i);
+        }
         if (g_sigWaitMask[i] != 0) klog(" sigwait");
         if (g_tasks[i].processLeaderTid == cast(int)i || g_tasks[i].processLeaderTid < 0) {
             import core.syscalls.posix : g_activeFdTabId, epollDebugDumpAll;
@@ -520,6 +532,18 @@ private void androidTaskDump() {
         if (pos != 0) {
             const uint sl = (pos - 1) & (SYSRING - 1);
             klog(" last="); klog_dec(g_sysRing[i][sl]); klog("("); klog_hex(g_sysRingArg[i][sl]); klog(")");
+        }
+        // The third dump also lists each task's recent syscalls (nr(arg0)=ret, repeats collapsed), to
+        // show what a looping task is actually doing.
+        if (g_adumpN == 3 && pos != 0) {
+            klog(" ring:");
+            const uint n = pos < SYSRING ? pos : SYSRING;
+            foreach (k; 0 .. n) {
+                const uint rs = (pos - n + k) & (SYSRING - 1);
+                klog(" "); klog_dec(g_sysRing[i][rs]);
+                klog("("); klog_hex(g_sysRingArg[i][rs]); klog(")="); klog_hex(g_sysRingRet[i][rs]);
+                if (g_sysRingRep[i][rs] != 0) { klog("x"); klog_dec(cast(ulong)g_sysRingRep[i][rs] + 1); }
+            }
         }
         klog("\n");
     }
@@ -1769,6 +1793,18 @@ private long execveTask(int tid, ulong pathPtr, ulong argvPtr, ulong envpPtr) {
             }
         }
         g_execEnvPtrs[g_execEnvCount] = 0;   // NULL terminator
+    }
+
+    // A9.5: a binary this kernel cannot run is refused BEFORE the old image is torn down, as Linux
+    // does -- the caller gets ENOEXEC and carries on.  Android's 32-bit vendor HALs (ia32 ELFs) used
+    // to get past here, lose their address space, and die of a page fault at an unmapped RIP.
+    {
+        const(ubyte)* eh = cast(const(ubyte)*)phys_to_virt(modPhys);
+        if (modSize < 64 || eh[0] != 0x7f || eh[1] != 'E' || eh[2] != 'L' || eh[3] != 'F' || eh[4] != 2
+            || *cast(const(ushort)*)(eh + 18) != 62 /*EM_X86_64*/) {
+            klog("[exec] not an x86-64 ELF64 image: ENOEXEC\n");
+            return -8;
+        }
     }
 
     // Release the outgoing address space's private pages before installing a
@@ -4107,6 +4143,49 @@ private bool deliverSyncSegv(int tid, ulong cr2, ulong errCode) {
 }
 private __gshared uint g_sigFpBadLogN = 0;
 
+// A9.5: any other CPU exception in an Android task becomes its Linux signal, delivered to the handler
+// (bionic installs debuggerd's for all of them): #GP -> SIGSEGV(SI_KERNEL, addr 0), #UD -> SIGILL,
+// #DE/#MF/#XM -> SIGFPE, #SS/#AC -> SIGBUS, #BP -> SIGTRAP.  False = no handler / not Android / a
+// fault inside the handler -- the caller kills the process.
+private bool deliverSyncTrap(int tid, ulong reason, ulong rip, ulong errCode) {
+    if (tid < 0 || tid >= MAX_TASKS || !g_taskAndroid[tid] || g_inSyncFault[tid]) return false;
+    int sig, code; ulong addr = rip;
+    switch (reason) {
+        case 0:           sig = 8;  code = 1;               break;   // #DE: SIGFPE  FPE_INTDIV
+        case 3:           sig = 5;  code = 0x80;            break;   // #BP: SIGTRAP SI_KERNEL
+        case 6:           sig = 4;  code = 2;               break;   // #UD: SIGILL  ILL_ILLOPN
+        case 12:          sig = 7;  code = 0x80; addr = 0;  break;   // #SS: SIGBUS  SI_KERNEL
+        case 13:          sig = 11; code = 0x80; addr = 0;  break;   // #GP: SIGSEGV SI_KERNEL
+        case 16: case 19: sig = 8;  code = 0;               break;   // #MF/#XM: SIGFPE
+        case 17:          sig = 7;  code = 1;               break;   // #AC: SIGBUS  BUS_ADRALN
+        default: return false;
+    }
+    if (!deliverUserSignal(tid, sig, code, addr, errCode, reason)) return false;
+    g_inSyncFault[tid] = true;
+    return true;
+}
+
+// A9.5: a fatal fault in an Android task ends its whole PROCESS, as a fatal signal does on Linux.
+// Killing only the faulting thread left the rest running half-alive: a binder thread of vold died
+// mid-call and vdc waited on its reply forever (the process's binder fd, and so BR_DEAD_REPLY to the
+// caller, only goes when the last thread does).  Other tasks keep the old thread-only behaviour.
+private void exitTaskFatal(int tid, int code) {
+    if (tid > 0 && tid < MAX_TASKS && g_taskAndroid[tid] && g_vforkParentPlus1[tid] == 0) {
+        const int lead = g_tasks[tid].processLeaderTid;
+        if (lead > 0) {
+            for (int i = 1; i < MAX_TASKS; ++i) {
+                if (i == tid || !g_tasks[i].active || g_tasks[i].exited) continue;
+                if (g_tasks[i].processLeaderTid != lead) continue;
+                g_taskGroupExit[i]     = true;
+                g_taskGroupExitCode[i] = code;
+                if (g_futexWaitActive[i]) clearFutexWait(i, -4);
+                else g_tasks[i].waiting = false;
+            }
+        }
+    }
+    exitTask(tid, code);
+}
+
 // The FPU/SSE init state (FINIT + default MXCSR): every register zero, all exceptions masked.
 private void taskFpuInit(Task* task) {
     foreach (i; 0 .. 512) task.sseState[i] = 0;
@@ -5147,6 +5226,7 @@ private void dispatchSyscall(int tid) {
                 import core.syscalls.posix : rtfsSharedMapPrepare;
                 sharedFile = rtfsSharedMapPrepare(cast(int)mfd, moffset, alignedLen);
             }
+            mappedRegion.sharedMap = sharedFile;   // A9.5: fork keeps it shared (walkAndCopyUserPages)
             for (ulong pg = 0; pg < numPgs; pg++) {
                 if (sharedFile) {
                     import core.syscalls.posix : rtfsSharedPagePhys;
@@ -5717,6 +5797,11 @@ private void dispatchSyscall(int tid) {
     // g_pollBlocked so a later wait4() on this task isn't misread as a poll/read park (see the scheduler
     // guard above).  The EAGAIN case re-sets it in the park block just below.
     if (rax == 0 && ret != -11 && tid >= 0 && tid < MAX_TASKS) g_pollBlocked[tid] = false;
+    // A9.5: likewise a parked ioctl (binder's BINDER_WRITE_READ, KVM_RUN) or rt_sigtimedwait that has now
+    // completed.  Left set, the NEXT nanosleep took the flag for its own sleep already in progress,
+    // found no deadline (a binder park has none) and slept forever -- vdc's first 10 ms wait between
+    // checkService("vold") polls never returned, so init's post-fs never finished.
+    if ((rax == 16 || rax == 128) && ret != -11 && tid >= 0 && tid < MAX_TASKS) g_pollBlocked[tid] = false;
 
     // Bring-up diagnostic: log FAILING syscalls made by the init task (the compositor).
     //
@@ -5959,7 +6044,9 @@ private void dispatchSyscall(int tid) {
     // (flags bit 0 in rsi) is left as the no-op — its timespec is an absolute clock value, not a
     // duration, so parsing it as one would sleep for decades.
     if (ret == 0 && (rax == 35 || rax == 230) && tid >= 0 && tid < MAX_TASKS) {
-        if (!g_pollBlocked[tid]) {
+        // A sleep in progress always has a deadline (a zero duration never parks), so a park flag with
+        // none is another wait's leftover: start this sleep afresh rather than wait on it forever.
+        if (!g_pollBlocked[tid] || g_pollDeadline[tid] == 0) {
             // First entry: parse the request timespec (nanosleep req=rdi, clock_nanosleep req=rdx).
             const ulong reqPtr = (rax == 35) ? rdi : rdx;
             ulong ms = 0;
@@ -7338,17 +7425,26 @@ private void kernelLoop() {
                     }
                 }
                 klog(" err="); klog_hex(x64TrapErrorCode); klog("\n");
-                exitTask(tid, 11); // SIGSEGV
+                exitTaskFatal(tid, 11); // SIGSEGV
             }
         } else if (reason <= 31) {
-            // CPU exception — kill task
-            console_force_framebuffer_log();
-            klog("[kernel] exception "); klog_hex(reason);
-            klog(" tid="); klog_hex(tid);
-            klog(" rip="); klog_hex(task.regs[REG_RIP]);
-            klog(" rsp="); klog_hex(task.regs[REG_RSP]);
-            klog("\n");
-            exitTask(tid, 11);
+            // CPU exception — an Android task's handler gets the signal (A9.5); otherwise kill
+            const ulong trapRip = task.regs[REG_RIP];
+            if (deliverSyncTrap(tid, reason, trapRip, x64TrapErrorCode)) {
+                if (g_syncSegvLogN < 16) {
+                    ++g_syncSegvLogN;
+                    klog("[sig] sync trap "); klog_dec(reason); klog(" t="); klog_dec(cast(ulong)tid);
+                    klog(" rip="); klog_hex(trapRip); klog("\n");
+                }
+            } else {
+                console_force_framebuffer_log();
+                klog("[kernel] exception "); klog_hex(reason);
+                klog(" tid="); klog_hex(tid);
+                klog(" rip="); klog_hex(task.regs[REG_RIP]);
+                klog(" rsp="); klog_hex(task.regs[REG_RSP]);
+                klog("\n");
+                exitTaskFatal(tid, 11);
+            }
         }
         // else: unknown — ignore and continue
         bklRelease(&g_bkl);   // S4.4d: end of the BKL-protected handling for this iteration

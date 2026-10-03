@@ -23,7 +23,7 @@ import core.exports :
     x64LastSyscallRip,
     x64_set_user_state_word, x64_get_user_state_word,
     g_current_task_id,
-    d_store_task_fsbase, d_apply_task_fsbase,
+    d_store_task_fsbase, d_apply_task_fsbase, d_store_task_gsbase, d_apply_task_gsbase, g_task_gsbase,
     d_do_cleartid,
     linux_seed_initial_stack,
     linux_seed_initial_stack_with_args,
@@ -1049,6 +1049,7 @@ private int forkTask(int parentTid) {
     // Copy FS base
     d_store_task_fsbase(cast(ulong)childTid,
                         g_task_fsbase[parentTid]);
+    d_store_task_gsbase(cast(ulong)childTid, g_task_gsbase[parentTid]);   // and GS (fork keeps both)
     child.active = true;
 
     // The child is a new process: give it its own fd table (id = childTid) with an
@@ -1076,6 +1077,7 @@ private int forkTask(int parentTid) {
         // NATIVE_OBJECT_ABI §3: the native personality is inherited across fork (native
         // helpers the shell spawns stay native; a Linux fork stays Linux).
         g_taskNativeAbi[childTid]   = g_taskNativeAbi[parentTid];
+        g_taskAndroid[childTid]     = g_taskAndroid[parentTid];      // A9.3n: a zygote fork is Android too
         g_taskNativeLaunch[childTid] = g_taskNativeLaunch[parentTid];   // L5.2: inherit the native-launch authorization
         // A4: a child inherits its parent's process group + signal dispositions.
         g_taskPgid[childTid]      = g_taskPgid[parentTid];
@@ -1191,6 +1193,7 @@ private int cloneThread(int parentTid, ulong flags, ulong childStack,
     child.domainObjId = parent.domainObjId;
     child.execMode    = parent.execMode;      // DM13: the ratchet is inherited, never reset
     g_taskNativeAbi[childTid] = g_taskNativeAbi[parentTid]; // NATIVE_OBJECT_ABI §3: same personality
+    g_taskAndroid[childTid]   = g_taskAndroid[parentTid];   // A9.3n: threads share the image
     g_taskNativeLaunch[childTid] = g_taskNativeLaunch[parentTid];   // L5.2: inherit the native-launch authorization
     g_taskExecName[childTid]  = g_taskExecName[parentTid];
     { import core.syscalls.posix : taskExecPathCopy; taskExecPathCopy(childTid, parentTid); }
@@ -1208,6 +1211,7 @@ private int cloneThread(int parentTid, ulong flags, ulong childStack,
         d_store_task_fsbase(cast(ulong)childTid, tls);
     else
         d_store_task_fsbase(cast(ulong)childTid, g_task_fsbase[parentTid]);
+    d_store_task_gsbase(cast(ulong)childTid, g_task_gsbase[parentTid]);   // GS is inherited, as on Linux
 
     // tid notifications — written through the shared (currently active) address
     // space, so direct user-pointer writes are valid here.
@@ -1727,6 +1731,8 @@ private long execveTask(int tid, ulong pathPtr, ulong argvPtr, ulong envpPtr) {
     if (androidImage)
         addRegion(*task, stackTop - USER_STACK_RLIMIT, stackBase, RegionType.AllocateOnDemand,
                   RegionPerms.ReadWrite, 0, true);
+    g_taskAndroid[tid]  = androidImage;
+    g_inSyncFault[tid]  = false;
 
     // Seed a Linux-style process stack using auxv from the loaded ELF. argv[0] is
     // the matched boot-module basename (execfn). The environment is the caller's
@@ -1778,6 +1784,7 @@ private long execveTask(int tid, ulong pathPtr, ulong argvPtr, ulong envpPtr) {
 
     // Clear FS base
     d_store_task_fsbase(cast(ulong)tid, 0);
+    d_store_task_gsbase(cast(ulong)tid, 0);
     objEnsureTask(tid);
     if (task.processLeaderTid != tid)
         objSetProcess(tid, tid, task.parentObjId);
@@ -3740,7 +3747,11 @@ private long wait4Task(int tid, int waitPid, ulong statusPtr, ulong options) {
 // hold the interrupted register state.  The handler runs `void h(int signo)`, returns
 // into the restorer, which calls rt_sigreturn → sigreturnTask restores the context.
 // Returns false (caller does the default action) if no usable handler/restorer exists.
-private bool deliverUserSignal(int tid, int sig) {
+// A9.3n: a synchronous fault (SIGSEGV from #PF) additionally carries si_code + si_addr in the
+// siginfo and ERR/TRAPNO/CR2 in uc_mcontext.gregs -- ART's fault manager reads the faulting address
+// and RIP, then rewrites RIP/RSP in the context to throw NullPointerException / StackOverflowError.
+private bool deliverUserSignal(int tid, int sig, int siCode = 0, ulong siAddr = 0,
+                               ulong trapErr = 0, ulong trapNo = 0) {
     if (tid < 0 || tid >= MAX_TASKS || sig <= 0 || sig >= 64) return false;
     auto task = &g_tasks[tid];
     const int proc = sigProc(tid);                 // dispositions are the process's
@@ -3774,6 +3785,15 @@ private bool deliverUserSignal(int tid, int sig) {
     sp -= 8;
     const ulong frame = sp;
 
+    // A9.3n: a synchronous fault can be a stack overflow, and the kernel must never write the frame into
+    // memory the task cannot write (that faults the KERNEL).  Make each frame page writable -- demand-zero
+    // it, break CoW -- or refuse delivery; the caller then kills the task as before.  The faulting task's
+    // address space is the loaded one here (#PF handling).
+    if (trapNo != 0) {
+        for (ulong pg = frame & ~0xFFFUL; pg < fpstate + 512; pg += 4096)
+            if (!handlePageFault(tid, pg, true)) return false;
+    }
+
     const ulong savedCr3 = x64ReadCR3();
     x64WriteCR3(task.pml4Phys);     // user stack is in the low half; kernel stays mapped (high half)
     {
@@ -3793,6 +3813,13 @@ private bool deliverUserSignal(int tid, int sig) {
         *cast(ulong*)(frame + 40) = g_sigAltOn[tid] ? g_sigAltSize[tid] : 0;
         // siginfo: si_signo (si_code 0 = SI_USER).  It used to be all zero.
         *cast(int*)(frame + 312) = sig;
+        if (trapNo != 0) {
+            *cast(int*)(frame + 312 + 8)    = siCode;   // si_code: SEGV_MAPERR / SEGV_ACCERR
+            *cast(ulong*)(frame + 312 + 16) = siAddr;   // si_addr: the faulting address
+            g[19] = trapErr;                            // REG_ERR
+            g[20] = trapNo;                             // REG_TRAPNO
+            g[22] = siAddr;                             // REG_CR2
+        }
         // task.sseState, not the live registers: syscall entry fxsave'd the user's state there,
         // and kernel code since may have used SSE.  Bytes 464..511 (sw_reserved) stay zero --
         // no FP_XSTATE_MAGIC1, so userspace reads it as a plain fxsave image.
@@ -3822,6 +3849,22 @@ private bool deliverUserSignal(int tid, int sig) {
 }
 
 private __gshared uint g_sigDeliverLogN = 0;
+// A9.3n: the thread is inside a handler for a synchronous fault (cleared by rt_sigreturn and exec).
+// A second fault there is fatal, as on Linux, where the signal is blocked while its handler runs.
+private __gshared bool[MAX_TASKS] g_inSyncFault;
+private __gshared uint g_syncSegvLogN = 0;
+private __gshared uint g_aprotLogN = 0;
+
+// Deliver a #PF to an Android task's SIGSEGV handler instead of killing it.  False = no handler,
+// not an Android task, or a fault inside that handler -- the caller kills the task as before.
+private bool deliverSyncSegv(int tid, ulong cr2, ulong errCode) {
+    if (tid < 0 || tid >= MAX_TASKS || !g_taskAndroid[tid] || g_inSyncFault[tid]) return false;
+    enum SEGV_MAPERR = 1, SEGV_ACCERR = 2;
+    const int code = (errCode & 1) ? SEGV_ACCERR : SEGV_MAPERR;   // P bit: protection vs not-present
+    if (!deliverUserSignal(tid, 11 /*SIGSEGV*/, code, cr2, errCode, 14)) return false;
+    g_inSyncFault[tid] = true;
+    return true;
+}
 private __gshared uint g_sigFpBadLogN = 0;
 
 // The FPU/SSE init state (FINIT + default MXCSR): every register zero, all exceptions masked.
@@ -3838,6 +3881,7 @@ private void taskFpuInit(Task* task) {
 private void sigreturnTask(int tid) {
     if (tid < 0 || tid >= MAX_TASKS) return;
     auto task = &g_tasks[tid];
+    g_inSyncFault[tid] = false;
     const ulong uc = task.regs[REG_RSP];
     ulong* g = cast(ulong*)(uc + 40);
     task.regs[REG_R8]=g[0];   task.regs[REG_R9]=g[1];   task.regs[REG_R10]=g[2];
@@ -5219,6 +5263,13 @@ private void dispatchSyscall(int tid) {
 
         // mprotect
         case 10:
+            // DIAGNOSTIC (A9.3n): an Android task's PROT_NONE guards -- ART puts its stack-overflow
+            // guard at stack_begin - 4 KiB, so this shows the main-thread bounds ART computed.
+            if (rdx == 0 && g_taskAndroid[tid] && g_aprotLogN < 12) {
+                ++g_aprotLogN;
+                klog("[aprot] t="); klog_dec(cast(ulong)tid); klog(" PROT_NONE "); klog_hex(rdi);
+                klog(" len="); klog_hex(rsi); klog(" rsp="); klog_hex(task.regs[REG_RSP]); klog("\n");
+            }
             ret = sys_mprotect(rdi, rsi, rdx);
             break;
 
@@ -6725,6 +6776,7 @@ private void kernelLoop() {
 
         // Apply this task's FS base (for TLS)
         d_apply_task_fsbase(cast(ulong)tid);
+        d_apply_task_gsbase(cast(ulong)tid);   // and its GS base (ART's per-thread Thread*)
 
         // Load task registers into curUserSpaceState
         loadTaskState(*task);
@@ -6880,7 +6932,17 @@ private void kernelLoop() {
                 }
             }
 
-            if (!handlePageFault(tid, cr2, isWrite)) {
+            const bool pfResolved = handlePageFault(tid, cr2, isWrite);
+            const ulong faultRip = task.regs[REG_RIP];
+            if (!pfResolved && deliverSyncSegv(tid, cr2, x64TrapErrorCode)) {
+                // A9.3n: an Android task's registered SIGSEGV handler runs (ART implicit checks).
+                if (g_syncSegvLogN < 16) {
+                    ++g_syncSegvLogN;
+                    klog("[sig] sync SIGSEGV t="); klog_dec(cast(ulong)tid);
+                    klog(" cr2="); klog_hex(cr2); klog(" rip="); klog_hex(faultRip);
+                    klog("\n");
+                }
+            } else if (!pfResolved) {
                 console_force_framebuffer_log();
                 klog("[kernel] fatal PF tid="); klog_hex(tid);
                 klog(" cr2="); klog_hex(cr2);

@@ -26,9 +26,77 @@
 #include <sys/wait.h>
 #include <sys/stat.h>
 #include <sys/mman.h>
+#include <sys/socket.h>
+#include <sys/un.h>
 #include <errno.h>
 
 #define CGDIR "/sys/fs/cgroup/hosctr"
+
+/* The Android runtime's library directories, in search order: /system/lib64, then the APEX lib dirs
+ * (activated by the kernel's /apex -> /system/apex redirect).  Used for LD_LIBRARY_PATH and for the
+ * linker config's default-namespace search paths. */
+#define ANDROID_LIB_DIRS \
+    "/system/lib64:/apex/com.android.runtime/lib64:/apex/com.android.runtime/lib64/bionic:" \
+    "/apex/com.android.art/lib64:/apex/com.android.i18n/lib64:/apex/com.android.os.statsd/lib64:" \
+    "/apex/com.android.vndk.current/lib64:/vendor/lib64:" \
+    "/apex/com.android.adbd/lib64:/apex/com.android.conscrypt/lib64:" \
+    "/apex/com.android.media/lib64:/apex/com.android.tethering/lib64:" \
+    "/apex/com.android.appsearch/lib64:/apex/com.android.btservices/lib64:" \
+    "/apex/com.android.uwb/lib64:/apex/com.android.resolv/lib64"
+
+/* A9.3n: the linker configuration init's `linkerconfig` would generate into /linkerconfig (the kernel
+ * backs that path with a writable per-container overlay).  Binaries under /system/bin get:
+ *  - one non-isolated, EXPORTED ("visible") default namespace over every library dir.  Without a
+ *    config bionic's linker builds only an unexported default namespace, and libnativeloader's
+ *    OpenSystemLibrary() aborts "Failed to get system namespace for loading libandroid.so".
+ *  - an exported namespace per APEX, named as libnativeloader's FindApexNamespaceName() mangles the
+ *    module ("com.android.art" -> "com_android_art"); it loads an APEX jar's JNI libraries there and
+ *    aborts when the namespace is missing.  These have NO search paths of their own and link to the
+ *    default namespace for every library, so each library still loads exactly once -- a second
+ *    libart.so in a namespace of its own would be a second runtime.
+ * (No `additional.namespaces` line may be empty: an empty value declares a namespace named "".) */
+static const char *const APEX_MODULES[] = {
+    "com.android.adbd", "com.android.adservices", "com.android.appsearch", "com.android.art",
+    "com.android.btservices", "com.android.conscrypt", "com.android.extservices", "com.android.i18n",
+    "com.android.ipsec", "com.android.media", "com.android.media.swcodec", "com.android.mediaprovider",
+    "com.android.neuralnetworks", "com.android.ondevicepersonalization", "com.android.os.statsd",
+    "com.android.permission", "com.android.resolv", "com.android.runtime", "com.android.scheduling",
+    "com.android.sdkext", "com.android.tethering", "com.android.tzdata", "com.android.uwb",
+    "com.android.vndk.current", "com.android.wifi",
+};
+#define N_APEX (sizeof APEX_MODULES / sizeof APEX_MODULES[0])
+
+/* "com.android.art" -> "com_android_art" into `out`. */
+static void apex_ns_name(const char *module, char *out, size_t cap) {
+    size_t i = 0;
+    for (; module[i] && i + 1 < cap; i++) out[i] = module[i] == '.' ? '_' : module[i];
+    out[i] = 0;
+}
+
+/* Build the ld.config.txt text into buf; returns its length (0 if it did not fit). */
+static size_t build_ld_config(char *buf, size_t cap) {
+    size_t n = 0;
+    char ns[64];
+#define EMIT(...) do { int w_ = snprintf(buf + n, cap - n, __VA_ARGS__); \
+                       if (w_ < 0 || (size_t)w_ >= cap - n) return 0; n += (size_t)w_; } while (0)
+    EMIT("dir.system = /system/bin/\n[system]\nadditional.namespaces = ");
+    for (size_t a = 0; a < N_APEX; a++) {
+        apex_ns_name(APEX_MODULES[a], ns, sizeof ns);
+        EMIT("%s%s", a ? "," : "", ns);
+    }
+    EMIT("\nnamespace.default.isolated = false\n"
+         "namespace.default.visible = true\n"
+         "namespace.default.search.paths = " ANDROID_LIB_DIRS "\n");
+    for (size_t a = 0; a < N_APEX; a++) {
+        apex_ns_name(APEX_MODULES[a], ns, sizeof ns);
+        EMIT("namespace.%s.isolated = false\n"
+             "namespace.%s.visible = true\n"
+             "namespace.%s.links = default\n"
+             "namespace.%s.link.default.allow_all_shared_libs = true\n", ns, ns, ns, ns);
+    }
+#undef EMIT
+    return n;
+}
 
 /* Create the container's cgroup and move the calling process into it.  Returns 0 on success. */
 static int cgroup_join(void) {
@@ -147,6 +215,38 @@ static int container_init(const char *root, int argc, char **argv) {
             dup2(1, 2);
             { const char *pb = "[exec-bionic] stderr->serial OK; invoking app_process64 --zygote\n";
               (void)!write(2, pb, strlen(pb)); }
+            /* A9.3n: the control sockets init creates for the zygote (init.zygote64.rc: `socket zygote
+             * stream 660 root system`, `socket usap_pool_primary stream 660 root system`), handed over
+             * the way init does it: inherited listening fds named by ANDROID_SOCKET_<name>=<fd>.
+             * ZygoteServer and nativeInitNativeState fetch them, and libcutils accepts one only when
+             * getsockname() says it is bound at /dev/socket/<name>.  "-1" if creation failed (rejected
+             * by libcutils exactly as an unset variable is). */
+            char zenv[48] = "ANDROID_SOCKET_zygote=-1";
+            char uenv[48] = "ANDROID_SOCKET_usap_pool_primary=-1";
+            {
+                static const char *names[2] = { "zygote", "usap_pool_primary" };
+                char *envs[2] = { zenv, uenv };
+                for (int k = 0; k < 2; k++) {
+                    int s = socket(AF_UNIX, SOCK_STREAM, 0);
+                    struct sockaddr_un a;
+                    memset(&a, 0, sizeof a);
+                    a.sun_family = AF_UNIX;
+                    snprintf(a.sun_path, sizeof a.sun_path, "/dev/socket/%s", names[k]);
+                    if (s >= 0 && bind(s, (struct sockaddr *)&a, sizeof a) == 0 && listen(s, 64) == 0)
+                        snprintf(envs[k], sizeof zenv, "ANDROID_SOCKET_%s=%d", names[k], s);
+                    else
+                        printf("[hos-container] exec-bionic: control socket %s failed: %s\n",
+                               names[k], strerror(errno));
+                }
+            }
+            {   static char ldcfg[16384];
+                const size_t ln = build_ld_config(ldcfg, sizeof ldcfg);
+                int lc = ln ? open("/linkerconfig/ld.config.txt", O_WRONLY | O_CREAT | O_TRUNC, 0644) : -1;
+                if (lc < 0 || write(lc, ldcfg, ln) != (ssize_t)ln)
+                    printf("[hos-container] exec-bionic: writing /linkerconfig/ld.config.txt failed: %s\n",
+                           strerror(errno));
+                if (lc >= 0) close(lc);
+            }
             char *av[] = { (char *)"/system/bin/app_process64", (char *)"-Xzygote",
                            (char *)"/system/bin", (char *)"--zygote", NULL };
             char *ev[] = { (char *)"PATH=/system/bin", (char *)"ANDROID_ROOT=/system",
@@ -219,11 +319,14 @@ static int container_init(const char *root, int argc, char **argv) {
                             * give it an explicit search path -- /system/lib64 plus the APEX lib dirs
                             * (now activated by the /apex -> /system/apex redirect) that hold the
                             * runtime: libc/libdl/libm (runtime/bionic), libc++/ld-android (runtime),
-                            * libandroidicu (i18n), libnativeloader/libsigchain (art). */
-                           (char *)"LD_LIBRARY_PATH=/system/lib64:/apex/com.android.runtime/lib64:"
-                                   "/apex/com.android.runtime/lib64/bionic:/apex/com.android.art/lib64:"
-                                   "/apex/com.android.i18n/lib64:/apex/com.android.os.statsd/lib64:"
-                                   "/apex/com.android.vndk.current/lib64:/vendor/lib64",
+                            * libandroidicu (i18n), libnativeloader/libsigchain (art).
+                            * A9.3n: then the remaining APEXes whose libraries the runtime dlopens --
+                            * ART's JDWP plugin libadbconnection.so needs adbd's libadbconnection_client.so
+                            * ("Plugin failed to load" is fatal), and the framework preload loads conscrypt /
+                            * media / tethering JNI libs.  Appended LAST so every library that already
+                            * resolved keeps resolving to the same file (first match wins). */
+                           (char *)"LD_LIBRARY_PATH=" ANDROID_LIB_DIRS,
+                           zenv, uenv,
                            NULL };
             execve("/system/bin/app_process64", av, ev);
             printf("[hos-container] exec-bionic: execve app_process64 failed: %s\n", strerror(errno));

@@ -294,6 +294,10 @@ __gshared ushort[MAX_TASKS] g_taskPkg1;
 // execve of any non-native image.  Native tasks ALSO speak the Linux ABI (downward
 // introspection: see the Linux process table, manage its permissions/settings).
 __gshared bool[MAX_TASKS] g_taskNativeAbi;
+// A9.3n: the task runs an Android image (exec'd with the image's linker64; inherited by fork/clone).
+// Android-only kernel behaviour keys on it -- synchronous SIGSEGV delivery to ART's fault handler --
+// so every other process keeps exactly the behaviour it has always had.
+__gshared bool[MAX_TASKS] g_taskAndroid;
 
 // L5.2 — native-launch authorization.  Entering the native personality on exec requires this OR
 // an already-native caller.  Held by the trusted desktop/terminal chain (default true, inherited

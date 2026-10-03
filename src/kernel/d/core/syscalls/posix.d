@@ -6,7 +6,8 @@ import core.syscalls.socket : sockaddr, sockaddr_un, msghdr, iovec, cmsghdr,
                               AF_UNIX, AF_INET, AF_NETLINK, SOCK_STREAM, SOCK_DGRAM, SOCK_RAW,
                               SOL_SOCKET, SCM_RIGHTS;
 import core.exports : g_module_count, g_mboot_modules, phys_to_virt,
-                      g_current_task_id, d_store_task_fsbase;
+                      g_current_task_id, d_store_task_fsbase,
+                      d_store_task_gsbase, d_apply_task_gsbase, g_task_gsbase;
 import core.random;
 import core.io;
 import core.stdc.string : memcpy;
@@ -16,7 +17,8 @@ import core.task : g_tasks, MAX_TASKS, linuxPidForTask, linuxTidForTask,
                    g_sigHandler, g_sigRestorer, domainRecordWrite,   // DOMAIN_MANAGER DM6.2
                    g_taskPendingSig,                                 // ITIMER_REAL -> SIGALRM
                    g_sigFlags, g_sigAltSp, g_sigAltSize, g_sigAltOn, sigProc, sigIgnored,
-                   mainStackRange, USER_STACK_TOP, USER_STACK_RLIMIT;  // A9.3n: /proc/<pid>/stat+maps
+                   mainStackRange, USER_STACK_TOP, USER_STACK_RLIMIT,  // A9.3n: /proc/<pid>/stat+maps
+                   g_taskAndroid;
 import core.objmgr : ObjType, ObjHeader, objAlloc, objRetain, objRelease, objGet,
                      g_objOps, g_objOpsDispatch; // Phase 2/5 object mgr
 import core.cap : Capability, CAP_INVALID,
@@ -4311,8 +4313,23 @@ private size_t procSynth(int pid, const(char)* sub, size_t subLen) {
             pbStr(pos, "\n".ptr);
         }
     } else return 0;
+    // DIAGNOSTIC (A9.3n): what an Android task reads for its main-thread stack (bionic's
+    // pthread_getattr_np(main) parses stat field 28 and the maps line holding it).
+    {
+        const int ct = cast(int)g_current_task_id;
+        if (ct >= 0 && ct < MAX_TASKS && g_taskAndroid[ct] && g_aprocLogN < 8
+            && (subEq(sub, subLen, "stat") || subEq(sub, subLen, "maps"))) {
+            ++g_aprocLogN;
+            klog("[aproc] t="); klog_dec(cast(ulong)ct); klog(" "); 
+            foreach (i; 0 .. subLen) { char[2] c = [sub[i], 0]; klog(c.ptr); }
+            klog(": ");
+            foreach (i; 0 .. pos) { char[2] c = [g_procBuf[i] == '\n' ? ' ' : g_procBuf[i], 0]; klog(c.ptr); }
+            klog("\n");
+        }
+    }
     return pos;
 }
+private __gshared uint g_aprocLogN = 0;
 
 public int sys_open(const(char)* path, int flags) {
     initFdTable();
@@ -12599,6 +12616,27 @@ public long linux_sys_readlink(ulong _path, ulong _buf, ulong _bufsiz) {
     auto path = cast(const(char)*)_path;
     auto outBuf = cast(char*)_buf;
 
+    // A9.3n: /proc/self/fd/<n> of an Android-image (ext4) or rtfs file names the path it was opened
+    // with (g_fdPath, as the process saw it -- inside its chroot).  bionic's realpath() is
+    // open(O_PATH) + readlink of this, so EINVAL made the linker warn "unable to get realpath" for
+    // every library and leaves ART unable to canonicalize dex/oat locations.  Other fd types keep
+    // their old answer: their g_fdPath entry is not maintained reliably.
+    {
+        const int pfd = procSelfFdNum(path);
+        initFdTable();
+        if (pfd >= 0 && pfd < 1024 && g_activeFdTabId >= 0 && g_activeFdTabId < FDTAB_COUNT) {
+            const FileType ft = g_fdTable[pfd].type;
+            const(char)* op = g_fdPath[g_activeFdTabId][pfd].ptr;
+            if ((ft == FileType.FD_EXT4 || ft == FileType.FD_RTFILE) && op[0] == '/') {
+                size_t len = 0;
+                while (len < FDPATH_MAX && op[len] != 0) ++len;
+                const size_t n = len < cast(size_t)_bufsiz ? len : cast(size_t)_bufsiz;
+                foreach (i; 0 .. n) outBuf[i] = op[i];
+                return cast(long)n;
+            }
+        }
+    }
+
     // RT overlay symlink (Track A A2): return the stored target, never following it.
     {
         int rp; const(char)* rl; size_t rll;
@@ -14469,6 +14507,7 @@ private struct LinuxRlimit {
     ulong rlim_max;
 }
 
+private __gshared uint g_arlimLogN = 0;
 public long linux_sys_prlimit64(ulong pid, ulong resource, ulong new_limit, ulong old_limit) {
     enum RLIMIT_STACK = 3;
     enum RLIMIT_NOFILE = 7;
@@ -14486,6 +14525,14 @@ public long linux_sys_prlimit64(ulong pid, ulong resource, ulong new_limit, ulon
         limit.rlim_max = 1024;
     }
 
+    {   // DIAGNOSTIC (A9.3n): the limits an Android task is told (RLIMIT_STACK sizes ART's main stack).
+        const int ct = cast(int)g_current_task_id;
+        if (ct >= 0 && ct < MAX_TASKS && g_taskAndroid[ct] && g_arlimLogN < 8) {
+            ++g_arlimLogN;
+            klog("[arlimit] t="); klog_dec(cast(ulong)ct); klog(" res="); klog_dec(resource);
+            klog(" cur="); klog_hex(limit.rlim_cur); klog(" new="); klog_hex(new_limit); klog("\n");
+        }
+    }
     if (old_limit != 0) {
         auto outLimit = cast(LinuxRlimit*)old_limit;
         outLimit.rlim_cur = limit.rlim_cur;
@@ -14605,13 +14652,9 @@ public long linux_sys_arch_prctl(ulong code, ulong addr) {
         return 0;
     }
     if (code == ARCH_SET_GS) {
-        asm @nogc nothrow {
-            mov RCX, 0xC0000101;
-            mov RAX, addr;
-            mov RDX, addr;
-            shr RDX, 32;
-            wrmsr;
-        }
+        // Per task (exports.d g_task_gsbase), loaded by the run loop on every switch.
+        d_store_task_gsbase(g_current_task_id, addr);
+        d_apply_task_gsbase(g_current_task_id);
         return 0;
     }
     if (code == ARCH_GET_FS) {
@@ -14629,15 +14672,7 @@ public long linux_sys_arch_prctl(ulong code, ulong addr) {
     }
     if (code == ARCH_GET_GS) {
         if (addr == 0) return negErrno(EFAULT);
-        ulong val;
-        asm @nogc nothrow {
-            mov RCX, 0xC0000101;
-            rdmsr;
-            shl RDX, 32;
-            or  RAX, RDX;
-            mov val, RAX;
-        }
-        *cast(ulong*)addr = val;
+        *cast(ulong*)addr = g_current_task_id < 1024 ? g_task_gsbase[g_current_task_id] : 0;
         return 0;
     }
     return negErrno(EINVAL);
@@ -17298,6 +17333,21 @@ private long inetSockName(ulong fd, ulong addr, ulong len, bool peer) {
     if (ifd < 0 || ifd >= 1024) return negErrno(EBADF);
     initFdTable();
     auto s = fileSocket(&g_fdTable[ifd]);
+    // A9.3n: getsockname on AF_UNIX reports the bound path (unnamed: just the family).  libcutils'
+    // android_get_control_socket() accepts an init-provided socket only when getsockname names
+    // /dev/socket/<name> -- the zygote's ANDROID_SOCKET_zygote.  getpeername keeps its old answer.
+    if (!peer && s !is null && s.domain == AF_UNIX) {
+        if (addr == 0 || len == 0) return negErrno(EFAULT);
+        auto lenp = cast(uint*)len;
+        const size_t want = 2 + s.pathLength + (s.pathLength > 0 ? 1 : 0);
+        ubyte[110] tmp = 0;
+        *cast(ushort*)tmp.ptr = cast(ushort)AF_UNIX;
+        foreach (i; 0 .. s.pathLength) tmp[2 + i] = cast(ubyte)s.path[i];
+        const size_t n = want < *lenp ? want : *lenp;
+        foreach (i; 0 .. n) (cast(ubyte*)addr)[i] = tmp[i];
+        *lenp = cast(uint)want;
+        return 0;
+    }
     if (!inetIsInet(s)) return peer ? negErrno(ENOTCONN) : negErrno(ENOSYS);
     if (addr == 0 || len == 0) return negErrno(EFAULT);
     auto lenp = cast(uint*)len;
@@ -19237,38 +19287,51 @@ private void androidDataEnsureRoot() {
     androidEnsureDir("/.adata/system\0".ptr);
     androidEnsureDir("/.adata/misc\0".ptr);
     androidEnsureDir("/.adata/app\0".ptr);
+    androidEnsureDir("/.alinkerconfig\0".ptr);
 }
-// Rewrite /data or /aroot/data (the chroot form) to the writable rtfs /.adata; null = not a data path.
-private const(char)* androidDataRewrite(const(char)* path, char* buf, size_t cap) {
-    const(char)* q = path;
+// The writable per-container overlays over the read-only image: /data (A9.3f), and /linkerconfig
+// (A9.3n) -- on a device init runs linkerconfig into a tmpfs there; the container runtime
+// (hos-container) writes the linker's ld.config.txt into it instead.  Without that file bionic's
+// linker builds only an unexported default namespace, and libnativeloader's OpenSystemLibrary()
+// LOG_ALWAYS_FATALs "Failed to get system namespace for loading libandroid.so".
+private struct AOverlay { string src; string dst; }
+private static immutable AOverlay[2] g_aOverlays = [
+    AOverlay("/data",         "/.adata"),
+    AOverlay("/linkerconfig", "/.alinkerconfig"),
+];
+// Strip a leading /aroot (a chroot'd container's paths arrive rerooted under it).
+private const(char)* androidStripAroot(const(char)* q) @nogc nothrow {
     static immutable string ar = "/aroot";
-    { size_t i = 0; bool had = true;
-      foreach (c; ar) { if (q[i] != c) { had = false; break; } ++i; }
-      if (had && (q[i] == '/' || q[i] == '\0')) q = q + 6; }   // strip a leading /aroot
-    static immutable string dd = "/data";
+    size_t i = 0;
+    foreach (c; ar) { if (q[i] != c) return q; ++i; }
+    return (q[i] == '/' || q[i] == '\0') ? q + 6 : q;
+}
+// Length of `pre` when `q` is `pre` or `pre/...`; 0 otherwise.
+private size_t androidPrefixLen(const(char)* q, string pre) @nogc nothrow {
     size_t k = 0;
-    foreach (c; dd) { if (q[k] != c) return null; ++k; }
-    if (q[k] != '/' && q[k] != '\0') return null;
-    androidDataEnsureRoot();
-    static immutable string dst = "/.adata";
-    size_t p = 0;
-    foreach (c; dst) if (p + 1 < cap) buf[p++] = c;
-    size_t r = k; while (q[r] != '\0' && p + 1 < cap) buf[p++] = q[r++];
-    buf[p] = '\0';
-    return buf;
+    foreach (c; pre) { if (q[k] != c) return 0; ++k; }
+    return (q[k] == '/' || q[k] == '\0') ? k : 0;
+}
+// Rewrite an overlay path (plain or the /aroot chroot form) to its writable rtfs tree; null = not one.
+private const(char)* androidDataRewrite(const(char)* path, char* buf, size_t cap) {
+    const(char)* q = androidStripAroot(path);
+    foreach (ref ov; g_aOverlays) {
+        const size_t k = androidPrefixLen(q, ov.src);
+        if (k == 0) continue;
+        androidDataEnsureRoot();
+        size_t p = 0;
+        foreach (c; ov.dst) if (p + 1 < cap) buf[p++] = c;
+        size_t r = k; while (q[r] != '\0' && p + 1 < cap) buf[p++] = q[r++];
+        buf[p] = '\0';
+        return buf;
+    }
+    return null;
 }
 private bool androidDataIsPath(const(char)* path) @nogc nothrow {
-    const(char)* q = path;
-    static immutable string ar = "/aroot";
-    { size_t i = 0; bool had = true;
-      foreach (c; ar) { if (q[i] != c) { had = false; break; } ++i; }
-      if (had && (q[i] == '/' || q[i] == '\0')) q = q + 6; }
-    static immutable string dd = "/data";
-    size_t k = 0; foreach (c; dd) { if (q[k] != c) break; ++k; }
-    if (k == dd.length && (q[k] == '/' || q[k] == '\0')) return true;
-    static immutable string da = "/.adata";
-    k = 0; foreach (c; da) { if (q[k] != c) return false; ++k; }
-    return q[k] == '/' || q[k] == '\0';
+    const(char)* q = androidStripAroot(path);
+    foreach (ref ov; g_aOverlays)
+        if (androidPrefixLen(q, ov.src) != 0 || androidPrefixLen(q, ov.dst) != 0) return true;
+    return false;
 }
 
 // ── A9.3b: the Android ext4 images mounted into the VFS ─────────────────────────────────────────────

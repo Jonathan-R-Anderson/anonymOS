@@ -865,6 +865,33 @@ void d_apply_task_fsbase(ulong taskId) {
     }
 }
 
+// Per-task user GS base (arch_prctl ARCH_SET_GS).  ART keeps each thread's Thread* there (%gs:self)
+// and sets it per thread; one machine-wide MSR write made the LAST thread's Thread* every thread's --
+// the zygote's main thread then ran with another thread's stack bounds and threw StackOverflowError
+// on its first Java call.  The BSP leaves IA32_GS_BASE to userspace (no swapgs; per-CPU data is
+// index-addressed, kmain.d), so the run loop loads the scheduled task's value: 0 unless it set one,
+// as on Linux.  g_live_gsbase caches the MSR so switching between tasks that never set GS writes nothing.
+__gshared ulong[1024] g_task_gsbase;
+__gshared ulong g_live_gsbase;
+
+void d_store_task_gsbase(ulong taskId, ulong base) {
+    if (taskId < 1024) g_task_gsbase[taskId] = base;
+}
+
+void d_apply_task_gsbase(ulong taskId) {
+    if (taskId >= 1024) return;
+    const ulong base = g_task_gsbase[taskId];
+    if (base == g_live_gsbase) return;
+    asm @nogc nothrow {
+        mov RCX, 0xC0000101;
+        mov RAX, base;
+        mov RDX, base;
+        shr RDX, 32;
+        wrmsr;
+    }
+    g_live_gsbase = base;
+}
+
 __gshared ulong[1024] g_task_cleartid_phys;
 __gshared bool[1024]  g_task_cleartid_set;
 

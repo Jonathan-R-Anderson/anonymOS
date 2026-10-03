@@ -5190,6 +5190,7 @@ public int sys_open(const(char)* path, int flags) {
         if (cstrEq(path, "/proc")) g_fdTable[fd].fileSize = SYNTHDIR_PROC;
         // M3: tag /sys/class/net so getdents64 lists lo + wlan0 -> NM discovers the wifi device.
         if (cstrEq(path, "/sys/class/net")) g_fdTable[fd].fileSize = SYNTHDIR_NETCLASS;
+        if (cstrEq(path, "/sys/devices/system/cpu")) g_fdTable[fd].fileSize = SYNTHDIR_SYSCPU;
         // ROADMAP 2.1: a real PCI listing, built at getdents time from live config reads.
         if (cstrEq(path, "/sys/bus/pci/devices")) g_fdTable[fd].fileSize = SYNTHDIR_PCIDEVS;
         // M3: tag NMPLUGINDIR (dead now — wifi is an internal factory, load_factories_from_dir disabled —
@@ -10176,6 +10177,13 @@ private immutable VFEntry[] g_vfs = [
     // A9.4: no policy is loaded, so libselinux finds no security classes; deny_unknown=0 makes
     // selinux_check_access allow an unknown class (servicemanager's add/find checks) instead of denying.
     { "/sys/fs/selinux/deny_unknown",            "0"                                                   },
+    // A9.4: bionic's get_nprocs() (sysconf(_SC_NPROCESSORS_ONLN), Java's availableProcessors) counts
+    // the ranges in .../cpu/online -- absent, it reported 0 and system_server's init thread pool threw
+    // IllegalArgumentException(0 threads).  User tasks run on the boot CPU only (sched_getaffinity says
+    // the same), so one CPU.  musl counts through sched_getaffinity and never reads these.
+    { "/sys/devices/system/cpu/online",          "0\n"                                                 },
+    { "/sys/devices/system/cpu/possible",        "0\n"                                                 },
+    { "/sys/devices/system/cpu/present",         "0\n"                                                 },
     { "/sys/power/state",                        "freeze mem disk\n"                                   },
     { "/sys/power/wakeup_count",                 "0\n"                                                 },
     { "/sys/class/tty/tty0/active",              "tty1\n"                                              },
@@ -12419,6 +12427,16 @@ public long linux_sys_ioctl(ulong fd, ulong cmd, ulong arg) {
             return 0;
         }
     }
+    // A9.4: FIONREAD on a regular file answers size - position (Linux's file_ioctl).  Android's
+    // FileInputStream.available() issues it for EVERY file and tolerates only ENOTTY -- the EBADF the
+    // capability precheck gave image files threw IOException from SystemConfig's XML readers.
+    if (cast(uint)cmd == FIONREAD_REQ && fileIsRegularData(fd)) {
+        if (arg == 0) return negErrno(EFAULT);
+        const File* rf = &g_fdTable[cast(int)fd];
+        const long left = cast(long)rf.fileSize - cast(long)rf.offset;
+        smapBegin(); *cast(int*)arg = left < 0 ? 0 : (left > int.max ? int.max : cast(int)left); smapEnd();
+        return 0;
+    }
     if (fd < 1024 && g_fdTable !is null && g_fdTable[cast(int)fd].type == FileType.FD_BINDER) {
         return binderIoctl(cast(int)cast(size_t)g_fdTable[cast(int)fd].backend, cast(uint)cmd, arg);
     }
@@ -12453,6 +12471,15 @@ extern(D) ulong binderCopyInUser(ulong uaddr, ubyte* dst, ulong n) @nogc nothrow
     foreach (i; 0 .. n) dst[i] = src[i];
     smapEnd();
     return n;
+}
+
+// A9.4: FIONREAD, and the fd types that are plain file data (their fileSize is the file's size).
+private enum uint FIONREAD_REQ = 0x541B;
+private bool fileIsRegularData(ulong fd) @nogc nothrow {
+    if (fd >= 1024 || g_fdTable is null) return false;
+    const FileType t = g_fdTable[cast(int)fd].type;
+    return t == FileType.FD_EXT4 || t == FileType.FD_RTFILE || t == FileType.FD_FILE ||
+           t == FileType.FD_BOOT_MODULE || t == FileType.FD_BUNDLE;
 }
 
 // A9.4: is this a BINDER_WRITE_READ on a blocking binder fd -- one the dispatcher parks and re-runs
@@ -12666,7 +12693,10 @@ public long linuxSyscallCapPrecheck(ulong n, ulong a, ulong b, ulong c,
         case 3:   if (!fdRequireCap(a, CAP_RIGHT_CLOSE)) return negErrno(EBADF); break; // close
         case 5:   if (!fdRequireCap(a, CAP_RIGHT_STAT))  return negErrno(EBADF); break; // fstat
         case 8:   if (!fdRequireCap(a, CAP_RIGHT_STAT))  return negErrno(EBADF); break; // lseek
-        case 16:  if (!fdRequireCap(a, CAP_RIGHT_IOCTL)) return negErrno(EBADF); break; // ioctl
+        case 16:  // ioctl -- FIONREAD on a regular file is a size query, not device control (A9.4)
+            if (b == FIONREAD_REQ && fileIsRegularData(a)) break;
+            if (!fdRequireCap(a, CAP_RIGHT_IOCTL)) return negErrno(EBADF);
+            break;
         case 17:
         case 19:
         case 45:
@@ -15351,6 +15381,11 @@ private static immutable string[4] g_devCharEntries = ["226:0", "226:128", "13:6
 // M3: tag /sys/class/net so getdents64 lists the interfaces NM's nm-linux-platform enumerates.
 // Without this the dir readdir is empty -> NM sees NO device even though the LKL has wlan0.
 private enum ulong SYNTHDIR_NETCLASS = 0x0E7C1A55;
+// A9.4: /sys/devices/system/cpu -- Android's Runtime.availableProcessors() is
+// sysconf(_SC_NPROCESSORS_CONF) = bionic get_nprocs_conf(), which counts the cpuN DIRECTORIES here; the
+// empty listing made it 0 and system_server's init thread pool threw IllegalArgumentException.  One CPU
+// (user tasks run on the boot CPU only), plus the online/possible/present files.
+private enum ulong SYNTHDIR_SYSCPU = 0x5C9A0C90;
 // ROADMAP 2.1: /sys/bus/pci/devices, enumerated live from PCI config space rather than a constant.
 private enum ulong SYNTHDIR_PCIDEVS  = 0x0E7C1C71;
 // ROADMAP 2.1: the DRM device files exist under TWO path families -- /sys/dev/char/226:N/device/*
@@ -15670,6 +15705,21 @@ public long linux_sys_getdents64(ulong fd, ulong dirp, ulong count) {
             if (f.offset <= logical) {
                 if (!writeDirent64(buf, count, &written, logical + 5, cast(long)logical + 1,
                                    DT_DIR, e.ptr, e.length))
+                    return cast(long)written;
+                f.offset = logical + 1;
+            }
+            ++logical;
+        }
+        return cast(long)written;
+    }
+
+    if (f.fileSize == SYNTHDIR_SYSCPU) {
+        static immutable string[4] names = ["cpu0", "online", "possible", "present"];
+        ulong logical = 2;
+        foreach (k, e; names) {
+            if (f.offset <= logical) {
+                if (!writeDirent64(buf, count, &written, logical + 9, cast(long)logical + 1,
+                                   k == 0 ? DT_DIR : DT_REG, e.ptr, e.length))
                     return cast(long)written;
                 f.offset = logical + 1;
             }

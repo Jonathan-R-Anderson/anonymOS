@@ -352,11 +352,21 @@ static int container_init(const char *root, int argc, char **argv) {
                  * init.  An explicit ro.product.cpu.abilist also stops init deriving the lists from
                  * the ro.<partition>.product.cpu.abilist* keys; an empty abilist32 leaves the
                  * `property:ro.product.cpu.abilist32=*` triggers unmatched. */
+                /* Graphics, as Waydroid picks them for a host with no usable GPU render node: the
+                 * ashmem/memfd gralloc, ANGLE as the EGL/GLES driver running on lavapipe (Mesa's
+                 * software Vulkan, vulkan.lvp.so) -- unset, libEGL found no ANGLE suffix and Vulkan
+                 * looked for vulkan.<ro.hardware>.so -- GLES 3.0, and the density SurfaceFlinger
+                 * requires as a build property. */
                 static const char wprop[] =
                     "ro.product.cpu.abilist=x86_64\n"
                     "ro.product.cpu.abilist32=\n"
                     "ro.product.cpu.abilist64=x86_64\n"
-                    "ro.zygote=zygote64\n";
+                    "ro.zygote=zygote64\n"
+                    "ro.hardware.gralloc=default\n"
+                    "ro.hardware.egl=angle\n"
+                    "ro.hardware.vulkan=lvp\n"
+                    "ro.opengles.version=196608\n"
+                    "ro.sf.lcd_density=160\n";
                 int wp = open("/vendor/waydroid.prop", O_WRONLY | O_CREAT | O_TRUNC, 0644);
                 if (wp < 0 || write(wp, wprop, sizeof wprop - 1) != (ssize_t)(sizeof wprop - 1))
                     printf("[hos-container] exec-bionic: writing /vendor/waydroid.prop failed: %s\n",

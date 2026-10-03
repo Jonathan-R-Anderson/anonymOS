@@ -6535,10 +6535,10 @@ private long dispatchLinuxSyscallCall(ulong n, ulong a, ulong b, ulong c,
         // x86_64: 142/143 -- 154/155 (where these used to sit) are modify_ldt/pivot_root.
         case 142: return linux_sys_sched_setparam(a, b);
         case 143: return linux_sys_sched_getparam(a, b);
-        case 144: return 0;   // sched_setscheduler: accepted (cooperative scheduler; ignored)
-        case 145: return 0;   // sched_getscheduler: SCHED_OTHER -- bionic pthread_create needs this (ART)
-        case 146: return 0;   // sched_get_priority_max(SCHED_OTHER) = 0
-        case 147: return 0;   // sched_get_priority_min(SCHED_OTHER) = 0
+        case 144: return linux_sys_sched_setscheduler(a, b, c);   // recorded, not acted on
+        case 145: return linux_sys_sched_getscheduler(a);         // bionic pthread_create needs this (ART)
+        case 146: return linux_sys_sched_get_priority_max(a);
+        case 147: return linux_sys_sched_get_priority_min(a);
         case 140: return linux_sys_getpriority(a, b);        // no-op: priority is moot on the
         case 141: return linux_sys_setpriority(a, b, c);     // cooperative scheduler (zsh nice's bg jobs)
         case 157: return linux_sys_prctl(a, b, c, d, e);

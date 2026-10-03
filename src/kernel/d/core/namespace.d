@@ -24,7 +24,10 @@ import core.cap : CAP_RIGHT_READ, CAP_RIGHT_WRITE, CAP_RIGHT_STAT;  // DOMAIN_MA
 
 extern (C) @nogc nothrow:
 
-enum int NS_MAX       = 64;   // live Namespace objects
+enum int NS_MAX       = 288;  // live Namespace objects.  A9.5: every live process holds a private clone
+                              // (fork clones; a domain exec prepares one), so this must cover MAX_TASKS
+                              // processes plus the domain templates -- at 64, Android's init (~50
+                              // services) ran it dry and exec failed ENOMEM ("[appgate] no namespace").
 enum int NS_BIND_MAX  = 48;   // mount bindings per namespace (DM2: real per-domain fs policies;
                               // appgate: every domain now also binds its read-only runtime)
 enum int NS_PATH_MAX  = 64;   // mount-point path length
@@ -36,7 +39,7 @@ struct NsBinding {
     uint   targetObjId;       // object this mount point resolves to (0 for a deny binding)
     uint   rights;            // capability rights granted at this mount
     uint   pathLen;
-    char[NS_PATH_MAX] path;   // mount point, e.g. "/" or "/dev"
+    char[NS_PATH_MAX] path = 0;   // mount point, e.g. "/" or "/dev" (= 0: keeps g_namespaces in .bss)
 }
 
 struct NamespaceRec {

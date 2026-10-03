@@ -832,7 +832,7 @@ public bool localBlockingRecvFd(ulong fd) @nogc nothrow {
     auto s = fileSocket(f);
     if (s is null || inetIsInet(s)) return false;
     const bool dgramBound = (s.type & 0xF) == SOCK_DGRAM && s.state == LocalSocketState.bound;   // A9.5
-    if (s.state != LocalSocketState.connected && !dgramBound) return false;
+    if (s.state != LocalSocketState.connected && !dgramBound && !s.nlAndroid) return false;
     return socketBufferReadable(s.rx) == 0 && !s.peerClosed;
 }
 
@@ -1481,6 +1481,10 @@ private struct LocalSocket
     // kernel log instead of delivered -- which is what makes ART's own diagnostics visible.
     bool isLogSink;
     bool isPropService;   // A9.4: connected to /dev/socket/property_service, served in-kernel
+    // A9.5: an Android task's AF_NETLINK socket gets the control-plane emulation (netlinkAndroidSend);
+    // nlProto is its netlink family (NETLINK_ROUTE 0, NETLINK_NETFILTER 12, ...).
+    bool nlAndroid;
+    int  nlProto;
 }
 
 __gshared LocalSocket[localSocketMax] g_localSockets;
@@ -1749,6 +1753,36 @@ private void logSinkDrain(const(ubyte)* data, size_t len)
         }
     }
     klog("\n");
+}
+
+// A9.5: the netlink CONTROL PLANE for an Android task, answered in-kernel.  netd configures routing
+// rules, xfrm and NFLOG through netlink request/acknowledge exchanges and exits when they fail (and its
+// exit restarts the zygote).  Each request is acknowledged as the kernel would -- NLMSG_ERROR with
+// error 0 when NLM_F_ACK is set, an empty NLMSG_DONE for a dump -- queued for the next recv.  Nothing
+// is enforced: the container's traffic goes through this kernel's own stack and routing, where
+// netfilter/policy-routing state set by Android has no meaning.  Event groups never fire.
+private void netlinkAndroidSend(LocalSocket* s, const(ubyte)* data, size_t len) {
+    enum ushort NLMSG_ERROR = 2, NLMSG_DONE = 3;
+    enum ushort NLM_F_MULTI = 0x2, NLM_F_ACK = 0x4, NLM_F_DUMP = 0x300;
+    size_t off = 0;
+    while (off + 16 <= len) {
+        const uint   mlen  = data[off] | (data[off+1] << 8) | (data[off+2] << 16) | (cast(uint)data[off+3] << 24);
+        const ushort mtype = cast(ushort)(data[off+4] | (data[off+5] << 8));
+        const ushort mflg  = cast(ushort)(data[off+6] | (data[off+7] << 8));
+        if (mlen < 16 || off + mlen > len) break;
+        ubyte[36] r = 0;
+        void put32(size_t at, uint v) { foreach (b; 0 .. 4) r[at + b] = cast(ubyte)(v >> (8 * b)); }
+        foreach (b; 0 .. 8) r[8 + b] = data[off + 8 + b];            // seq + pid echoed
+        if ((mflg & NLM_F_DUMP) == NLM_F_DUMP && mtype >= 16) {
+            put32(0, 20); r[4] = NLMSG_DONE; r[6] = NLM_F_MULTI;      // empty dump
+            socketBufferWrite(s.rx, r.ptr, 20);
+        } else if (mflg & NLM_F_ACK) {
+            put32(0, 36); r[4] = NLMSG_ERROR;                         // error 0 + the request header
+            foreach (b; 0 .. 16) r[20 + b] = data[off + b];
+            socketBufferWrite(s.rx, r.ptr, 36);
+        }
+        off += (mlen + 3) & ~3u;
+    }
 }
 
 // True once some task holds an AF_UNIX socket in the listener state bound to `path`.
@@ -2080,7 +2114,8 @@ private ssize_t localSocketRead(File* f, void* buffer, size_t length)
     // which had logd's writer thread spinning on recvmsg.
     const bool dgramBound = sock.domain == AF_UNIX && (sock.type & 0xF) == SOCK_DGRAM
                             && sock.state == LocalSocketState.bound;
-    if (sock.state != LocalSocketState.connected && sock.state != LocalSocketState.closed && !dgramBound)
+    if (sock.state != LocalSocketState.connected && sock.state != LocalSocketState.closed && !dgramBound
+        && !sock.nlAndroid)
     {
         return negErrno(ENOTCONN);
     }
@@ -2116,6 +2151,11 @@ private ssize_t localSocketWrite(File* f, const(void)* buffer, size_t length)
     if (sock.isLogSink)
     {
         logSinkDrain(cast(const(ubyte)*)buffer, length);
+        return cast(ssize_t)length;
+    }
+    if (sock.nlAndroid)
+    {
+        netlinkAndroidSend(sock, cast(const(ubyte)*)buffer, length);
         return cast(ssize_t)length;
     }
     if (sock.isPropService)
@@ -4573,7 +4613,20 @@ public int sys_open(const(char)* path, int flags) {
     char[1024] _lnkB = void;
     if (!sysLib) path = rtFollowSymlinks(path, _lnkA.ptr, _lnkB.ptr, 1024);
 
-    int nsOpen = namespaceCheckOpen(path, flags);
+    // A9.5: PSI (/proc/pressure/{memory,cpu,io}) for an Android task.  lmkd -- a `critical` service,
+    // whose 4th exit makes init reboot -- registers memory-pressure triggers here (write "some 70000
+    // 1000000", then epoll for EPOLLPRI) and exits when it cannot.  Accept the trigger and never fire
+    // it: a /dev/null-like fd takes the write, and an EPOLLPRI-only watch never reports ready.
+    bool psiOpen = false;
+    {
+        const int ct = cast(int)g_current_task_id;
+        if (ct >= 0 && ct < MAX_TASKS && g_taskAndroid[ct]
+            && (cstrEq(path, "/proc/pressure/memory") || cstrEq(path, "/proc/pressure/cpu")
+                || cstrEq(path, "/proc/pressure/io")))
+            psiOpen = true;
+    }
+
+    int nsOpen = psiOpen ? 0 : namespaceCheckOpen(path, flags);
     if (nsOpen < 0) return nsOpen;
 
     // Find free FD — POSIX: the lowest-numbered free descriptor, INCLUDING 0/1/2 when those
@@ -4599,7 +4652,7 @@ public int sys_open(const(char)* path, int flags) {
         return publishActiveFdReturn(fd);
     }
 
-    if (cstrEq(path, "/dev/null")) {
+    if (cstrEq(path, "/dev/null") || psiOpen) {
         g_fdTable[fd].type = FileType.FD_NULL;
         g_fdTable[fd].flags = flags;
         g_fdTable[fd].offset = 0;
@@ -13865,6 +13918,12 @@ public int sys_socket(int domain, int type, int protocol) {
     if (domain == AF_NETLINK) {
         const int nid = allocLocalSocket(AF_NETLINK, baseType);
         if (nid < 0) return negErrno(EMFILE);
+        {   const int ct = cast(int)g_current_task_id;
+            auto ns = localSocketById(nid);
+            if (ns !is null && ct >= 0 && ct < MAX_TASKS && g_taskAndroid[ct]) {
+                ns.nlAndroid = true;
+                ns.nlProto   = protocol;
+            } }
         const int nfd = allocSocketFd(nid, O_RDWR);
         if (nfd < 0) { releaseLocalSocket(nid); return negErrno(EMFILE); }
         return publishActiveFdReturn(nfd);
@@ -14212,6 +14271,20 @@ public ssize_t sys_sendmsg(int sockfd, msghdr* msg, int flags) {
     if (f.type != FileType.FD_SOCKET) return negErrno(ENOTSOCK);
     {   auto insock = fileSocket(f);
         if (inetIsInet(insock)) return inetSendMsg(insock, msg);
+        if (insock !is null && insock.nlAndroid) {             // A9.5: one netlink datagram
+            size_t n = 0, req = 0;
+            foreach (i; 0 .. msg.msg_iovlen) {
+                auto iov = &msg.msg_iov[i];
+                req += iov.iov_len;
+                if (iov.iov_len == 0 || iov.iov_base is null) continue;
+                const size_t room = g_writevGather.length - n;
+                const size_t k = iov.iov_len < room ? iov.iov_len : room;
+                smapBegin(); memcpy(g_writevGather.ptr + n, iov.iov_base, k); smapEnd();
+                n += k;
+            }
+            netlinkAndroidSend(insock, g_writevGather.ptr, n);
+            return cast(ssize_t)req;
+        }
     }
 
     // A9.3h: a log-sink socket swallows the datagram into the kernel log.  Gather the iovecs into
@@ -14335,6 +14408,14 @@ public ssize_t sys_recvmsg(int sockfd, msghdr* msg, int flags) {
         if (inetIsInet(insock)) return inetRecvMsg(insock, msg);
     }
 
+    // A9.5: an emulated netlink reply comes from the kernel: sockaddr_nl { AF_NETLINK, pid 0 }.
+    {   auto ns = fileSocket(f);
+        if (ns !is null && ns.nlAndroid && msg.msg_name !is null && msg.msg_namelen >= 12) {
+            auto nm = cast(ubyte*)msg.msg_name;
+            foreach (b; 0 .. 12) nm[b] = 0;
+            nm[0] = cast(ubyte)AF_NETLINK;
+            msg.msg_namelen = 12;
+        } }
     ssize_t totalRead = 0;
     foreach (i; 0 .. msg.msg_iovlen) {
         auto iov = &msg.msg_iov[i];
@@ -14412,6 +14493,13 @@ public ssize_t sys_sendto(int sockfd, const(void)* buf, size_t len, int flags, c
         initFdTable();
         auto insock = fileSocket(&g_fdTable[sockfd]);
         if (inetIsInet(insock)) return inetSendTo(insock, buf, len, dest_addr);
+        if (insock !is null && insock.nlAndroid) {             // A9.5: to the kernel (any nl address)
+            if (buf is null && len != 0) return negErrno(EFAULT);
+            const size_t n = len < g_writevGather.length ? len : g_writevGather.length;
+            smapBegin(); memcpy(g_writevGather.ptr, buf, n); smapEnd();
+            netlinkAndroidSend(insock, g_writevGather.ptr, n);
+            return cast(ssize_t)len;
+        }
     }
     if (dest_addr !is null) return negErrno(EOPNOTSUPP);
 
@@ -23617,12 +23705,62 @@ public long linux_sys_renameat(ulong olddir, ulong oldpath,
     return linux_sys_renameat2(olddir, oldpath, newdir, newpath, 0);
 }
 
-public long linux_sys_sched_setparam(ulong pid, ulong param) { return 0; }
-// struct sched_param { int sched_priority; }: SCHED_OTHER's priority is always 0.  The caller's
-// struct must be filled, not left as whatever was on its stack.
+// Scheduling policy/priority, answered like Linux but not acted on (the scheduler is cooperative and
+// has no real-time classes).  A9.5: SurfaceFlinger takes sched_get_priority_min(SCHED_FIFO) as the
+// binder pool's priority and aborts on what it reads back ("Invalid priority for sched 1: 0") -- every
+// call here used to answer 0.  Policy and priority are remembered per task (pid 0 = the caller); an
+// out-of-range priority is EINVAL for an Android task (the desktop keeps the old lenient accept).
+private __gshared int[MAX_TASKS] g_schedPolicy;    // SCHED_OTHER (0) until set
+private __gshared int[MAX_TASKS] g_schedPrio;
+private int schedTask(ulong pid) {
+    const int t = (pid == 0) ? cast(int)g_current_task_id : taskIdFromLinuxPid(cast(int)pid);
+    return (t >= 0 && t < MAX_TASKS && g_tasks[t].active) ? t : -1;
+}
+private bool schedPrioOk(int policy, int prio) {
+    return (policy == 1 || policy == 2) ? (prio >= 1 && prio <= 99) : prio == 0;
+}
+private bool schedStrict() {
+    const int ct = cast(int)g_current_task_id;
+    return ct >= 0 && ct < MAX_TASKS && g_taskAndroid[ct];
+}
+public long linux_sys_sched_get_priority_max(ulong policy) {
+    switch (policy) { case 1: case 2: return 99; case 0: case 3: case 5: return 0; default: return negErrno(EINVAL); }
+}
+public long linux_sys_sched_get_priority_min(ulong policy) {
+    switch (policy) { case 1: case 2: return 1;  case 0: case 3: case 5: return 0; default: return negErrno(EINVAL); }
+}
+public long linux_sys_sched_setscheduler(ulong pid, ulong policy, ulong param) {
+    const int t = schedTask(pid);
+    if (t < 0) return negErrno(3 /*ESRCH*/);
+    const int pol = cast(int)(policy & ~0x4000_0000UL);          // minus SCHED_RESET_ON_FORK
+    if (pol != 0 && pol != 1 && pol != 2 && pol != 3 && pol != 5) return negErrno(EINVAL);
+    if (param == 0) return negErrno(EINVAL);
+    const int prio = cast(int)userRead!uint(param);
+    if (!schedPrioOk(pol, prio)) return schedStrict() ? negErrno(EINVAL) : 0;
+    g_schedPolicy[t] = pol;
+    g_schedPrio[t]   = prio;
+    return 0;
+}
+public long linux_sys_sched_getscheduler(ulong pid) {
+    const int t = schedTask(pid);
+    return t < 0 ? negErrno(3 /*ESRCH*/) : g_schedPolicy[t];
+}
+public long linux_sys_sched_setparam(ulong pid, ulong param) {
+    const int t = schedTask(pid);
+    if (t < 0) return negErrno(3 /*ESRCH*/);
+    if (param == 0) return negErrno(EINVAL);
+    const int prio = cast(int)userRead!uint(param);
+    if (!schedPrioOk(g_schedPolicy[t], prio)) return schedStrict() ? negErrno(EINVAL) : 0;
+    g_schedPrio[t] = prio;
+    return 0;
+}
+// struct sched_param { int sched_priority; }.  The caller's struct must be filled, not left as
+// whatever was on its stack.
 public long linux_sys_sched_getparam(ulong pid, ulong param) {
     if (param == 0) return negErrno(EINVAL);
-    userWrite!int(param, 0);
+    const int t = schedTask(pid);
+    if (t < 0) return negErrno(3 /*ESRCH*/);
+    userWrite!int(param, g_schedPrio[t]);
     return 0;
 }
 

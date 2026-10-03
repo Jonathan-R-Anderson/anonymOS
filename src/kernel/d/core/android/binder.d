@@ -83,6 +83,33 @@ enum uint BINDER_TYPE_WEAK_BINDER = (cast(uint)'w'<<24)|(cast(uint)'b'<<16)|(cas
 enum uint BINDER_TYPE_HANDLE      = (cast(uint)'s'<<24)|(cast(uint)'h'<<16)|(cast(uint)'*'<<8)|B_TYPE_LARGE;
 enum uint BINDER_TYPE_WEAK_HANDLE = (cast(uint)'w'<<24)|(cast(uint)'h'<<16)|(cast(uint)'*'<<8)|B_TYPE_LARGE;
 enum uint BINDER_TYPE_FD          = (cast(uint)'f'<<24)|(cast(uint)'d'<<16)|(cast(uint)'*'<<8)|B_TYPE_LARGE;
+// A9.5: HIDL's scatter-gather objects.  A PTR names a buffer in the sender's memory that the driver
+// copies into the target's receive region (the BC_*_SG extra-buffers area), rewriting `buffer`; with
+// HAS_PARENT, the copy's address is also patched into an earlier PTR's copied buffer at parent_offset
+// (how a hidl_string / hidl_vec embedded in a struct points at its data).  An FDA is an array of fds
+// living inside a parent PTR's buffer, each dup'd into the target.
+enum uint BINDER_TYPE_PTR         = (cast(uint)'p'<<24)|(cast(uint)'t'<<16)|(cast(uint)'*'<<8)|B_TYPE_LARGE;
+enum uint BINDER_TYPE_FDA         = (cast(uint)'f'<<24)|(cast(uint)'d'<<16)|(cast(uint)'a'<<8)|B_TYPE_LARGE;
+enum uint BINDER_BUFFER_FLAG_HAS_PARENT = 0x01;
+struct BinderBufferObject {         // binder_buffer_object, 40 bytes
+align(1):
+    uint  type;
+    uint  flags;
+    ulong buffer;
+    ulong length;
+    ulong parent;                   // index in the offsets array of the parent PTR
+    ulong parentOffset;
+}
+static assert(BinderBufferObject.sizeof == 40);
+struct BinderFdArrayObject {        // binder_fd_array_object, 32 bytes
+align(1):
+    uint  type;
+    uint  pad;
+    ulong numFds;
+    ulong parent;
+    ulong parentOffset;
+}
+static assert(BinderFdArrayObject.sizeof == 32);
 
 // binder_transaction_data: 64 bytes on 64-bit (see the file header).
 struct BinderTxData {
@@ -583,24 +610,76 @@ private bool translateObject(int sender, int target, FlatBinderObject* fo) {
 // target region.  Returns 0 on success, -1 on failure (no room, bad offsets, or an object that
 // cannot cross); on failure nothing is enqueued.
 private long deliverTxn(int sender, int target, ref BinderTxData tx, bool isReply, BinderCopyIn copyin,
-                        int toThread = -1, int fromThread = -1) {
+                        int toThread = -1, int fromThread = -1, ulong sgSize = 0) {
     if (target < 0 || target >= MAX_PROCS || !g_procs[target].used || g_procs[target].regionPhys == 0)
         return -1;
     const uint dsz = (tx.data_size    > BINDER_VM_MAX) ? 0 : cast(uint)tx.data_size;
     const uint osz = (tx.offsets_size > BINDER_VM_MAX) ? 0 : cast(uint)tx.offsets_size;
     const uint dAligned = (dsz + 7) & ~7u;
-    const long base = bufAlloc(target, dAligned + osz);
+    const uint oAligned = (osz + 7) & ~7u;
+    const uint sgsz = (sgSize > BINDER_VM_MAX) ? 0 : cast(uint)((sgSize + 7) & ~7UL);   // A9.5: SG area
+    const long base = bufAlloc(target, dAligned + oAligned + sgsz);
     if (base < 0) { btrace(sender, target, tx, isReply, null, 0, 0, "NOBUF"); return -1; }
     auto region = cast(ubyte*)phys_to_virt(g_procs[target].regionPhys) + cast(uint)base;
+    const ulong regionUser = g_procs[target].regionUserBase + cast(ulong)base;   // region as the target sees it
     if (dsz > 0 && copyin !is null) copyin(tx.data_buffer,  region,            dsz);
     if (osz > 0 && copyin !is null) copyin(tx.data_offsets, region + dAligned, osz);
-    // Walk the offsets array and translate each flat object sitting in the copied data.
+    // Walk the offsets array and translate each object sitting in the copied data.
     const uint noff = osz / 8;
+    uint sgOff = dAligned + oAligned;           // next free byte of the SG area (region-relative)
+    const uint sgEnd = sgOff + sgsz;
+    // A PTR's copied buffer, region-relative, by its index in the offsets array (0 = none).
+    long ptrRel(ulong idx) {
+        if (idx >= noff) return -1;
+        const ulong po = rdU64(region + dAligned, idx * 8);
+        if (po + BinderBufferObject.sizeof > dsz || rdU32(region, po) != BINDER_TYPE_PTR) return -1;
+        const auto pb = cast(const(BinderBufferObject)*)(region + po);
+        if (pb.buffer < regionUser + dAligned + oAligned || pb.buffer >= regionUser + sgEnd) return -1;
+        return cast(long)(pb.buffer - regionUser);
+    }
     foreach (k; 0 .. noff) {
         const ulong offVal = rdU64(region + dAligned, k * 8);
-        if (offVal + FlatBinderObject.sizeof > dsz) { btrace(sender, target, tx, isReply, region, dsz, noff, "BADOFF"); return -1; }
-        if (!translateObject(sender, target, cast(FlatBinderObject*)(region + offVal))) {
-            btrace(sender, target, tx, isReply, region, dsz, noff, "XLATE"); return -1;
+        if (offVal + 4 > dsz) { btrace(sender, target, tx, isReply, region, dsz, noff, "BADOFF"); return -1; }
+        const uint otype = rdU32(region, offVal);
+        if (otype == BINDER_TYPE_PTR) {
+            if (offVal + BinderBufferObject.sizeof > dsz) { btrace(sender, target, tx, isReply, region, dsz, noff, "BADPTR"); return -1; }
+            auto bo = cast(BinderBufferObject*)(region + offVal);
+            const ulong alen = (bo.length + 7) & ~7UL;
+            if (bo.length > sgsz || sgOff + alen > sgEnd) { btrace(sender, target, tx, isReply, region, dsz, noff, "NOSG"); return -1; }
+            if (bo.length > 0 && copyin !is null) copyin(bo.buffer, region + sgOff, bo.length);
+            bo.buffer = regionUser + sgOff;
+            if (bo.flags & BINDER_BUFFER_FLAG_HAS_PARENT) {
+                // The parent must be an EARLIER PTR; patch our new address into its copy.
+                const long pr = bo.parent < k ? ptrRel(bo.parent) : -1;
+                const ulong plen = pr < 0 ? 0 : (cast(const(BinderBufferObject)*)(region + rdU64(region + dAligned, bo.parent * 8))).length;
+                if (pr < 0 || bo.parentOffset + 8 > plen) { btrace(sender, target, tx, isReply, region, dsz, noff, "BADPARENT"); return -1; }
+                auto slot = region + cast(ulong)pr + bo.parentOffset;
+                foreach (b; 0 .. 8) slot[b] = cast(ubyte)(bo.buffer >> (8 * b));
+            }
+            sgOff += cast(uint)alen;
+        } else if (otype == BINDER_TYPE_FDA) {
+            if (offVal + BinderFdArrayObject.sizeof > dsz) { btrace(sender, target, tx, isReply, region, dsz, noff, "BADFDA"); return -1; }
+            const auto fa = cast(const(BinderFdArrayObject)*)(region + offVal);
+            const long pr = fa.parent < k ? ptrRel(fa.parent) : -1;
+            const ulong plen = pr < 0 ? 0 : (cast(const(BinderBufferObject)*)(region + rdU64(region + dAligned, fa.parent * 8))).length;
+            if (pr < 0 || fa.numFds > 1024 || fa.parentOffset + fa.numFds * 4 > plen) {
+                btrace(sender, target, tx, isReply, region, dsz, noff, "BADFDA"); return -1;
+            }
+            const int fromTab = g_procs[sender].ownerTab, toTab = g_procs[target].ownerTab;
+            if (fa.numFds != 0 && (g_binderFdDup is null || fromTab < 0 || toTab < 0)) {
+                btrace(sender, target, tx, isReply, region, dsz, noff, "FDANODUP"); return -1;
+            }
+            foreach (fi; 0 .. fa.numFds) {
+                auto fp = region + cast(ulong)pr + fa.parentOffset + fi * 4;
+                const long nf = g_binderFdDup(fromTab, rdU32(fp, 0), toTab);
+                if (nf < 0) { btrace(sender, target, tx, isReply, region, dsz, noff, "FDADUP"); return -1; }
+                foreach (b; 0 .. 4) fp[b] = cast(ubyte)(cast(uint)nf >> (8 * b));
+            }
+        } else {
+            if (offVal + FlatBinderObject.sizeof > dsz) { btrace(sender, target, tx, isReply, region, dsz, noff, "BADOFF"); return -1; }
+            if (!translateObject(sender, target, cast(FlatBinderObject*)(region + offVal))) {
+                btrace(sender, target, tx, isReply, region, dsz, noff, "XLATE"); return -1;
+            }
         }
     }
     btrace(sender, target, tx, isReply, region, dsz, noff, null);
@@ -770,6 +849,7 @@ public long binderWriteRead(int id, const(ubyte)* wbuf, ulong wsize, ulong* wcon
                 BinderTxData tx;
                 auto d = cast(ubyte*)&tx;
                 foreach (i; 0 .. BinderTxData.sizeof) d[i] = wbuf[wpos + i];
+                const ulong sgBuffers = sgExtra ? rdU64(wbuf, wpos + BinderTxData.sizeof) : 0;   // A9.5
                 wpos += BinderTxData.sizeof + sgExtra;
                 const uint origFlags = tx.flags;
                 // Route by target: handle 0 is the context manager; any other handle resolves
@@ -799,7 +879,7 @@ public long binderWriteRead(int id, const(ubyte)* wbuf, ulong wsize, ulong* wcon
                         toThread = caller;
                 }
                 if (tgt < 0) btrace(id, -1, tx, false, null, 0, 0, "NOTARGET");
-                if (tgt >= 0 && deliverTxn(id, tgt, tx, false, copyin, toThread, sync ? me : -1) == 0) {
+                if (tgt >= 0 && deliverTxn(id, tgt, tx, false, copyin, toThread, sync ? me : -1, sgBuffers) == 0) {
                     if (sync && me >= 0) ++g_bthreads[me].outstanding;
                     putU32(rbuf, rsize, rpos, BR_TRANSACTION_COMPLETE);
                 } else {
@@ -813,6 +893,7 @@ public long binderWriteRead(int id, const(ubyte)* wbuf, ulong wsize, ulong* wcon
                 BinderTxData tx;
                 auto d = cast(ubyte*)&tx;
                 foreach (i; 0 .. BinderTxData.sizeof) d[i] = wbuf[wpos + i];
+                const ulong sgBuffers = sgExtra ? rdU64(wbuf, wpos + BinderTxData.sizeof) : 0;   // A9.5
                 wpos += BinderTxData.sizeof + sgExtra;
                 // Pop the calling thread of the transaction we are replying to; BR_REPLY goes to it.
                 int dest = -1, destThread = -1;
@@ -822,7 +903,7 @@ public long binderWriteRead(int id, const(ubyte)* wbuf, ulong wsize, ulong* wcon
                     else destThread = -1;
                 }
                 if (dest < 0) btrace(id, -1, tx, true, null, 0, 0, "NODEST");
-                if (dest >= 0 && deliverTxn(id, dest, tx, true, copyin, destThread, -1) == 0)
+                if (dest >= 0 && deliverTxn(id, dest, tx, true, copyin, destThread, -1, sgBuffers) == 0)
                     putU32(rbuf, rsize, rpos, BR_TRANSACTION_COMPLETE);
                 else
                     putU32(rbuf, rsize, rpos, BR_FAILED_REPLY);
@@ -1101,6 +1182,47 @@ private bool binderSelfTestA3() {
         binderSetFdDup(saved);   // never leave the stub installed in a running kernel
     }
 
+    // (3c) A9.5 HIDL scatter-gather: client -> handle 0 via BC_TRANSACTION_SG carrying a parent PTR
+    //      (a 16-byte struct whose first word points at a string) and a child PTR (the string,
+    //      HAS_PARENT, parentOffset 0).  The server must find both buffers copied into ITS region and
+    //      the parent's copy patched to point at the string's copy.
+    {
+        ubyte[16] parentBuf = 0;                         // [u64 ptr -> string][u64 len]
+        ubyte[6] str = ['h', 'e', 'l', 'l', 'o', 0];
+        foreach (b; 0 .. 8) parentBuf[b] = cast(ubyte)(cast(ulong)str.ptr >> (8 * b));
+        parentBuf[8] = 5;
+        BinderBufferObject[2] objs;
+        objs[0].type = BINDER_TYPE_PTR; objs[0].buffer = cast(ulong)parentBuf.ptr; objs[0].length = 16;
+        objs[1].type = BINDER_TYPE_PTR; objs[1].flags = BINDER_BUFFER_FLAG_HAS_PARENT;
+        objs[1].buffer = cast(ulong)str.ptr; objs[1].length = 6; objs[1].parent = 0; objs[1].parentOffset = 0;
+        ulong[2] offsS = [0UL, BinderBufferObject.sizeof];
+        ubyte[4 + BinderTxData.sizeof + 8] wbS = 0; ulong wS = 0;
+        putU32(wbS.ptr, wbS.length, wS, BC_TRANSACTION_SG);
+        BinderTxData tS; tS.target = 0; tS.code = 4; tS.flags = TF_ONE_WAY;
+        tS.data_size = objs.sizeof; tS.data_buffer = cast(ulong)objs.ptr;
+        tS.offsets_size = offsS.sizeof; tS.data_offsets = cast(ulong)offsS.ptr;
+        putTx(wbS.ptr, wbS.length, wS, tS);
+        putU64(wbS.ptr, wbS.length, wS, 16 + 8);         // buffers_size: 16 + align8(6)
+        ubyte[128] rbClS = 0; ulong rcClS = 0;
+        ok = ok && (binderWriteRead(cl, wbS.ptr, wS, null, rbClS.ptr, rbClS.length, &rcClS, &testCopyIn) == 0);
+        ubyte[256] rbSvS = 0; ulong rcSvS = 0;
+        ok = ok && (binderWriteRead(sv, null, 0, null, rbSvS.ptr, rbSvS.length, &rcSvS, &testCopyIn) == 0);
+        BinderTxData gotS;
+        if (ok && testFindTxn(rbSvS.ptr, rcSvS, BR_TRANSACTION, gotS) && gotS.offsets_size == 16) {
+            auto r0 = cast(const(BinderBufferObject)*)gotS.data_buffer;
+            auto r1 = r0 + 1;
+            const ulong rbase = g_procs[sv].regionUserBase, rend = rbase + g_procs[sv].regionSize;
+            ok = ok && r0.buffer >= rbase && r0.buffer < rend && r1.buffer >= rbase && r1.buffer < rend;
+            if (ok) {
+                const ulong patched = rdU64(cast(const(ubyte)*)r0.buffer, 0);
+                auto sp = cast(const(ubyte)*)r1.buffer;
+                ok = ok && patched == r1.buffer && rdU64(cast(const(ubyte)*)r0.buffer, 8) == 5
+                        && sp[0] == 'h' && sp[4] == 'o' && sp[5] == 0;
+            }
+            binderFreeBuffer(sv, gotS.data_buffer);
+        } else ok = false;
+    }
+
     // (4) server requests a death notification on svHandle, the client crashes, server reads the death.
     ubyte[4 + 12] wbD = 0; ulong wD = 0;
     putU32(wbD.ptr, wbD.length, wD, BC_REQUEST_DEATH_NOTIFICATION);
@@ -1240,7 +1362,7 @@ public void binderSelfTest() {
     // A4: independent binder contexts (binder/hwbinder/vndbinder style).
     ok = ok && binderSelfTestA4();
 
-    if (ok) klog("[binder] selftest PASS (A1+A2+A3+A3b+A4: version 8, mmap region, data round-trip, handle translation, reply routing, fd passing, death notify, independent contexts)\n");
+    if (ok) klog("[binder] selftest PASS (A1+A2+A3+A3b+A3c+A4: version 8, mmap region, data round-trip, handle translation, reply routing, fd passing, scatter-gather, death notify, independent contexts)\n");
     else    klog("[binder] selftest FAIL\n");
     g_btraceN = 0;   // the traffic trace budget is for real processes
 }

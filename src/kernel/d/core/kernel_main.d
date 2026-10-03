@@ -3602,8 +3602,20 @@ private void maybeSpawnGlTest() {
 // MAP_FIXED's implicit munmap of [va, va+len) in task `tid`'s (loaded) address space: every present
 // page is unmapped, and freed when the region listing it owns its frames (private memory -- never a
 // device or shared memfd frame); then the range leaves every thread's region table.
+// DIAGNOSTIC (A9.3n): an Android task's main-thread demand stack (exec) vanished mid-run -- name whatever
+// unmaps or MAP_FIXED-replaces that range (bounded).
+private __gshared uint g_astackRmLogN = 0;
+private void noteAndroidStackRemoval(int tid, ulong va, ulong len, string how) {
+    if (tid < 0 || tid >= MAX_TASKS || !g_taskAndroid[tid] || g_astackRmLogN >= 8) return;
+    if (va + len <= USER_STACK_TOP - USER_STACK_RLIMIT || va >= USER_STACK_TOP) return;
+    ++g_astackRmLogN;
+    klog("[astack] t="); klog_dec(cast(ulong)tid); klog(" "); klog(how.ptr); klog(" "); klog_hex(va);
+    klog(" len="); klog_hex(len); klog(" rip="); klog_hex(g_tasks[tid].regs[REG_RIP]); klog("\n");
+}
+
 private void mmapFixedEvict(int tid, ulong va, ulong len) {
     import core.addrspace : userPageMapped;
+    noteAndroidStackRemoval(tid, va, len, "MAP_FIXED");
     AddrRegion* r = null;
     for (ulong off = 0; off < len; off += 4096) {
         const ulong a = va + off;
@@ -3642,6 +3654,30 @@ private bool mmapHintUsable(int tid, ulong va, ulong len) {
     for (ulong off = 0; off < len; off += 4096)
         if (userPageMapped(tid, va + off)) return false;
     return true;
+}
+
+// A9.3n: MAP_32BIT (x86-64) places a non-fixed map in the low 2 GiB -- Linux uses [1 GiB, 2 GiB).  ART
+// asks for it for its Java heap, whose references are 32-bit compressed pointers; placed in our high
+// arena (0x7400_0000_0000+) every stored reference was truncated, and the first dereference faulted at
+// the low 32 bits of a high address (cr2=0xee2e2008).  First fit, bottom-up, colliding with neither a
+// region nor a present page (the main executable's segments have no region entries).  Android tasks
+// only, like hint honoring: 0 = not placed, the caller falls back to the arena as before.
+private ulong mmapLow2G(int tid, ulong len) {
+    import core.addrspace : userPageMapped;
+    if (tid < 0 || tid >= MAX_TASKS || !g_taskAndroid[tid] || len == 0) return 0;
+    enum ulong LOW_START = 0x40000000UL, LOW_END = 0x80000000UL;
+    ulong cand = LOW_START;
+    foreach (iter; 0 .. 8192) {
+        if (len > LOW_END || cand > LOW_END - len) return 0;
+        const ulong oe = overlapEndShared(tid, cand, cand + len);
+        if (oe != 0) { cand = (oe + 0xFFF) & ~0xFFFUL; continue; }
+        ulong clash = 0;
+        for (ulong off = 0; off < len; off += 4096)
+            if (userPageMapped(tid, cand + off)) { clash = cand + off; break; }
+        if (clash == 0) return cand;
+        cand = clash + 4096;
+    }
+    return 0;
 }
 
 // Reserve `len` bytes of fresh address space in task `tid`'s address space for a non-fixed mmap: the
@@ -4789,6 +4825,7 @@ private void dispatchSyscall(int tid) {
         case 9: {
             enum MAP_FIXED = 0x10;
             enum MAP_ANONYMOUS = 0x20;
+            enum MAP_32BIT = 0x40;
             ulong mlen    = rsi;
             ulong mflags  = r10;
             ulong mfd     = r8;
@@ -4811,6 +4848,8 @@ private void dispatchSyscall(int tid) {
                 // that cannot carry the full boot classpath.  A hint that collides falls through to
                 // the arena, exactly as Linux relocates a hinted map that will not fit.
                 vaddr = rdi;
+            } else if ((mflags & MAP_32BIT) && (vaddr = mmapLow2G(tid, alignedLen)) != 0) {
+                // placed in the low 2 GiB (mmapLow2G)
             } else {
                 vaddr = asMmapReserve(tid, alignedLen);
             }
@@ -5278,6 +5317,7 @@ private void dispatchSyscall(int tid) {
             // Free the underlying physical pages only when they belong to an
             // owned (private anonymous / file) region; device (g_fb) and shared
             // (memfd) maps must stay intact.  Walk on the task's own page tables.
+            noteAndroidStackRemoval(tid, rdi, rsi, "munmap");
             bool freePages = (rsi != 0) && regionOwnedAtShared(tid, rdi);
             if (rsi != 0) x64WriteCR3(task.pml4Phys);
             ret = sys_munmap(rdi, rsi, freePages);

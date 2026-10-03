@@ -924,6 +924,25 @@ bool rangeFreeShared(int tid, ulong start, ulong end) {
     return true;
 }
 
+// The highest end of any region of `tid`'s address space overlapping [start, end); 0 when none does.
+// A first-fit search jumps its candidate there instead of probing page by page.
+ulong overlapEndShared(int tid, ulong start, ulong end) {
+    if (tid < 0 || tid >= MAX_TASKS || end <= start) return 0;
+    auto tab = g_tasks[tid].rtab;
+    if (tab is null) return 0;
+    ulong hi = 0;
+    foreach (c; 0 .. tab.nchunks) {
+        auto ch = tab.chunks[c];
+        const int lim = (c + 1) * RT_PER_CHUNK <= tab.count ? RT_PER_CHUNK : tab.count - c * RT_PER_CHUNK;
+        foreach (k; 0 .. lim) {
+            auto r = &ch[k];
+            if (r.start < end && start < r.end && r.end > hi) hi = r.end;
+        }
+        if ((c + 1) * RT_PER_CHUNK >= tab.count) break;
+    }
+    return hi;
+}
+
 // Find the region that contains vaddr (or null)
 AddrRegion* findRegion(ref Task task, ulong vaddr) {
     auto tab = task.rtab;

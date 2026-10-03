@@ -366,7 +366,10 @@ static int container_init(const char *root, int argc, char **argv) {
                     "ro.hardware.egl=angle\n"
                     "ro.hardware.vulkan=lvp\n"
                     "ro.opengles.version=196608\n"
-                    "ro.sf.lcd_density=160\n";
+                    "ro.sf.lcd_density=160\n"
+                    /* ashmem by memfd, as Waydroid sets it for a host without /dev/ashmem: libcutils
+                     * otherwise looks for /dev/ashmem<boot_id> (gralloc allocated nothing). */
+                    "sys.use_memfd=true\n";
                 int wp = open("/vendor/waydroid.prop", O_WRONLY | O_CREAT | O_TRUNC, 0644);
                 if (wp < 0 || write(wp, wprop, sizeof wprop - 1) != (ssize_t)(sizeof wprop - 1))
                     printf("[hos-container] exec-bionic: writing /vendor/waydroid.prop failed: %s\n",
@@ -397,7 +400,19 @@ static int container_init(const char *root, int argc, char **argv) {
                 char *iav[] = { (char *)"/system/bin/init", (char *)"second_stage", NULL };
                 { const char *pb = "[exec-bionic] android init: exec /system/bin/init second_stage\n";
                   (void)!write(2, pb, strlen(pb)); }
-                execve("/system/bin/init", iav, ev);
+                /* Android's init hands its environment to every service.  LD_LIBRARY_PATH (the APEX
+                 * library dirs, needed when this runtime writes the linker config itself) must not go
+                 * with it: init's linkerconfig builds the real APEX namespaces, and the search path
+                 * loaded libart.so into the zygote's default namespace as well as the ART namespace --
+                 * two runtimes, the second never initialised (JVM_NativeLoad read a null
+                 * Runtime::instance_).  Real Waydroid sets none. */
+                char *iev[sizeof ev / sizeof ev[0]];
+                {   size_t k = 0;
+                    for (size_t j = 0; ev[j] != NULL; j++)
+                        if (strncmp(ev[j], "LD_LIBRARY_PATH=", 16) != 0 && strncmp(ev[j], "ANDROID_SOCKET_", 15) != 0)
+                            iev[k++] = ev[j];
+                    iev[k] = NULL; }
+                execve("/system/bin/init", iav, iev);
                 printf("[hos-container] exec-bionic: execve init failed: %s\n", strerror(errno));
                 _exit(1);
             }

@@ -1741,7 +1741,7 @@ private void logSinkDrain(const(ubyte)* data, size_t len)
     klog("[logd] ");
     bool lastGap = true;
     size_t emitted = 0;
-    enum size_t CAP = 400;
+    enum size_t CAP = 2400;   // A9.5: Java stack traces put their "Caused by" far into one record
     foreach (i; 0 .. len) {
         if (emitted >= CAP) { klog(" ..."); break; }
         const ubyte b = data[i];
@@ -4798,7 +4798,7 @@ public int sys_open(const(char)* path, int flags) {
 
     // /dev/ashmem -- Android's anonymous shared memory (A5).  Backed by the memfd machinery; the
     // ashmem ioctls are served in linux_sys_ioctl.  Per-process memory, so ungated like /dev/null.
-    if (cstrEq(path, "/dev/ashmem")) {
+    if (cstrEq(path, "/dev/ashmem") || androidAshmemBootPath(path)) {
         return ashmemOpen(fd, flags);
     }
 
@@ -5849,6 +5849,13 @@ private long fileObjStat(ObjHeader* oh, ulong _statBuf) {
             uint mode = 0x8000 | 0x01ED; ulong sz = f.fileSize;
             if (m !is null) { uint md; ulong s; if (ext4InodeInfo(*m, cast(uint)(enc & 0xFFFF_FFFF), &md, &s)) { mode = md; sz = s; } }
             writeLinuxStat(_statBuf, mode, sz);
+            // A9.5: a real (st_dev, st_ino) -- one device per image, the ext4 inode.  Left (0, 0),
+            // bionic's linker skips its by-inode dedup, so a library dlopen'ed by path after being
+            // loaded by soname got a second copy: ANGLE's libGLESv2 was loaded THREE times in
+            // SurfaceFlinger/the composer, eglMakeCurrent ran in one copy and glGetString in another,
+            // whose thread state was null (SIGSEGV in egl::Thread::getContext).
+            *cast(ulong*)(_statBuf + 0) = 0x100 + (enc >> 56);           // st_dev
+            *cast(ulong*)(_statBuf + 8) = enc & 0xFFFF_FFFF;             // st_ino
         } else if (fileIsSyntheticDirectory(f)) {
             writeLinuxStat(_statBuf, 0x4000 | 0x01ED, 0); // S_IFDIR | 0755
         } else if (f.type == FileType.FD_RTDIR) {
@@ -10275,6 +10282,9 @@ private immutable VFEntry[] g_vfs = [
     { "/proc/sys/kernel/kptr_restrict",    "0\n"                                                       },
     { "/proc/sys/kernel/dmesg_restrict",   "0\n"                                                       },
     { "/proc/sys/kernel/perf_event_paranoid", "3\n"                                                   },
+    // A9.5: Android's libcutils opens ashmem as "/dev/ashmem" + this id (see androidDevIsHost); with no
+    // boot id it gave up, and gralloc could allocate no graphics buffer.
+    { "/proc/sys/kernel/random/boot_id",   "9b6c2a4e-1d3f-4e8a-b2c7-5f0a1e6d8c34\n"                     },
     { "/proc/sys/vm/overcommit_memory",    "0\n"                                                       },
     { "/proc/sys/vm/max_map_count",        "65536\n"                                                   },
     { "/proc/sys/fs/inotify/max_user_watches",   "8192\n"                                             },
@@ -14777,8 +14787,29 @@ public long linux_sys_uname(ulong buf) {
 public long linux_sys_getpid() {
     const int gp = cast(int)linuxPidForTask(cast(int)g_current_task_id);
     const int t = g_activeFdTabId;   // A7b: a task in a pid namespace sees ns-local pids
-    if (t >= 0 && t < FDTAB_COUNT && g_nsIds[t][1] != 0) return cast(long)pidnsLocal(g_nsIds[t][1], gp);
+    if (t >= 0 && t < FDTAB_COUNT && g_nsIds[t][1] != 0) {
+        if (androidGlobalPids()) return androidNsPid(g_nsIds[t][1], gp);
+        return cast(long)pidnsLocal(g_nsIds[t][1], gp);
+    }
     return cast(long)gp;
+}
+// A9.5: an Android container uses ONE pid space: the global ids its tids, fork results, kill/wait4,
+// /proc/<pid> and binder sender pids already are -- only its init keeps pid 1 (it checks getpid()==1;
+// global id 1 is the kernel's slot, never a user thread's).  With getpid() namespace-local and tids
+// global, bionic cached the main thread's tid from getpid(), and once task slots were recycled another
+// thread of the same process could carry the same number: ART's mutex owner checks then had two
+// threads each "holding" a lock (class.cc "not resolved during suspend-all status change", mutex.cc
+// "Unexpected state_ in unlock").
+private bool androidGlobalPids() @nogc nothrow {
+    const int ct = cast(int)g_current_task_id;
+    return ct >= 0 && ct < MAX_TASKS && g_taskAndroid[ct];
+}
+private long androidNsPid(uint nsId, int gpid) @nogc nothrow {
+    const int s = pidnsSlot(nsId);
+    if (s >= 0)
+        foreach (k; 0 .. g_pidns[s].nmap)
+            if (g_pidns[s].gpid[k] == gpid) return g_pidns[s].lpid[k] == 1 ? 1 : gpid;   // the ns init
+    return gpid;
 }
 
 public long linux_sys_rt_sigaction(ulong signum, ulong act, ulong oldact, ulong sigsetsize) {
@@ -15080,7 +15111,10 @@ public long linux_sys_getppid() {
     if (parent < 0 || parent >= MAX_TASKS) return 0;
     const int gp = cast(int)linuxPidForTask(parent);
     const int t = g_activeFdTabId;   // A7b: translate into the caller's pid namespace
-    if (t >= 0 && t < FDTAB_COUNT && g_nsIds[t][1] != 0) return cast(long)pidnsLocal(g_nsIds[t][1], gp);
+    if (t >= 0 && t < FDTAB_COUNT && g_nsIds[t][1] != 0) {
+        if (androidGlobalPids()) return androidNsPid(g_nsIds[t][1], gp);   // A9.5: see linux_sys_getpid
+        return cast(long)pidnsLocal(g_nsIds[t][1], gp);
+    }
     return cast(long)gp;
 }
 // Track A A4: setpgid records the task's process group for terminal ^C/^\ delivery.
@@ -15496,6 +15530,23 @@ public long linux_sys_chdir(ulong path) {
         int rparent; const(char)* rleaf; size_t rleafLen;
         const int ri = rtResolve(p, rparent, rleaf, rleafLen);
         if (ri >= 0 && ri < g_rtNodes && g_rt[ri].kind == RT_DIR) ok = true;
+    }
+    if (!ok) {
+        // A9.5: a container's directory -- through its chroot onto the Android overlays (/data lives
+        // in /.adata: credstore and gatekeeperd chdir into theirs and CHECK it) or the mounted image.
+        // The cwd keeps the path as the process sees it; relative opens go through the same rewrites.
+        char[1024] _cr = void, _co = void;
+        const(char)* q = nsApplyChroot(p, _cr.ptr, _cr.length);
+        if (q is null) q = p;
+        const(char)* ad = androidDataRewrite(q, _co.ptr, _co.length);
+        if (ad !is null) {
+            int rparent; const(char)* rleaf; size_t rleafLen;
+            const int ri = rtResolve(ad, rparent, rleaf, rleafLen);
+            if (ri >= 0 && ri < g_rtNodes && g_rt[ri].kind == RT_DIR) ok = true;
+        } else if (aVfsIsPath(q)) {
+            int sel; bool isDir;
+            if (aVfsResolve(q, sel, isDir) != 0 && isDir) ok = true;
+        }
     }
     if (!ok) return negErrno(ENOENT);
     const int t = cwdTabId();
@@ -17508,6 +17559,7 @@ public void binderNoteMmapFd(ulong fd, ulong uvaddr, ulong mappedLen) {
 private long rtChmodPath(const(char)* p, ushort mode) {
     if (p is null) return negErrno(EFAULT);
     if (androidSocketPath(p)) return 0;
+    if (cgIsPath(p)) return 0;   // A9.5: cgroup2 nodes have no mode to keep (see rtChownPath)
     char[1024] _adm2 = void;   // A9.4: a container's overlays (/data, /mnt, ...) keep their modes too
     { const(char)* ad = androidDataRewrite(p, _adm2.ptr, _adm2.length); if (ad !is null) p = ad; }
     { const int g = nsWriteGate(p); if (g != 0) return g; }   // appgate: the domain's view
@@ -17542,6 +17594,10 @@ private bool chownIsNoop(ulong u, ulong g) {
 
 private long rtChownPath(const(char)* p, ulong u, ulong g) {
     if (androidSocketPath(p)) return 0;
+    // A9.5: cgroup2 nodes carry no owner here (the tree is the container's own, A6/A8): libprocessgroup
+    // chowns every uid_N/pid_M group it makes for a service, and refused, init logged
+    // "createProcessGroup failed" for each and ran the service without its process group.
+    if (p !is null && cgIsPath(p)) return 0;
     // A9.3f: a chown under the container's /data lands on the rtfs overlay (/.adata), where it
     // persists like any rtfs node -- the Android runtime chowns its dalvik-cache.
     char[1024] _adc = void;
@@ -20164,9 +20220,19 @@ private bool androidDevIsHost(const(char)* c) @nogc nothrow {
         if (same) return true;
     }
     if (n >= 5 && c[0] == 'v' && c[1] == 'i' && c[2] == 'd' && c[3] == 'e' && c[4] == 'o') return true;   // video*
+    if (n > 6 && c[0] == 'a' && c[1] == 's' && c[2] == 'h' && c[3] == 'm' && c[4] == 'e' && c[5] == 'm') return true;   // ashmem<boot_id>
     if (n >= 3 && c[0] == 't' && c[1] == 't' && c[2] == 'y') return true;                                // tty*
     if (n == 14 && c[0] == '_') return true;                                                             // __properties__
     return false;
+}
+// A9.5: "/dev/ashmem<boot_id>" -- the name libcutils opens ashmem by since Android 10 -- for an
+// Android task; it is the same ashmem device.
+private bool androidAshmemBootPath(const(char)* p) @nogc nothrow {
+    const int ct = cast(int)g_current_task_id;
+    if (ct < 0 || ct >= MAX_TASKS || !g_taskAndroid[ct]) return false;
+    static immutable string pre = "/dev/ashmem";
+    foreach (k; 0 .. pre.length) if (p[k] != pre[k]) return false;
+    return p[pre.length] != 0 && p[pre.length] != '/';
 }
 private const(char)* androidDataRewrite(const(char)* path, char* buf, size_t cap) {
     const(char)* q = androidStripAroot(path);
@@ -20342,8 +20408,71 @@ private Ext4Mount* aVfsMount(int sel) @nogc nothrow {
 // rerooted by the caller's chroot first, so a pivot_root'd container's "/system/bin/linker64"
 // resolves to /aroot/system/bin/linker64.  A missing APEX linker64 falls back to the bootstrap one.
 // Returns true with *physOut/*sizeOut set; the caller owns the pages.
+// A9.5: a page cache for the read-only Android images.  A read-only mmap of an ext4 file maps one
+// shared frame per (image, inode, page), copy-on-write, instead of a private copy per mapping: every
+// Android process maps libc, libc++, libbinder, libart, ANGLE, the boot image's oat/vdex ... and the
+// ~40 services plus each zygote restart each carried their own copies until the 4 GiB VM ran out of
+// pages (and starved the desktop).  The cache holds one reference to each frame (mappings add theirs
+// via mapSharedCowPage), so a write always copies.  Bounded; past the bound callers copy as before.
+private struct Ext4PgEnt { bool used; ubyte sel; uint ino; uint pg; ulong phys; }
+private enum uint EXT4PC_CAP = 65536;
+private __gshared Ext4PgEnt[EXT4PC_CAP] g_ext4Pc;      // zero-init: .bss
+private __gshared uint g_ext4PcUsed;
+public ulong ext4MmapPagePhys(int fd, ulong off) {
+    import memory.mm : alloc_phys_page, free_phys_page;
+    if (fd < 0 || fd >= 1024 || (off & 0xFFF) != 0) return 0;
+    File* f = &g_fdTable[fd];
+    if (f.type != FileType.FD_EXT4) return 0;
+    const ulong enc = cast(ulong)f.backend;
+    const int sel = cast(int)(enc >> 56);
+    const uint ino = cast(uint)(enc & 0xFFFF_FFFF);
+    auto m = aVfsMount(sel);
+    if (m is null) return 0;
+    uint mode; ulong sz;
+    if (!ext4InodeInfo(*m, ino, &mode, &sz) || off >= sz || (mode & 0xF000) != 0x8000) return 0;
+    const uint pg = cast(uint)(off >> 12);
+    const uint h = (ino * 2654435761u) ^ (pg * 40503u) ^ cast(uint)sel;
+    foreach (probe; 0 .. 64) {
+        auto e = &g_ext4Pc[(h + probe) & (EXT4PC_CAP - 1)];
+        if (e.used) {
+            if (e.ino == ino && e.pg == pg && e.sel == sel) return e.phys;
+            continue;
+        }
+        if (g_ext4PcUsed >= EXT4PC_CAP / 4 * 3) return 0;
+        const ulong ph = alloc_phys_page();
+        if (ph == 0) return 0;
+        auto dst = cast(ubyte*)phys_to_virt(ph);
+        const ulong want = (sz - off) < 4096 ? (sz - off) : 4096;
+        ulong done = 0;
+        while (done < want) {
+            const long got = ext4ReadInodeAt(*m, ino, off + done, dst + done, cast(uint)(want - done));
+            if (got <= 0) break;
+            done += cast(ulong)got;
+        }
+        if (done < want) { free_phys_page(ph); return 0; }
+        foreach (k; cast(size_t)want .. 4096) dst[k] = 0;
+        e.used = true; e.sel = cast(ubyte)sel; e.ino = ino; e.pg = pg; e.phys = ph;
+        ++g_ext4PcUsed;
+        return ph;
+    }
+    return 0;
+}
+
+// DIAGNOSTIC (A9.5): where kernel memory sits -- rtfs payloads, memfd backings, the image caches.
+public void androidMemBreakdown() {
+    ulong mfdBytes = 0; uint mfdN = 0;
+    foreach (i; 0 .. g_memfdCap) if (memfdAt(cast(int)i).inUse) { ++mfdN; mfdBytes += memfdAt(cast(int)i).size; }
+    ulong exBytes = 0; uint exN = 0;
+    foreach (ref ce; g_ext4ExecCache) if (ce.phys != 0) { ++exN; exBytes += (ce.size + 4095) & ~4095UL; }
+    klog("[adump] rtfs="); klog_dec(g_rtBytes >> 20); klog("MiB memfd="); klog_dec(mfdBytes >> 20);
+    klog("MiB/"); klog_dec(mfdN); klog(" pgcache="); klog_dec((cast(ulong)g_ext4PcUsed * 4096) >> 20);
+    klog("MiB execcache="); klog_dec(exBytes >> 20); klog("MiB/"); klog_dec(exN);
+}
+
+private struct Ext4ExecImg { int sel; uint ino; ulong size; ulong phys; }
+private __gshared Ext4ExecImg[128] g_ext4ExecCache;   // see ext4ExecImage (zero-init: .bss)
 public bool ext4ExecImage(const(char)* path, ulong* physOut, ulong* sizeOut) {
-    import memory.mm : alloc_phys_pages;
+    import memory.mm : alloc_phys_pages, free_phys_pages;
     char[1024] rbuf;
     const(char)* rp = nsApplyChroot(path, rbuf.ptr, rbuf.length);
     const(char)* ep = (rp !is null) ? rp : path;
@@ -20371,6 +20500,15 @@ public bool ext4ExecImage(const(char)* path, ulong* physOut, ulong* sizeOut) {
     if (m is null) return false;
     uint mode; ulong sz;
     if (!ext4InodeInfo(*m, ino, &mode, &sz) || sz == 0) return false;
+    // A9.5: one read-only copy per image file, kept: loadElf only reads it (segments are copied into
+    // fresh pages), and the images are read-only.  Read afresh for every exec and never freed, each
+    // Android exec leaked the binary plus the ~1.7 MiB linker64 -- hundreds of MiB as init restarted
+    // services, until the kernel ran out of pages.
+    foreach (ref ce; g_ext4ExecCache)
+        if (ce.phys != 0 && ce.sel == sel && ce.ino == ino && ce.size == sz) {
+            *physOut = ce.phys; *sizeOut = sz;
+            return true;
+        }
     const uint pages = cast(uint)((sz + 4095) / 4096);
     const ulong phys = alloc_phys_pages(pages);
     if (phys == 0) return false;
@@ -20382,7 +20520,9 @@ public bool ext4ExecImage(const(char)* path, ulong* physOut, ulong* sizeOut) {
         if (got <= 0) break;
         off += cast(ulong)got;
     }
-    if (off < sz) return false;
+    if (off < sz) { free_phys_pages(phys, pages); return false; }
+    foreach (ref ce; g_ext4ExecCache)
+        if (ce.phys == 0) { ce.sel = sel; ce.ino = ino; ce.size = sz; ce.phys = phys; break; }
     *physOut = phys; *sizeOut = sz;
     return true;
 }

@@ -35,6 +35,7 @@ __gshared ulong g_next_phys_alloc = 0x100000;
 // above 4 GiB -- and Firefox's forks landed there: copy-on-write pages looked exclusive, a child's
 // exec freed frames its parent still mapped, and the parent's thread-pointer page turned to garbage.
 // g_pfnCap is 0 until init_mm has run (every table access checks it, so early boot is untracked).
+__gshared ulong g_bootCr3 = 0;   // the boot page table: kernel-only, safe to load while freeing a task's
 __gshared size_t g_pfnCap = 0;                // pages tracked = highest usable PFN + 1
 __gshared ulong  g_tabResStart = 0;           // [start, end) of RAM holding the tables below
 __gshared ulong  g_tabResEnd   = 0;
@@ -364,6 +365,7 @@ void init_mm(limine_memmap_response* r) {
         import ldc.llvmasm;
         ulong cr3 = __asm!ulong("mov %cr3, $0", "=r");
         klog("init_mm: CR3="); klog_hex(cr3); klog("\n");
+        g_bootCr3 = cr3;
 
         ulong* pml4 = cast(ulong*)(cr3 + hhdm_offset);
         // Recursive mapping at 510 (0x1FE)

@@ -368,6 +368,35 @@ bool handlePageFault(int taskId, ulong virtAddr, bool isWrite) {
 // loaded address space: read-only and copy-on-write, holding a reference.  A write (after an mprotect,
 // which never grants write to such a page) takes a private copy in handlePageFault; the file and every
 // other process keep the original.  Sharing is what stops each Firefox process from copying libxul.
+// A9.5: free an address space's user-half page-table pages (PDPT/PD/PT under PML4[0..255]) and its
+// PML4.  Exit and exec freed the frames of owned regions but never the tables -- every fork leaked its
+// child's page tables, and Android's init forks about once a second while it restarts services, until
+// the kernel ran out of pages.  Leaf frames still mapped (device / memfd / binder windows) are not
+// this address space's to free and are left alone.  The caller must not have `pml4Phys` loaded.
+public void freeUserPageTables(ulong pml4Phys) {
+    import memory.mm : g_bootCr3;
+    if (pml4Phys == 0 || pml4Phys == g_bootCr3) return;
+    auto p4 = cast(ulong*)(pml4Phys + hhdm_offset);
+    foreach (a; 0 .. 256) {
+        if (!(p4[a] & PTE_PRESENT)) continue;
+        const ulong pdptPhys = p4[a] & PTE_ADDR_MASK;
+        auto p3 = cast(ulong*)(pdptPhys + hhdm_offset);
+        foreach (b; 0 .. 512) {
+            if (!(p3[b] & PTE_PRESENT) || (p3[b] & PTE_PS)) continue;
+            const ulong pdPhys = p3[b] & PTE_ADDR_MASK;
+            auto p2 = cast(ulong*)(pdPhys + hhdm_offset);
+            foreach (c; 0 .. 512) {
+                if (!(p2[c] & PTE_PRESENT) || (p2[c] & PTE_PS)) continue;
+                free_phys_page(p2[c] & PTE_ADDR_MASK);        // a page table
+            }
+            free_phys_page(pdPhys);
+        }
+        free_phys_page(pdptPhys);
+        p4[a] = 0;
+    }
+    free_phys_page(pml4Phys);
+}
+
 public void mapSharedCowPage(ulong phys, ulong va) {
     physPageRefInc(phys);
     map_page_hhdm(phys, va, PTE_PRESENT | PTE_USER | PTE_COW, &alloc_phys_page);

@@ -486,6 +486,19 @@ private void androidTaskDump() {
     if (!any) return;
     g_adumpNextMs = now + 10_000;
     ++g_adumpN;
+    {   // A9.5: free memory each round -- does Android's restart churn leak, or only fragment?
+        import memory.mm : memStats;
+        ulong totalB, freeB; memStats(totalB, freeB);
+        klog("[adump] mem free="); klog_dec(freeB >> 20); klog("MiB of "); klog_dec(totalB >> 20);
+        klog("MiB n="); klog_dec(cast(ulong)g_adumpN); klog("\n");
+        import core.syscalls.posix : androidMemBreakdown;
+        import core.android.binder : binderMemStats;
+        androidMemBreakdown();
+        uint bp, bn; ulong bb; binderMemStats(bp, bb, bn);
+        uint live = 0; foreach (i; 1 .. MAX_TASKS) if (g_tasks[i].active && !g_tasks[i].exited) ++live;
+        klog(" binder="); klog_dec(bp); klog("procs/"); klog_dec(bb >> 20); klog("MiB nodes="); klog_dec(bn);
+        klog(" tasks="); klog_dec(live); klog("\n");
+    }
     if (g_adumpN >= 2 && g_adumpN <= 4) {
         import core.syscalls.posix : androidPropDebugScan;
         androidPropDebugScan("hwservicemanager.ready");
@@ -1076,6 +1089,18 @@ private void exitTask(int tid, int code) {
                 else if (p.waitingForPid == tid) unblock = true;
                 if (unblock) p.waiting = false;
             }
+            // A9.5: an Android process's children are the process's (wait4Task): a sibling thread of
+            // the forking one may be the one blocked in wait4.
+            if (g_taskAndroid[parent] && p.processLeaderTid > 0) {
+                foreach (s; 1 .. MAX_TASKS) {
+                    if (s == parent || s == tid) continue;
+                    auto st = &g_tasks[s];
+                    if (!st.active || st.exited || st.processLeaderTid != p.processLeaderTid) continue;
+                    if (st.waiting && !g_futexWaitActive[s] && !g_pollBlocked[s]
+                        && (st.waitingForPid == -1 || st.waitingForPid == tid))
+                        st.waiting = false;
+                }
+            }
             // Z1: if the parent installed a SIGCHLD handler (zsh does, and waits for jobs
             // via sigsuspend+SIGCHLD rather than a blocking waitpid), raise a pending
             // SIGCHLD so the run loop invokes that handler — which reaps the child and
@@ -1108,6 +1133,17 @@ private void exitTask(int tid, int code) {
                 for (ulong va = r.start; va < r.end; va += 4096) {
                     ulong phys = unmap_page_hhdm(va);
                     if (phys != 0) free_phys_page(phys);
+                }
+            }
+            // A9.5: and the page tables themselves -- from the boot table, never the one being freed.
+            {
+                import core.addrspace : freeUserPageTables;
+                import memory.mm : g_bootCr3;
+                const ulong dead = t.pml4Phys;
+                if (g_bootCr3 != 0 && dead != g_bootCr3) {
+                    x64WriteCR3(g_bootCr3);
+                    freeUserPageTables(dead);
+                    foreach (i; 0 .. MAX_TASKS) if (g_tasks[i].pml4Phys == dead) g_tasks[i].pml4Phys = 0;
                 }
             }
         }
@@ -1842,6 +1878,15 @@ private long execveTask(int tid, ulong pathPtr, ulong argvPtr, ulong envpPtr) {
     archMapKernel(newPml4);
     x64WriteCR3(newPml4);
 
+    // A9.5: the outgoing address space's page tables go too, unless another task still runs on them.
+    {
+        const ulong oldPml4 = task.pml4Phys;
+        if (!asShared && oldPml4 != 0) {
+            import core.addrspace : freeUserPageTables;
+            freeUserPageTables(oldPml4);
+            foreach (i; 0 .. MAX_TASKS) if (i != tid && g_tasks[i].pml4Phys == oldPml4) g_tasks[i].pml4Phys = 0;
+        }
+    }
     task.pml4Phys    = newPml4;
     rtabDetach(*task);   // a vfork child leaves its parent's table; a sole owner frees it
     task.brkStart    = 0;
@@ -3961,27 +4006,41 @@ private long wait4Task(int tid, int waitPid, ulong statusPtr, ulong options) {
         if (targetTid < 0 || targetTid >= MAX_TASKS) return -10; // ECHILD
     }
 
-    // Reap an already-exited matching child.
-    if (anyChild) {
-        for (int c = 1; c < MAX_TASKS; c++) {
-            if (task.childExited[c]) {
-                int code = task.childExitCode[c];
-                task.childExited[c] = false;
+    // A9.5: an Android process's children are the PROCESS's, as on Linux -- any of its threads may
+    // wait for a child another thread forked (perfetto's traced_probes forks on one thread and
+    // waitpid()s on another; it got ECHILD and trapped).  The desktop keeps per-thread children.
+    const bool procWide = g_taskAndroid[tid] && task.processLeaderTid > 0;
+    const int myLead = task.processLeaderTid;
+    bool isMine(int parentTid) {
+        if (parentTid == tid) return true;
+        return procWide && parentTid > 0 && parentTid < MAX_TASKS
+            && g_tasks[parentTid].processLeaderTid == myLead;
+    }
+    // Reap an already-exited matching child (recorded on whichever of our threads forked it).
+    for (int p = 1; p < MAX_TASKS; p++) {
+        if (p != tid && !(procWide && g_tasks[p].active && g_tasks[p].processLeaderTid == myLead)) continue;
+        auto pt = &g_tasks[p];
+        if (anyChild) {
+            for (int c = 1; c < MAX_TASKS; c++) {
+                if (pt.childExited[c]) {
+                    int code = pt.childExitCode[c];
+                    pt.childExited[c] = false;
+                    if (statusPtr != 0) *cast(int*)statusPtr = (code & 0xff) << 8;
+                    int childPid = g_childExitLinuxPid[c] != 0 ? g_childExitLinuxPid[c] : linuxPidForTask(c);
+                    releaseTask(c);
+                    return cast(long)childPid;
+                }
+            }
+        } else {
+            uint c = cast(uint)targetTid;
+            if (c < MAX_TASKS && pt.childExited[c]) {
+                int code = pt.childExitCode[c];
+                pt.childExited[c] = false;
                 if (statusPtr != 0) *cast(int*)statusPtr = (code & 0xff) << 8;
-                int childPid = g_childExitLinuxPid[c] != 0 ? g_childExitLinuxPid[c] : linuxPidForTask(c);
+                int childPid = g_childExitLinuxPid[c] != 0 ? g_childExitLinuxPid[c] : linuxPidForTask(cast(int)c);
                 releaseTask(c);
                 return cast(long)childPid;
             }
-        }
-    } else {
-        uint c = cast(uint)targetTid;
-        if (c < MAX_TASKS && task.childExited[c]) {
-            int code = task.childExitCode[c];
-            task.childExited[c] = false;
-            if (statusPtr != 0) *cast(int*)statusPtr = (code & 0xff) << 8;
-            int childPid = g_childExitLinuxPid[c] != 0 ? g_childExitLinuxPid[c] : linuxPidForTask(cast(int)c);
-            releaseTask(c);
-            return cast(long)childPid;
         }
     }
 
@@ -3991,13 +4050,13 @@ private long wait4Task(int tid, int waitPid, ulong statusPtr, ulong options) {
     bool hasLivingChild = false;
     if (anyChild) {
         for (int i = 1; i < MAX_TASKS; i++)
-            if (g_tasks[i].active && !g_tasks[i].exited && g_tasks[i].parentId == tid) {
+            if (g_tasks[i].active && !g_tasks[i].exited && isMine(g_tasks[i].parentId)) {
                 hasLivingChild = true; break;
             }
     } else {
         if (targetTid > 0 && targetTid < MAX_TASKS &&
             g_tasks[targetTid].active && !g_tasks[targetTid].exited &&
-            g_tasks[targetTid].parentId == tid)
+            isMine(g_tasks[targetTid].parentId))
             hasLivingChild = true;
     }
     if (!hasLivingChild) return -10; // ECHILD — no matching child at all
@@ -5245,9 +5304,11 @@ private void dispatchSyscall(int tid) {
                     }
                 }
                 if (shareFile) {
-                    import core.syscalls.posix : rtfsMmapPagePhys;
+                    import core.syscalls.posix : rtfsMmapPagePhys, ext4MmapPagePhys;
                     import core.addrspace : mapSharedCowPage;
-                    const ulong sp = rtfsMmapPagePhys(cast(int)mfd, moffset + pg * 4096);
+                    ulong sp = rtfsMmapPagePhys(cast(int)mfd, moffset + pg * 4096);
+                    if (sp == 0 && g_taskAndroid[tid])   // A9.5: the Android images' page cache
+                        sp = ext4MmapPagePhys(cast(int)mfd, moffset + pg * 4096);
                     if (sp != 0) {
                         mapSharedCowPage(sp, vaddr + pg * 4096);
                         ++mappedPgs;
@@ -5284,7 +5345,14 @@ private void dispatchSyscall(int tid) {
                 if (useFile && alignedLen >= 0x10000) {
                     klog("[mmap-so] base="); klog_hex(vaddr);
                     klog(" len="); klog_hex(alignedLen);
-                    klog(" fd="); klog_hex(mfd); klog("\n");
+                    klog(" fd="); klog_hex(mfd);
+                    // A9.5: the file it maps (as opened), so a crash RIP names its library.
+                    if (g_taskAndroid[tid] && mfd < 1024) {
+                        import core.syscalls.posix : g_fdPath, g_activeFdTabId;
+                        klog(" t="); klog_dec(cast(ulong)tid); klog(" ");
+                        klog(g_fdPath[g_activeFdTabId][cast(size_t)mfd].ptr);
+                    }
+                    klog("\n");
                 }
             } else {
                 if (mappedPgs != 0)
@@ -7386,6 +7454,29 @@ private void kernelLoop() {
                     ++g_syncSegvLogN;
                     klog("[sig] sync SIGSEGV t="); klog_dec(cast(ulong)tid);
                     klog(" cr2="); klog_hex(cr2); klog(" rip="); klog_hex(faultRip);
+                    // A9.5: likely return addresses on the faulting stack (code-range words in the
+                    // first 512 bytes; the frame was already pushed below, so read the ucontext's RSP).
+                    if (cr2 < 0x1000) {
+                        const ulong gsp = task.regs[REG_RSP] + 8 + 40 + 15 * 8;   // uc_mcontext.gregs[REG_RSP]
+                        const ulong ursp = userPageMapped(tid, gsp) ? *cast(ulong*)gsp : 0;
+                        klog(" stk:");
+                        for (ulong i = 0; i < 64; ++i) {
+                            const ulong a = ursp + i * 8;
+                            if (a < 0x1000 || !userPageMapped(tid, a)) break;
+                            const ulong v = *cast(ulong*)a;
+                            if (v >= 0x740000000000 && v < 0x750000000000) { klog(" "); klog_hex(v); }
+                        }
+                        // the instruction bytes around the fault, to find its function in the image
+                        if (userPageMapped(tid, faultRip) && userPageMapped(tid, faultRip - 16)) {
+                            klog(" code:");
+                            foreach (k; 0 .. 32) {
+                                if (k == 16) klog("|");
+                                const ubyte b = *cast(ubyte*)(faultRip - 16 + k);
+                                static immutable string hx = "0123456789abcdef";
+                                char[3] c = [hx[b >> 4], hx[b & 15], 0]; klog(c.ptr);
+                            }
+                        }
+                    }
                     klog("\n");
                 }
             } else if (!pfResolved) {

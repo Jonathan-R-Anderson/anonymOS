@@ -72,6 +72,8 @@ enum uint BR_CLEAR_DEATH_NOTIFICATION_DONE = 0x8008_7210; // _IOR('r',16, binder
 enum uint BR_FAILED_REPLY         = 0x0000_7211;
 enum uint BR_INCREFS              = 0x8010_7207;  // _IOR('r',7, binder_ptr_cookie) -- take a weak ref
 enum uint BR_ACQUIRE              = 0x8010_7208;  // _IOR('r',8, binder_ptr_cookie) -- take a strong ref
+enum uint BR_RELEASE              = 0x8010_7209;  // _IOR('r',9, binder_ptr_cookie) -- drop it
+enum uint BR_DECREFS              = 0x8010_720A;  // _IOR('r',10, binder_ptr_cookie) -- drop the weak ref
 
 // Transaction flags (binder_transaction_data.flags).
 enum uint TF_ONE_WAY = 0x01;   // asynchronous: no reply, no transaction stack entry
@@ -198,7 +200,7 @@ private __gshared BinderProc[MAX_PROCS] g_procs;
 // Threads are keyed by (proc, kernel task id); the self-test passes no tid and gets one pseudo-thread
 // per proc, which is the old single-threaded behaviour exactly.
 private enum int MAX_BTHREADS = 256;
-private enum int TMAIL_CAP    = 8;
+private enum int TMAIL_CAP    = 32;   // A9.5: holds a call's ref commands + its TRANSACTION_COMPLETE
 private struct BinderThread {
     bool used;
     int  proc;
@@ -235,6 +237,18 @@ private bool tmailPush(int t, uint code, const ref BinderTxData tx, int fromThre
     ++th.mailLen;
     return true;
 }
+// A9.5: the sender's BR_TRANSACTION_COMPLETE / BR_FAILED_REPLY goes on its own todo, BEHIND the
+// BR_INCREFS/BR_ACQUIRE that translating the call's objects queued there -- real binder's order.
+// libhwbinder's sendReply returns at TRANSACTION_COMPLETE and drops its temporary reference to an
+// object it just handed out; written first, the acquire was still unread, the object's last strong
+// ref went, and the composer destroyed the IComposerClient SurfaceFlinger had just been given
+// ("destroying composer client" -> "Missing HWC primary display" -> SurfaceFlinger aborted).
+private void completeTo(int me, ubyte* rbuf, ulong rsize, ref ulong rpos, uint code) {
+    BinderTxData none;
+    if (me >= 0 && tmailPush(me, code, none, -1)) return;
+    putU32(rbuf, rsize, rpos, code);    // no thread slot / queue full: deliver it directly, as before
+}
+
 // A caller whose callee went away before replying gets BR_DEAD_REPLY, as from real binder.
 private void deadReplyTo(int caller) {
     if (caller < 0 || caller >= MAX_BTHREADS || !g_bthreads[caller].used) return;
@@ -274,6 +288,13 @@ public void binderDebugTask(int id, int tid) {
         klog(" in="); klog_dec(cast(ulong)th.inN);
         klog(" tm="); klog_dec(cast(ulong)th.mailLen);
     }
+}
+
+/// DIAGNOSTIC (A9.5): live binder procs and the receive-region bytes they hold.
+public void binderMemStats(out uint procs, out ulong regionBytes, out uint nodes) {
+    procs = 0; regionBytes = 0; nodes = 0;
+    foreach (ref p; g_procs) if (p.used) { ++procs; regionBytes += p.regionSize; }
+    foreach (ref n; g_nodes) if (n.used) ++nodes;
 }
 
 /// BINDER_THREAD_EXIT: the thread leaves; callers still waiting on it get BR_DEAD_REPLY.
@@ -361,6 +382,34 @@ public void binderFree(int id) {
 }
 
 private void binderDestroy(int id) {
+    // A9.5: the references this proc held go with it.  A node no other proc still has a handle to is
+    // released to its owner (BR_RELEASE / BR_DECREFS, undoing nodeTellOwner) -- libbinder then drops
+    // its strong/weak ref.  Without this a dead client's objects lived on: after SurfaceFlinger died the
+    // composer still held its IComposerClient ("previous client was not destroyed") and refused every
+    // restarted SurfaceFlinger a new one.
+    foreach (h; 0 .. MAX_HANDLES) {
+        const int nidx = g_procs[id].handleNode[h];
+        if (nidx < 0 || nidx >= MAX_NODES || !g_nodes[nidx].used) continue;
+        auto nd = &g_nodes[nidx];
+        if (nd.owner == id || nd.owner < 0 || nd.owner >= MAX_PROCS || !g_procs[nd.owner].used) continue;
+        bool held = false;
+        foreach (p; 0 .. MAX_PROCS) {
+            if (p == id || !g_procs[p].used || p == nd.owner) continue;
+            foreach (h2; 0 .. MAX_HANDLES) if (g_procs[p].handleNode[h2] == nidx) { held = true; break; }
+            if (held) break;
+        }
+        // drop this proc's death subscriptions on the node either way
+        for (int sidx = 0; sidx < nd.subN; ) {
+            if (nd.subProc[sidx] == id) {
+                foreach (t; sidx .. nd.subN - 1) { nd.subProc[t] = nd.subProc[t + 1]; nd.subCookie[t] = nd.subCookie[t + 1]; }
+                --nd.subN;
+            } else ++sidx;
+        }
+        if (held) continue;
+        BinderTxData pc; pc.target = nd.ptr; pc.cookie = nd.cookie;
+        if (nd.acquireSent && mailPush(nd.owner, BR_RELEASE, pc)) nd.acquireSent = false;
+        if (nd.increfsSent && !nd.acquireSent && mailPush(nd.owner, BR_DECREFS, pc)) nd.increfsSent = false;
+    }
     foreach (n; 0 .. MAX_NODES) {
         if (!g_nodes[n].used || g_nodes[n].owner != id) continue;
         foreach (s; 0 .. g_nodes[n].subN) {
@@ -881,9 +930,9 @@ public long binderWriteRead(int id, const(ubyte)* wbuf, ulong wsize, ulong* wcon
                 if (tgt < 0) btrace(id, -1, tx, false, null, 0, 0, "NOTARGET");
                 if (tgt >= 0 && deliverTxn(id, tgt, tx, false, copyin, toThread, sync ? me : -1, sgBuffers) == 0) {
                     if (sync && me >= 0) ++g_bthreads[me].outstanding;
-                    putU32(rbuf, rsize, rpos, BR_TRANSACTION_COMPLETE);
+                    completeTo(me, rbuf, rsize, rpos, BR_TRANSACTION_COMPLETE);
                 } else {
-                    putU32(rbuf, rsize, rpos, BR_FAILED_REPLY);
+                    completeTo(me, rbuf, rsize, rpos, BR_FAILED_REPLY);
                 }
                 break;
             }
@@ -904,9 +953,9 @@ public long binderWriteRead(int id, const(ubyte)* wbuf, ulong wsize, ulong* wcon
                 }
                 if (dest < 0) btrace(id, -1, tx, true, null, 0, 0, "NODEST");
                 if (dest >= 0 && deliverTxn(id, dest, tx, true, copyin, destThread, -1, sgBuffers) == 0)
-                    putU32(rbuf, rsize, rpos, BR_TRANSACTION_COMPLETE);
+                    completeTo(me, rbuf, rsize, rpos, BR_TRANSACTION_COMPLETE);
                 else
-                    putU32(rbuf, rsize, rpos, BR_FAILED_REPLY);
+                    completeTo(me, rbuf, rsize, rpos, BR_FAILED_REPLY);
                 break;
             }
             default:
@@ -945,7 +994,8 @@ public long binderWriteRead(int id, const(ubyte)* wbuf, ulong wsize, ulong* wcon
         } else break;
         const uint code = src.code;
         const bool isDeath = (code == BR_DEAD_BINDER || code == BR_CLEAR_DEATH_NOTIFICATION_DONE);
-        const bool isRef   = (code == BR_INCREFS || code == BR_ACQUIRE);   // binder_ptr_cookie
+        const bool isRef   = (code == BR_INCREFS || code == BR_ACQUIRE
+                           || code == BR_RELEASE || code == BR_DECREFS);   // binder_ptr_cookie
         const ulong need = payloadless(code) ? 4 : isDeath ? (4 + 8) : isRef ? (4 + 16) : (4 + BinderTxData.sizeof);
         if (rpos + need > rsize) break;
         const Mail m = *src;
@@ -994,7 +1044,7 @@ private bool testFindTxn(const(ubyte)* b, ulong len, uint want, ref BinderTxData
             p += BinderTxData.sizeof;
         } else if (code == BR_DEAD_BINDER || code == BR_CLEAR_DEATH_NOTIFICATION_DONE) {
             p += 8;
-        } else if (code == BR_INCREFS || code == BR_ACQUIRE) {
+        } else if (code == BR_INCREFS || code == BR_ACQUIRE || code == BR_RELEASE || code == BR_DECREFS) {
             p += 16;
         }
         // BR_NOOP / BR_TRANSACTION_COMPLETE carry no payload.
@@ -1031,7 +1081,7 @@ private bool testFindDead(const(ubyte)* b, ulong len, ref ulong cookie) @nogc no
             return true;
         } else if (code == BR_CLEAR_DEATH_NOTIFICATION_DONE) {
             p += 8;
-        } else if (code == BR_INCREFS || code == BR_ACQUIRE) {
+        } else if (code == BR_INCREFS || code == BR_ACQUIRE || code == BR_RELEASE || code == BR_DECREFS) {
             p += 16;
         } else if (code == BR_TRANSACTION || code == BR_REPLY) {
             if (p + BinderTxData.sizeof > len) break;

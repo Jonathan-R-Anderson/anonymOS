@@ -14,11 +14,20 @@ compat_fetch() {   # <dir> <repo> <commit> [--recurse]
         git -C "$dir" init -q
         git -C "$dir" remote add origin "$repo"
     fi
-    if ! git -C "$dir" cat-file -e "$commit^{commit}" 2>/dev/null; then
-        echo "Fetching $(basename "$dir") $commit ..."
+    if [[ ! "$commit" =~ ^[0-9a-f]{40}$ ]]; then
+        # A moving ref (HEAD, a branch): always fetch the latest, and check out what was fetched --
+        # the ref names the REMOTE's commit, which a fresh repo has no local name for.
+        echo "Fetching $(basename "$dir") $commit (latest) ..."
         git -C "$dir" fetch --depth 1 origin "$commit"
+        git -C "$dir" checkout -q FETCH_HEAD
+    else
+        if ! git -C "$dir" cat-file -e "$commit^{commit}" 2>/dev/null; then
+            echo "Fetching $(basename "$dir") $commit ..."
+            git -C "$dir" fetch --depth 1 origin "$commit"
+        fi
+        git -C "$dir" checkout -q "$commit"
     fi
-    git -C "$dir" checkout -q "$commit"
+    echo "$(basename "$dir") at $(git -C "$dir" rev-parse HEAD)"
     if [ "$recurse" = "--recurse" ]; then
         git -C "$dir" submodule update --init --recursive --depth 1
     fi

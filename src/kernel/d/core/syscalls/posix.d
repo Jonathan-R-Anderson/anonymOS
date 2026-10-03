@@ -19090,7 +19090,13 @@ private uint paAlign4(uint x) @nogc nothrow { return (x + 3) & ~3u; }
 // Build a prop_area (header + trie) for the given name=value pairs; returns total byte length.
 // prop_bt fields (data_-relative): namelen(0) prop(4) left(8) right(12) children(16) name(20).
 // prop_info fields: serial(0) value[92](4) name(96).  All offsets are data_-relative (data_ = +PA_HDR).
-private uint buildPropArea(const(string)[] names, const(string)[] values, ubyte* o, uint cap) @nogc nothrow {
+// A value of PROP_VALUE_MAX bytes or more is stored as bionic's "long" ro.* property (A9.3u): the
+// prop_info's serial carries kLongFlag and the legacy error text's length, the value slot holds that
+// error text, and the u32 at value+56 is the long value's offset from the prop_info (bionic
+// prop_area::new_prop_info).  A property that would not fit in `cap` is skipped, never half-written.
+private enum uint PROP_LONG_FLAG = 1u << 16;
+private static immutable string PROP_LONG_ERR = "Must use __system_property_read_callback() to read";
+private uint buildPropArea(const(char[])[] names, const(char[])[] values, ubyte* o, uint cap) @nogc nothrow {
     foreach (i; 0 .. cap) o[i] = 0;
     paPut32(o, 8,  PROP_AREA_MAGIC);
     paPut32(o, 12, PROP_AREA_VERSION);
@@ -19102,11 +19108,14 @@ private uint buildPropArea(const(string)[] names, const(string)[] values, ubyte*
         foreach (k; 0 .. nl) o[PA_HDR + off + 20 + k] = cast(ubyte)nm[k];
         return off;
     }
+    // bionic's cmp_prop_name: SHORTER names sort first, and only equal lengths compare bytes.  The
+    // sibling BST must be built in exactly that order or bionic's lookup walks the wrong branch -- with
+    // 10 seeded properties the trees were too small to notice; with the image's 200+ it missed most.
     int btcmp(const(char)* nm, uint nl, uint bo) @nogc nothrow {
         const uint bl = paGet32(o, PA_HDR + bo);
-        const uint m = nl < bl ? nl : bl;
-        foreach (k; 0 .. m) { const int d = cast(int)cast(ubyte)nm[k] - cast(int)o[PA_HDR + bo + 20 + k]; if (d) return d; }
-        return cast(int)nl - cast(int)bl;
+        if (nl != bl) return nl < bl ? -1 : 1;
+        foreach (k; 0 .. nl) { const int d = cast(int)cast(ubyte)nm[k] - cast(int)o[PA_HDR + bo + 20 + k]; if (d) return d; }
+        return 0;
     }
     uint findChild(uint po, const(char)* nm, uint nl) @nogc nothrow {
         uint root = paGet32(o, PA_HDR + po + 16);
@@ -19122,18 +19131,38 @@ private uint buildPropArea(const(string)[] names, const(string)[] values, ubyte*
         }
     }
     foreach (pi; 0 .. names.length) {
-        const string full = names[pi];
+        const(char)[] full = names[pi];
+        if (full.length == 0) continue;
+        {   // worst case: a fresh trie node per segment, the prop_info, a long value
+            uint need = 4 + PROP_VALUE_MAX + cast(uint)full.length + 1 + 8;
+            uint s0 = 0;
+            while (s0 < full.length) {
+                uint e0 = s0; while (e0 < full.length && full[e0] != '.') ++e0;
+                need += paAlign4(20 + (e0 - s0) + 1);
+                s0 = (e0 < full.length) ? e0 + 1 : e0;
+            }
+            if (values[pi].length >= PROP_VALUE_MAX) need += paAlign4(cast(uint)values[pi].length + 1);
+            if (PA_HDR + used + need > cap) continue;
+        }
         uint node = 0, s = 0;
         while (s < full.length) {
             uint e = s; while (e < full.length && full[e] != '.') ++e;
             node = findChild(node, full.ptr + s, cast(uint)(e - s));
             s = (e < full.length) ? e + 1 : e;
         }
-        uint vlen = cast(uint)values[pi].length; if (vlen > PROP_VALUE_MAX - 1) vlen = PROP_VALUE_MAX - 1;
+        const uint vlen = cast(uint)values[pi].length;
         const uint nlen = cast(uint)full.length;
         const uint io = alloc(4 + PROP_VALUE_MAX + nlen + 1);
-        paPut32(o, PA_HDR + io, vlen << 24);
-        foreach (k; 0 .. vlen) o[PA_HDR + io + 4 + k] = cast(ubyte)values[pi][k];
+        if (vlen < PROP_VALUE_MAX) {
+            paPut32(o, PA_HDR + io, vlen << 24);
+            foreach (k; 0 .. vlen) o[PA_HDR + io + 4 + k] = cast(ubyte)values[pi][k];
+        } else {
+            const uint lo = alloc(vlen + 1);
+            foreach (k; 0 .. vlen) o[PA_HDR + lo + k] = cast(ubyte)values[pi][k];
+            paPut32(o, PA_HDR + io, (cast(uint)PROP_LONG_ERR.length << 24) | PROP_LONG_FLAG);
+            foreach (k; 0 .. PROP_LONG_ERR.length) o[PA_HDR + io + 4 + k] = cast(ubyte)PROP_LONG_ERR[k];
+            paPut32(o, PA_HDR + io + 4 + 56, lo - io);
+        }
         foreach (k; 0 .. nlen) o[PA_HDR + io + 4 + PROP_VALUE_MAX + k] = cast(ubyte)full[k];
         paPut32(o, PA_HDR + node + 4, io);
     }
@@ -19179,19 +19208,112 @@ private uint buildPropertyInfo(ubyte* o, uint cap) @nogc nothrow {
     return total;
 }
 
-private __gshared ubyte[16384] g_paBuf;
+private __gshared ubyte[131072] g_paBuf;   // bionic's PA_SIZE
 private __gshared ubyte[1024]  g_piBuf;
 private __gshared ubyte[256]   g_psBuf;
+// A9.3u: the image's build-time properties, loaded the way init's PropertyLoadBootDefaults does --
+// every build.prop in partition order into one map, a later file overriding an earlier one -- then
+// the ro.product.* values init derives, then the runtime's own overrides below.  Ten hand-picked
+// values left Build.VERSION.<clinit> reading an empty ro.build.version.all_codenames ->
+// ArrayIndexOutOfBoundsException -> the zygote died preloading classes.
+private enum size_t APROP_MAX = 512;
+private __gshared char[65536] g_apropText = 0;      // the files' text; names/values slice into it (= 0: .bss, not 64 KiB of char.init 0xFF)
+private __gshared size_t g_apropTextLen;
+private __gshared const(char)[][APROP_MAX] g_apropN, g_apropV;
+private __gshared size_t g_apropCount;
+
+private const(char)[] apropGet(const(char)[] k) {
+    foreach (i; 0 .. g_apropCount) if (g_apropN[i] == k) return g_apropV[i];
+    return null;
+}
+private void apropPut(const(char)[] k, const(char)[] v) {
+    foreach (i; 0 .. g_apropCount) if (g_apropN[i] == k) { g_apropV[i] = v; return; }
+    if (g_apropCount < APROP_MAX) { g_apropN[g_apropCount] = k; g_apropV[g_apropCount] = v; ++g_apropCount; }
+}
+private bool apropSpace(char c) @nogc nothrow { return c == ' ' || c == '\t' || c == '\r'; }
+
+// Read one image file (an /aroot path) into g_apropText and take its `key=value` lines; comments,
+// blank lines and `import` directives are skipped.  A missing file is simply absent, as for init.
+private void apropLoadImageFile(const(char)* path) {
+    int sel; bool isDir;
+    const uint ino = aVfsResolve(path, sel, isDir);
+    if (ino == 0 || isDir) return;
+    Ext4Mount* m = aVfsMount(sel);
+    if (m is null) return;
+    uint mode; ulong size;
+    if (!ext4InodeInfo(*m, ino, &mode, &size)) return;
+    if (size == 0 || g_apropTextLen + size > g_apropText.length) return;
+    char* base = g_apropText.ptr + g_apropTextLen;
+    ulong got = 0;
+    while (got < size) {
+        const long n = ext4ReadInodeAt(*m, ino, got, cast(ubyte*)base + got, cast(uint)(size - got));
+        if (n <= 0) break;
+        got += cast(ulong)n;
+    }
+    g_apropTextLen += cast(size_t)got;
+    size_t i = 0;
+    while (i < got) {
+        size_t e = i; while (e < got && base[e] != '\n') ++e;
+        size_t a = i, b = e;
+        while (a < b && apropSpace(base[a])) ++a;
+        while (b > a && apropSpace(base[b - 1])) --b;
+        if (a < b && base[a] != '#' && !(b - a > 7 && base[a .. a + 7] == "import ")) {
+            size_t eq = a; while (eq < b && base[eq] != '=') ++eq;
+            if (eq < b && eq > a) {
+                size_t ke = eq; while (ke > a && apropSpace(base[ke - 1])) --ke;
+                size_t vs = eq + 1; while (vs < b && apropSpace(base[vs])) ++vs;
+                apropPut(base[a .. ke], base[vs .. b]);
+            }
+        }
+        i = e + 1;
+    }
+}
+
 private void androidPropsSeed() {
     static immutable string[] N = [
         "ro.product.cpu.abilist64", "ro.product.cpu.abilist32", "ro.product.cpu.abilist",
         "ro.build.version.sdk", "ro.build.version.release", "ro.dalvik.vm.native.bridge",
-        "ro.vndk.version", "ro.zygote", "ro.build.type", "ro.debuggable" ];
+        "ro.vndk.version", "ro.zygote", "ro.build.type", "ro.debuggable",
+        // The zygote would eglGetDisplay() the vendor Mesa driver while preloading; graphics is a
+        // later phase (SurfaceFlinger -> Wayland), so skip the driver preload until then.
+        "ro.zygote.disable_gl_preload" ];
     static immutable string[] V = [
         "x86_64", "x86", "x86_64,x86",
         "33", "13", "0",
-        "33", "zygote64", "userdebug", "1" ];
-    const uint pa = buildPropArea(N, V, g_paBuf.ptr, g_paBuf.length);
+        "33", "zygote64", "userdebug", "1",
+        "1" ];
+    g_apropCount = 0; g_apropTextLen = 0;
+    apropLoadImageFile("/aroot/system/build.prop\0".ptr);
+    apropLoadImageFile("/aroot/system_ext/etc/build.prop\0".ptr);
+    apropLoadImageFile("/aroot/vendor/default.prop\0".ptr);
+    apropLoadImageFile("/aroot/vendor/build.prop\0".ptr);
+    apropLoadImageFile("/aroot/vendor/odm/etc/build.prop\0".ptr);
+    apropLoadImageFile("/aroot/product/etc/build.prop\0".ptr);
+    const size_t fromImage = g_apropCount;
+    // init's property_initialize_ro_product_props: ro.product.<x> from the first partition that sets it.
+    static immutable string[5] PX = ["brand", "device", "manufacturer", "model", "name"];
+    static immutable string[5] PK_BRAND = ["ro.product.product.brand", "ro.product.odm.brand",
+        "ro.product.vendor.brand", "ro.product.system_ext.brand", "ro.product.system.brand"];
+    static immutable string[5] PK_DEVICE = ["ro.product.product.device", "ro.product.odm.device",
+        "ro.product.vendor.device", "ro.product.system_ext.device", "ro.product.system.device"];
+    static immutable string[5] PK_MANU = ["ro.product.product.manufacturer", "ro.product.odm.manufacturer",
+        "ro.product.vendor.manufacturer", "ro.product.system_ext.manufacturer", "ro.product.system.manufacturer"];
+    static immutable string[5] PK_MODEL = ["ro.product.product.model", "ro.product.odm.model",
+        "ro.product.vendor.model", "ro.product.system_ext.model", "ro.product.system.model"];
+    static immutable string[5] PK_NAME = ["ro.product.product.name", "ro.product.odm.name",
+        "ro.product.vendor.name", "ro.product.system_ext.name", "ro.product.system.name"];
+    static immutable string[5] DST = ["ro.product.brand", "ro.product.device", "ro.product.manufacturer",
+        "ro.product.model", "ro.product.name"];
+    foreach (x; 0 .. 5) {
+        if (apropGet(DST[x]) !is null) continue;
+        immutable(string[5]) srcs = x == 0 ? PK_BRAND : x == 1 ? PK_DEVICE : x == 2 ? PK_MANU : x == 3 ? PK_MODEL : PK_NAME;
+        foreach (src; srcs) { auto v = apropGet(src); if (v !is null) { apropPut(DST[x], v); break; } }
+    }
+    foreach (i; 0 .. N.length) apropPut(N[i], V[i]);
+    klog("[prop] "); klog_dec(fromImage); klog(" properties from the image build.prop files, ");
+    klog_dec(g_apropCount); klog(" seeded\n");
+    const uint pa = buildPropArea(g_apropN[0 .. g_apropCount], g_apropV[0 .. g_apropCount],
+                                  g_paBuf.ptr, g_paBuf.length);
     rtAddFile(".__properties__/u:object_r:default_prop:s0\0".ptr,
               ".__properties__/u:object_r:default_prop:s0".length, g_paBuf.ptr, pa);
     const uint pinf = buildPropertyInfo(g_piBuf.ptr, g_piBuf.length);

@@ -525,6 +525,24 @@ private void androidTaskDump() {
     }
 }
 
+// A9.5: getxattr for an Android task: "security.selinux" reads as a generic label, nothing else exists.
+private long androidGetXattr(ulong namePtr, ulong valPtr, ulong size) {
+    if (namePtr == 0) return -14;
+    static immutable string want = "security.selinux";
+    auto nm = cast(const(char)*)namePtr;
+    foreach (k; 0 .. want.length) if (nm[k] != want[k]) return -61;   // ENODATA
+    if (nm[want.length] != 0) return -61;
+    static immutable string label = "u:object_r:unlabeled:s0";
+    const ulong need = label.length + 1;
+    if (size == 0) return cast(long)need;                             // a size query
+    if (size < need) return -34;                                      // ERANGE
+    if (valPtr == 0) return -14;
+    auto v = cast(char*)valPtr;
+    foreach (k; 0 .. label.length) v[k] = label[k];
+    v[label.length] = 0;
+    return cast(long)need;
+}
+
 // A9.5: per-task storage for an Android-image exec's name (see execveTask); zero-init -> .bss.
 private __gshared char[32][MAX_TASKS] g_taskExecNameBuf = 0;
 
@@ -6473,8 +6491,13 @@ private long dispatchLinuxSyscallCall(ulong n, ulong a, ulong b, ulong c,
         case 188: case 189: case 190:   // setxattr, lsetxattr, fsetxattr
         case 197: case 198: case 199:   // removexattr, lremovexattr, fremovexattr
             return g_taskAndroid[cast(int)g_current_task_id] ? 0 : -38;
-        case 191: case 192: case 193:   // getxattr, lgetxattr, fgetxattr
-            return g_taskAndroid[cast(int)g_current_task_id] ? -61 /*ENODATA*/ : -38;
+        case 191: case 192: case 193:   // getxattr, lgetxattr, fgetxattr (name, value, size = b, c, d)
+            // Every Android file carries an SELinux label, and libselinux's restorecon treats a missing
+            // one (ENODATA) as an error -- apexd-bootstrap failed restorecon of apex-info-list.xml and
+            // init rebooted.  Report a generic label; restorecon sees the mismatch and sets the right
+            // one (accepted above).  Other attributes stay absent.
+            if (!g_taskAndroid[cast(int)g_current_task_id]) return -38;
+            return androidGetXattr(b, c, d);
         case 194: case 195: case 196:   // listxattr, llistxattr, flistxattr
             return g_taskAndroid[cast(int)g_current_task_id] ? 0 : -38;
         case 125: return linux_sys_capget(a, b);    // A9.4: was unrouted (ENOSYS) -- forkSystemServer needs it

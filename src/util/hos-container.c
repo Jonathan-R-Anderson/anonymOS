@@ -352,17 +352,22 @@ static int container_init(const char *root, int argc, char **argv) {
                  * init.  An explicit ro.product.cpu.abilist also stops init deriving the lists from
                  * the ro.<partition>.product.cpu.abilist* keys; an empty abilist32 leaves the
                  * `property:ro.product.cpu.abilist32=*` triggers unmatched. */
-                /* Graphics, as Waydroid picks them for a host with no usable GPU render node: the
-                 * ashmem/memfd gralloc, ANGLE as the EGL/GLES driver running on lavapipe (Mesa's
-                 * software Vulkan, vulkan.lvp.so) -- unset, libEGL found no ANGLE suffix and Vulkan
-                 * looked for vulkan.<ro.hardware>.so -- GLES 3.0, and the density SurfaceFlinger
-                 * requires as a build property. */
+                /* Graphics for a host with no 3D GPU: the gralloc below, ANGLE as the EGL/GLES
+                 * driver running on lavapipe (Mesa's software Vulkan, vulkan.lvp.so) -- unset,
+                 * libEGL found no ANGLE suffix and Vulkan looked for vulkan.<ro.hardware>.so --
+                 * GLES 3.0, and the density SurfaceFlinger requires as a build property. */
                 static const char wprop[] =
                     "ro.product.cpu.abilist=x86_64\n"
                     "ro.product.cpu.abilist32=\n"
                     "ro.product.cpu.abilist64=x86_64\n"
                     "ro.zygote=zygote64\n"
-                    "ro.hardware.gralloc=default\n"
+                    /* Waydroid's GBM gralloc (minigbm, allocator/mapper 4.0) on the kernel's DRM
+                     * render node, which reports a plain KMS driver to Android: dumb buffers with
+                     * 64-byte-aligned rows -- Mesa's layout -- and the stride published through the
+                     * 4.0 mapper.  gralloc.default packed rows at 4 bytes and lavapipe, assuming
+                     * its own layout, overran every buffer it cleared. */
+                    "ro.hardware.gralloc=minigbm_gbm_mesa\n"
+                    "gralloc.gbm.device=/dev/dri/renderD128\n"
                     "ro.hardware.egl=angle\n"
                     "ro.hardware.vulkan=lvp\n"
                     "ro.opengles.version=196608\n"

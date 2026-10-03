@@ -350,6 +350,8 @@ bool handlePageFault(int taskId, ulong virtAddr, bool isWrite) {
             ulong phys    = region.physBase + offset;
             ulong flags   = PTE_PRESENT | PTE_USER;
             if (region.perms == RegionPerms.ReadWrite) flags |= PTE_RW;
+            // A9.5: a stable memfd map (owned + sharedMap) holds a reference per mapped frame.
+            if (region.owned && region.sharedMap && !activePagePresent(page)) physPageRefInc(phys);
             map_page_hhdm(phys, page, flags, &alloc_phys_page);
             physPageSetOwner(phys, region.objId, region.vmoObjId);
             return true;
@@ -412,6 +414,56 @@ public void freeUserPageTables(ulong pml4Phys) {
         p4[a] = 0;
     }
     free_phys_page(pml4Phys);
+}
+
+// DIAGNOSTIC (A9.5): an address space's resident user pages -- all present leaves, the ones no other
+// holder references (refcount <= 1), and the page-table pages themselves.
+public void userMemCount(ulong pml4Phys, out ulong present, out ulong excl, out ulong ptPages) {
+    present = 0; excl = 0; ptPages = 0;
+    if (pml4Phys == 0) return;
+    auto p4 = cast(ulong*)(pml4Phys + hhdm_offset);
+    foreach (a; 0 .. 256) {
+        if (!(p4[a] & PTE_PRESENT)) continue;
+        ++ptPages;
+        auto p3 = cast(ulong*)((p4[a] & PTE_ADDR_MASK) + hhdm_offset);
+        foreach (b; 0 .. 512) {
+            if (!(p3[b] & PTE_PRESENT) || (p3[b] & PTE_PS)) continue;
+            ++ptPages;
+            auto p2 = cast(ulong*)((p3[b] & PTE_ADDR_MASK) + hhdm_offset);
+            foreach (c; 0 .. 512) {
+                if (!(p2[c] & PTE_PRESENT) || (p2[c] & PTE_PS)) continue;
+                ++ptPages;
+                auto p1 = cast(ulong*)((p2[c] & PTE_ADDR_MASK) + hhdm_offset);
+                foreach (d; 0 .. 512) {
+                    if (!(p1[d] & PTE_PRESENT)) continue;
+                    ++present;
+                    if (physPageRefGet(p1[d] & PTE_ADDR_MASK) <= 1) ++excl;
+                }
+            }
+        }
+    }
+}
+
+// DIAGNOSTIC (A9.5): present / exclusive user pages in [start, end), skipping absent tables.
+public void userRangeCount(ulong pml4Phys, ulong start, ulong end, out ulong present, out ulong excl) {
+    present = 0; excl = 0;
+    if (pml4Phys == 0) return;
+    ulong va = start & ~0xFFFUL;
+    while (va < end && va < 0x8000_0000_0000UL) {
+        auto p4 = cast(ulong*)(pml4Phys + hhdm_offset);
+        const ulong e4 = p4[(va >> 39) & 511];
+        if (!(e4 & PTE_PRESENT)) { va = (va | ((1UL << 39) - 1)) + 1; continue; }
+        const ulong e3 = (cast(ulong*)((e4 & PTE_ADDR_MASK) + hhdm_offset))[(va >> 30) & 511];
+        if (!(e3 & PTE_PRESENT) || (e3 & PTE_PS)) { va = (va | ((1UL << 30) - 1)) + 1; continue; }
+        const ulong e2 = (cast(ulong*)((e3 & PTE_ADDR_MASK) + hhdm_offset))[(va >> 21) & 511];
+        if (!(e2 & PTE_PRESENT) || (e2 & PTE_PS)) { va = (va | ((1UL << 21) - 1)) + 1; continue; }
+        const ulong e1 = (cast(ulong*)((e2 & PTE_ADDR_MASK) + hhdm_offset))[(va >> 12) & 511];
+        if (e1 & PTE_PRESENT) {
+            ++present;
+            if (physPageRefGet(e1 & PTE_ADDR_MASK) <= 1) ++excl;
+        }
+        va += 4096;
+    }
 }
 
 public void mapSharedCowPage(ulong phys, ulong va) {

@@ -837,7 +837,7 @@ public bool localBlockingRecvFd(ulong fd) @nogc nothrow {
 }
 
 // ── DRM / KMS infrastructure ─────────────────────────────────────────────────
-private enum size_t GEM_MAX = 64;
+private enum size_t GEM_MAX = 1024;   // A9.5: Android's gralloc buffers share the table with the compositor's
 
 private struct GemBuf {
     bool   inUse;
@@ -2040,6 +2040,8 @@ private void closeLocalSocket(File* f)
     // without recvmsg does not leak VM/vCPU pins.
     while (sock.passedTail != sock.passedHead) {
         kvmFdClosed(&sock.passedFiles[sock.passedTail]);
+        if (sock.passedFiles[sock.passedTail].type == FileType.FD_MEMFD)
+            memfdStableUnref(cast(int)cast(size_t)sock.passedFiles[sock.passedTail].backend);
         sock.passedCaps[sock.passedTail] = IpcCapDesc.init;
         sock.passedTail = (sock.passedTail + 1) % scmRightsCapacity;
     }
@@ -2265,6 +2267,8 @@ public void fdtabSetupProbeStdio(int tableId) {
 void initFdTable() {
     if (g_fdTable is null) g_fdTable = &g_fdTabs[0][0];   // process 0's table
     if (g_fdTableInitialized) return;
+    {   import memory.mm : g_memReclaim;   // A9.5: the image page cache gives frames back under pressure
+        g_memReclaim = &ext4PcReclaim; }
     // Install stdio by table INDEX, never through g_fdTable.  This function is documented as
     // setting up process 0's table, but g_fdTable is whatever table fdtabSetActive() selected
     // for the CURRENT syscall (kernel_main.d:2862), and g_fdTableInitialized is a single global
@@ -5583,7 +5587,9 @@ private long fileObjClose(ObjHeader* oh) {
         // as-is (their pages are bump-allocated and never freed anyway).
         // Refcounted like epoll above: only the last fd copy reclaims.
         int mid = cast(int)cast(size_t)f.backend;
-        if (mid >= 0 && mid < g_memfdCap && memfdAt(mid).inUse && memfdAt(mid).refs > 1) {
+        if (mid >= 0 && mid < g_memfdCap && memfdAt(mid).inUse && memfdAt(mid).stable) {
+            memfdStableUnref(mid);   // A9.5: the last close drops the memfd's page references
+        } else if (mid >= 0 && mid < g_memfdCap && memfdAt(mid).inUse && memfdAt(mid).refs > 1) {
             --memfdAt(mid).refs;
         } else if (mid >= 0 && mid < g_memfdCap && memfdAt(mid).inUse && memfdAt(mid).aliased) {
             if (memfdAt(mid).vmoObjId != 0 && objGet(memfdAt(mid).vmoObjId) !is null)
@@ -14377,6 +14383,8 @@ public ssize_t sys_sendmsg(int sockfd, msghdr* msg, int flags) {
                     // The pin transfers to the receiver's new fd at recvmsg, or
                     // is released if the socket is closed with items queued.
                     kvmFdDuped(&g_fdTable[passFd]);
+                    if (memfdStableFd(cast(ulong)passFd))   // A9.5: the queued copy is a reference
+                        ++memfdAt(cast(int)cast(size_t)g_fdTable[passFd].backend).refs;
                     // Delegate the fd's authority by value through the IPC router
                     // (validates the object id, clamps rights); a raw pointer is
                     // never queued.
@@ -17219,7 +17227,14 @@ private struct MemFdRec {
                       // memfd is a PRIME alias of a virtgpu resource — so PRIME_FD_TO_HANDLE
                       // can hand the importer back a g_drmGems handle (not a dumb one).
     uint  refs;       // fd-copy refcount (fork/dup); reclaim the record only at 0
+    // A9.5: an Android task's memfd is "stable" -- backed by extents that never move (memfdExt*).
+    // physBase/size then mean the first extent / the whole capacity.
+    bool  stable;
+    ubyte nExt;
+    ulong[MEMFD_EXT] extPhys;
+    uint[MEMFD_EXT]  extPages;
 }
+private enum int MEMFD_EXT = 32;
 // memfds: no fixed limit.  Every Wayland client's wl_shm pools are memfds and Firefox makes one per
 // IPC shared-memory segment; the old 32-slot table ran out as soon as Firefox opened its window
 // ("failed to create memfd: No file descriptors available", then a deliberate crash).  Records live
@@ -17342,6 +17357,86 @@ public ulong rtfsSharedPagePhys(int fd, ulong off) {
     return (ph & 0xFFF) == 0 ? ph : 0;
 }
 
+// A9.5: a stable memfd's backing.  Linux memfd pages never move: a grow appends, and every mapping
+// keeps seeing the same frames.  The old path grew by allocating a bigger contiguous run and copying,
+// which (a) left maps made before the grow on the stale copy -- lavapipe/llvmpipe sub-allocate one
+// growing "allocation fd" heap and hand pieces of it to SurfaceFlinger -- (b) leaked the old run, and
+// (c) needed ever larger contiguous runs (a 17 MiB grow failed with 240 MiB free).  Here a grow
+// appends extents of whatever contiguous size the allocator can give.  Each page holds one
+// reference for the memfd; each mapping takes one more (kernel_main mmapStableMemfd: an owned,
+// sharedMap region, so munmap / exit / exec / fork already drop and take them), and the memfd drops
+// its own on last close (memfdStableRelease) -- the page is freed by whichever comes last.
+private bool memfdExtAppend(int mid, size_t pages) {
+    import memory.mm : alloc_phys_pages_try, free_phys_pages;
+    auto m = &memfdAt(mid);
+    const ubyte n0 = m.nExt;
+    const uint vmo = ensureMemfdVmo(mid);
+    size_t chunk = pages;
+    bool ok = true;
+    while (pages > 0) {
+        if (m.nExt >= MEMFD_EXT) { ok = false; break; }
+        const size_t take = chunk < pages ? chunk : pages;
+        const ulong ph = alloc_phys_pages_try(take);   // zero-filled
+        if (ph == 0) {
+            if (take == 1) { ok = false; break; }
+            chunk = take / 2;
+            continue;
+        }
+        physPagesSetOwner(ph, take, 0, vmo);
+        m.extPhys[m.nExt] = ph;
+        m.extPages[m.nExt] = cast(uint)take;
+        ++m.nExt;
+        m.size += cast(ulong)take << 12;
+        pages -= take;
+    }
+    if (!ok) {
+        foreach (i; n0 .. m.nExt) {
+            free_phys_pages(m.extPhys[i], m.extPages[i]);
+            m.size -= cast(ulong)m.extPages[i] << 12;
+        }
+        m.nExt = n0;
+        klog("[memfd] stable grow failed mid="); klog_dec(cast(ulong)mid); klog("\n");
+    }
+    m.physBase = m.nExt != 0 ? m.extPhys[0] : 0;
+    return ok;
+}
+// The frame holding byte `off` of a stable memfd, and the bytes from there to its extent's end.
+private ulong memfdExtPhys(int mid, ulong off, ulong* runOut) @nogc nothrow {
+    auto m = &memfdAt(mid);
+    ulong base = 0;
+    foreach (i; 0 .. m.nExt) {
+        const ulong len = cast(ulong)m.extPages[i] << 12;
+        if (off < base + len) {
+            if (runOut !is null) *runOut = base + len - off;
+            return m.extPhys[i] + (off - base);
+        }
+        base += len;
+    }
+    return 0;
+}
+public bool memfdStableFd(ulong fd) @nogc nothrow {
+    if (fd >= 1024 || g_fdTable is null || g_fdTable[cast(int)fd].type != FileType.FD_MEMFD) return false;
+    const int mid = cast(int)cast(size_t)g_fdTable[cast(int)fd].backend;
+    return mid >= 0 && mid < g_memfdCap && memfdAt(mid).inUse && memfdAt(mid).stable;
+}
+// The last reference to a stable memfd went away: drop its page references (mapped pages live on
+// until their mappings go) and free the record.
+private void memfdStableRelease(int mid) {
+    import memory.mm : free_phys_pages;
+    auto m = &memfdAt(mid);
+    foreach (i; 0 .. m.nExt) free_phys_pages(m.extPhys[i], m.extPages[i]);
+    if (m.vmoObjId != 0 && objGet(m.vmoObjId) !is null) objRelease(m.vmoObjId);
+    const int asi = ashmemSideForMid(mid);
+    if (asi >= 0) g_ashmem[asi].used = false;
+    *m = MemFdRec.init;
+}
+// Drop one fd-copy reference of a stable memfd (close, or an SCM_RIGHTS copy never received).
+private void memfdStableUnref(int mid) {
+    if (mid < 0 || mid >= g_memfdCap || !memfdAt(mid).inUse || !memfdAt(mid).stable) return;
+    if (memfdAt(mid).refs > 1) { --memfdAt(mid).refs; return; }
+    memfdStableRelease(mid);
+}
+
 public long linux_sys_ftruncate(ulong fd, ulong length) {
     initFdTable();
     int ifd = cast(int)fd;
@@ -17357,6 +17452,20 @@ public long linux_sys_ftruncate(ulong fd, ulong length) {
         return negErrno(EPERM);
     if (aligned < memfdAt(mid).size && (memfdAt(mid).seals & F_SEAL_SHRINK))
         return negErrno(EPERM);
+    if (memfdAt(mid).stable) {
+        // Shrinking keeps the capacity (a later regrow sees the old bytes; Linux would zero them --
+        // no Android user relies on that).  Growing appends: the shortfall, plus headroom of up to
+        // 8 MiB (the current size) so a heap grown in small steps stays within MEMFD_EXT extents.
+        if (aligned > memfdAt(mid).size) {
+            const size_t need = cast(size_t)((aligned - memfdAt(mid).size) >> 12);
+            size_t head = cast(size_t)(memfdAt(mid).size >> 12);
+            if (head > 2048) head = 2048;
+            if (!memfdExtAppend(mid, need + head) && !memfdExtAppend(mid, need)) return negErrno(ENOMEM);
+        }
+        f.fileSize = length;
+        memfdAt(mid).exactLen = length;
+        return 0;
+    }
     if (memfdAt(mid).physBase != 0) {
         // A resize within the current contiguous allocation is free — the wl_shm
         // / toytoolkit cursor allocator grows its pool in steps and re-ftruncates.
@@ -17434,6 +17543,7 @@ public ulong memfdPhysByVmo(uint vmoObjId, ulong* sizeOut) {
     if (vmoObjId == 0) return 0;
     for (int i = 0; i < g_memfdCap; ++i) {
         if (memfdAt(i).inUse && memfdAt(i).vmoObjId == vmoObjId) {
+            if (memfdAt(i).stable) return 0;   // extents: mremap takes its generic page-moving path
             if (sizeOut !is null) *sizeOut = memfdAt(i).size;
             return memfdAt(i).physBase;
         }
@@ -17516,6 +17626,16 @@ private long fileObjMmap(ObjHeader* oh, ulong offset, ulong* physOut,
         if (mid < 0 || mid >= g_memfdCap || !memfdAt(mid).inUse) return 0;
         if (memfdAt(mid).physBase == 0) return 0;
         if (offset >= memfdAt(mid).size) return 0;   // no backing at/past EOF
+        if (memfdAt(mid).stable) {                   // one extent's worth: mmapStableMemfd iterates
+            ulong run = 0;
+            const ulong ph = memfdExtPhys(mid, offset, &run);
+            if (ph == 0) return 0;
+            if (physOut !is null)   *physOut = ph;
+            if (sizeOut !is null)   *sizeOut = run;
+            if (vmoOut !is null)    *vmoOut = ensureMemfdVmo(mid);
+            if (sharedOut !is null) *sharedOut = true;
+            return 1;
+        }
         if (physOut !is null)   *physOut = memfdAt(mid).physBase + offset;
         if (sizeOut !is null)   *sizeOut = memfdAt(mid).size - offset;
         if (vmoOut !is null)    *vmoOut = ensureMemfdVmo(mid);
@@ -19013,6 +19133,9 @@ public long linux_sys_memfd_create(ulong name, ulong flags) {
         } }
     memfdAt(mid).seals    = (flags & MFD_ALLOW_SEALING) != 0 ? 0 : F_SEAL_SEAL;
     memfdAt(mid).vmoObjId = 0;
+    {   const int ct = cast(int)g_current_task_id;   // A9.5: Android's memfds get stable extents
+        memfdAt(mid).stable = ct >= 0 && ct < MAX_TASKS && g_taskAndroid[ct];
+        memfdAt(mid).nExt   = 0; }
     g_fdTable[fd].type     = FileType.FD_MEMFD;
     g_fdTable[fd].backend  = cast(void*)cast(size_t)mid;
     g_fdTable[fd].fileSize = 0;
@@ -19071,6 +19194,9 @@ private int ashmemCreate() {
     memfdAt(mid).exactLen = 0;
     memfdAt(mid).seals    = 0;
     memfdAt(mid).vmoObjId = 0;
+    {   const int ct = cast(int)g_current_task_id;   // A9.5: as memfd_create
+        memfdAt(mid).stable = ct >= 0 && ct < MAX_TASKS && g_taskAndroid[ct];
+        memfdAt(mid).nExt   = 0; }
     g_ashmem[si]          = AshmemSide.init;
     g_ashmem[si].used     = true;
     g_ashmem[si].mid      = mid;
@@ -19087,6 +19213,12 @@ private long ashmemSetSize(int mid, ulong size) {
     const ulong aligned = (size + 0xFFF) & ~0xFFFUL;
     if (aligned == 0) { memfdAt(mid).size = 0; memfdAt(mid).exactLen = 0; return 0; }
     const size_t pages = cast(size_t)(aligned >> 12);
+    if (memfdAt(mid).stable) {
+        if (memfdAt(mid).nExt != 0) return negErrno(EINVAL);
+        if (!memfdExtAppend(mid, pages)) return negErrno(ENOMEM);
+        memfdAt(mid).exactLen = size;
+        return 0;
+    }
     const ulong phys = alloc_phys_pages(pages);
     if (phys == 0) return negErrno(ENOMEM);
     const uint vmo = ensureMemfdVmo(mid);
@@ -20244,6 +20376,50 @@ private bool androidDevIsHost(const(char)* c) @nogc nothrow {
     if (n == 14 && c[0] == '_') return true;                                                             // __properties__
     return false;
 }
+// A9.5: bind mounts inside the Android container -- target -> source path redirects, as the container
+// sees its paths (no /aroot).  Applied first by androidDataRewrite, for Android tasks and container paths.
+private struct ABind { bool used; ubyte dl, sl; char[160] dst = 0; char[160] src = 0; }
+private __gshared ABind[32] g_aBinds;
+private void androidBindAdd(const(char)* src, const(char)* dst) {
+    const(char)* s2 = androidStripAroot(src);
+    const(char)* d2 = androidStripAroot(dst);
+    size_t sl = 0, dl = 0;
+    while (s2[sl] != 0 && sl < 159) ++sl;
+    while (d2[dl] != 0 && dl < 159) ++dl;
+    if (sl == 0 || dl == 0 || s2[sl] != 0 || d2[dl] != 0) return;
+    // There are no per-process mount namespaces, so a bind is a global redirect.  Honour only binds
+    // over files in the read-only image partitions (the VINTF placeholders); init's directory binds
+    // (/linkerconfig -> /linkerconfig/bootstrap, /apex/*, /mnt/*, /storage) are its private bootstrap
+    // namespace and redirecting them for everyone breaks every process's linker config.
+    static bool pre(const(char)* x, string p) { foreach (i, c; p) if (x[i] != c) return false; return true; }
+    if (!pre(d2, "/vendor/") && !pre(d2, "/odm/") && !pre(d2, "/product/") && !pre(d2, "/system_ext/")) return;
+    foreach (ref b; g_aBinds) {
+        bool slot = !b.used;
+        if (b.used && b.dl == dl) { slot = true; foreach (k; 0 .. dl) if (b.dst[k] != d2[k]) { slot = false; break; } }
+        if (!slot) continue;
+        b.used = true; b.dl = cast(ubyte)dl; b.sl = cast(ubyte)sl;
+        foreach (k; 0 .. dl) b.dst[k] = d2[k];
+        foreach (k; 0 .. sl) b.src[k] = s2[k];
+        klog("[abind] "); klog(d2); klog(" -> "); klog(s2); klog("\n");
+        return;
+    }
+}
+private const(char)* androidBindRewrite(const(char)* q, bool rerooted, char* buf, size_t cap) @nogc nothrow {
+    foreach (ref b; g_aBinds) {
+        if (!b.used) continue;
+        size_t k = 0;
+        while (k < b.dl && q[k] == b.dst[k]) ++k;
+        if (k != b.dl || (q[k] != 0 && q[k] != '/')) continue;
+        size_t p = 0;
+        if (rerooted) foreach (c; "/aroot") if (p + 1 < cap) buf[p++] = c;
+        foreach (j; 0 .. b.sl) if (p + 1 < cap) buf[p++] = b.src[j];
+        for (size_t r = k; q[r] != 0 && p + 1 < cap; ++r) buf[p++] = q[r];
+        buf[p] = 0;
+        return buf;
+    }
+    return null;
+}
+
 // A9.5: "/dev/ashmem<boot_id>" -- the name libcutils opens ashmem by since Android 10 -- for an
 // Android task; it is the same ashmem device.
 private bool androidAshmemBootPath(const(char)* p) @nogc nothrow {
@@ -20256,6 +20432,7 @@ private bool androidAshmemBootPath(const(char)* p) @nogc nothrow {
 private const(char)* androidDataRewrite(const(char)* path, char* buf, size_t cap) {
     const(char)* q = androidStripAroot(path);
     const bool actx = androidOverlayContext(path, q);
+    if (actx) { const(char)* br = androidBindRewrite(q, q != path, buf, cap); if (br !is null) return br; }
     if (actx && q[0] == '/' && q[1] == 'd' && q[2] == 'e' && q[3] == 'v' && q[4] == '/' && q[5] != 0
         && !androidDevIsHost(q + 5)) {
         androidDataEnsureRoot();
@@ -20433,7 +20610,7 @@ private Ext4Mount* aVfsMount(int sel) @nogc nothrow {
 // ~40 services plus each zygote restart each carried their own copies until the 4 GiB VM ran out of
 // pages (and starved the desktop).  The cache holds one reference to each frame (mappings add theirs
 // via mapSharedCowPage), so a write always copies.  Bounded; past the bound callers copy as before.
-private struct Ext4PgEnt { bool used; ubyte sel; uint ino; uint pg; ulong phys; }
+private struct Ext4PgEnt { bool used; bool tomb; ubyte sel; uint ino; uint pg; ulong phys; }
 private enum uint EXT4PC_CAP = 65536;
 private __gshared Ext4PgEnt[EXT4PC_CAP] g_ext4Pc;      // zero-init: .bss
 private __gshared uint g_ext4PcUsed;
@@ -20451,13 +20628,21 @@ public ulong ext4MmapPagePhys(int fd, ulong off) {
     if (!ext4InodeInfo(*m, ino, &mode, &sz) || off >= sz || (mode & 0xF000) != 0x8000) return 0;
     const uint pg = cast(uint)(off >> 12);
     const uint h = (ino * 2654435761u) ^ (pg * 40503u) ^ cast(uint)sel;
+    Ext4PgEnt* slot = null;                 // the first reusable slot (an evicted entry's tombstone)
     foreach (probe; 0 .. 64) {
         auto e = &g_ext4Pc[(h + probe) & (EXT4PC_CAP - 1)];
         if (e.used) {
             if (e.ino == ino && e.pg == pg && e.sel == sel) return e.phys;
             continue;
         }
-        if (g_ext4PcUsed >= EXT4PC_CAP / 4 * 3) return 0;
+        if (e.tomb) { if (slot is null) slot = e; continue; }
+        if (slot is null) slot = e;
+        break;
+    }
+    if (slot !is null) {
+        auto e = slot;
+        // Full: evict frames no mapping holds any more rather than make every caller copy privately.
+        if (g_ext4PcUsed >= EXT4PC_CAP / 4 * 3 && ext4PcReclaim(256) == 0) return 0;
         const ulong ph = alloc_phys_page();
         if (ph == 0) return 0;
         auto dst = cast(ubyte*)phys_to_virt(ph);
@@ -20470,11 +20655,34 @@ public ulong ext4MmapPagePhys(int fd, ulong off) {
         }
         if (done < want) { free_phys_page(ph); return 0; }
         foreach (k; cast(size_t)want .. 4096) dst[k] = 0;
-        e.used = true; e.sel = cast(ubyte)sel; e.ino = ino; e.pg = pg; e.phys = ph;
+        if (e.used) { free_phys_page(ph); return 0; }   // (a reclaim during the read cannot take it, but be safe)
+        e.used = true; e.tomb = false; e.sel = cast(ubyte)sel; e.ino = ino; e.pg = pg; e.phys = ph;
         ++g_ext4PcUsed;
         return ph;
     }
     return 0;
+}
+
+// A9.5: give back cached image frames that no mapping holds (the cache's own reference is the only
+// one: refcount <= 1), up to `want`, sweeping a clock hand round the table.  An evicted entry becomes
+// a tombstone so the probe chains through it stay intact.  Called when the cache is full and, through
+// mm.d's g_memReclaim, when an allocation would otherwise fail -- the cache sat at its 192 MiB cap
+// while SurfaceFlinger was killed for want of a page.
+private __gshared uint g_ext4PcHand;
+public uint ext4PcReclaim(uint want) {
+    import memory.mm : free_phys_page, physPageRefGet;
+    uint got = 0;
+    foreach (k; 0 .. EXT4PC_CAP) {
+        if (got >= want) break;
+        auto e = &g_ext4Pc[g_ext4PcHand];
+        g_ext4PcHand = (g_ext4PcHand + 1) & (EXT4PC_CAP - 1);
+        if (!e.used || physPageRefGet(e.phys) > 1) continue;
+        free_phys_page(e.phys);
+        e.used = false; e.tomb = true; e.phys = 0;
+        --g_ext4PcUsed;
+        ++got;
+    }
+    return got;
 }
 
 // DIAGNOSTIC (A9.5): where kernel memory sits -- rtfs payloads, memfd backings, the image caches.
@@ -20625,6 +20833,12 @@ public long linux_sys_statx(ulong dfd, ulong path, ulong fl, ulong mask, ulong b
 // --- mount / umount2 (pretend success – no real VFS) ---
 public long linux_sys_mount(ulong src, ulong tgt, ulong fstype, ulong fl, ulong data) {
     const int t = g_activeFdTabId;
+    // A9.5: a bind mount inside the Android container is honoured as a path redirect (androidBind*):
+    // Waydroid's init selects its gralloc by binding VINTF fragments over placeholders
+    // (ro.hardware.gralloc=minigbm_gbm_mesa -> the 4.0 allocator / mapper manifests).
+    enum ulong MS_BIND = 0x1000, MS_REMOUNT = 0x20;
+    if ((fl & MS_BIND) && !(fl & MS_REMOUNT) && src != 0 && tgt != 0 && androidGlobalPids())
+        androidBindAdd(cast(const(char)*)src, cast(const(char)*)tgt);
     const bool inMntNs = (t >= 0 && t < FDTAB_COUNT && g_nsIds[t][0] != 0);
     // A7b: a mount inside a task's OWN (non-initial) mount namespace affects only that namespace, so
     // it is allowed without host mount privilege; a mount in the initial namespace still needs it.
@@ -23150,13 +23364,20 @@ private long handleDrmIoctl(int ifd, ulong request, ulong arg) {
 
         ulong nameLen = userRead!ulong(arg + 16);
         ulong namePtr = userRead!ulong(arg + 24);
+        // A9.5: an Android task sees a plain KMS driver ("vkms"): Android's minigbm then allocates
+        // its graphics buffers as dumb buffers (64-byte-aligned rows -- Mesa's layout, which
+        // lavapipe assumes) and the 4.0 mapper reports their real stride.  As "virtio_gpu" it
+        // would take minigbm's / Mesa's virgl paths, which need 3D ioctls this device lacks.
+        const bool drmAsVkms = androidGlobalPids();
         immutable char[11] drvnm = "virtio_gpu\0";
+        immutable char[5]  drvvk = "vkms\0";
+        const size_t drvLen = drmAsVkms ? 4 : 10;
 
         if (nameLen > 0 && namePtr != 0) {
-            size_t n = nameLen < 10 ? cast(size_t)nameLen : 10;
-            userCopyString(namePtr, drvnm.ptr, n);
+            size_t n = nameLen < drvLen ? cast(size_t)nameLen : drvLen;
+            userCopyString(namePtr, drmAsVkms ? drvvk.ptr : drvnm.ptr, n);
         }
-        userWrite!ulong(arg + 16, 10);
+        userWrite!ulong(arg + 16, drvLen);
 
         // Return non-empty date/desc.  libdrm's drmGetVersion / callers wrap
         // these in std::string(version->date) etc.; if the kernel reports length
@@ -23783,7 +24004,7 @@ private long handleDrmIoctl(int ifd, ulong request, ulong arg) {
             }
         }
 
-        if (slot < 0) return negErrno(ENOSPC);
+        if (slot < 0) { free_phys_pages(physAddr, pages); return negErrno(ENOSPC); }
 
         uint handle = g_nextGemHandle++;
 

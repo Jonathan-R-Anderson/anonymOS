@@ -172,6 +172,13 @@ private struct BinderProc {
     // A3: this proc's handle table (handle -> node index; -1 = free).  (Reply routing is per
     // thread since A9.4 -- g_bthreads.)
     int[MAX_HANDLES] handleNode = -1;
+    // A9.5: a handle's userspace references (BC_INCREFS/BC_ACQUIRE less BC_DECREFS/BC_RELEASE) and
+    // the buffer generation that last carried it (+1; handlePending).  A handle is released when its
+    // count is back to zero and no unfreed buffer carries it -- as real binder releases a ref -- so
+    // its number, and a dead node's slot, can be reused (handleDrop).
+    int[MAX_HANDLES]  handleRefs;
+    uint[MAX_HANDLES] handlePendGen;
+    uint bufGen;        // bumps each time every received buffer has been freed (binderFreeBuffer)
     // A3b: the fd-table id of the task that opened this /dev/binder, so a TYPE_FD object can be
     // installed into the right process's fd table.  -1 until posix.d records it (binderSetProcTab).
     int  ownerTab = -1;
@@ -331,7 +338,7 @@ public int binderCtxCreate() {
 // A node is a binder object living in its owner proc.  Other procs reach it through a handle in
 // their own table.  Clients may subscribe to the node's death; when the owner goes away the kernel
 // delivers BR_DEAD_BINDER{cookie} to each subscriber.
-private enum int MAX_NODES = 256;
+private enum int MAX_NODES = 1024;
 private enum int MAX_DEATH = 8;      // death subscribers per node
 
 private struct Node {
@@ -342,6 +349,8 @@ private struct Node {
     int   strongRefs;
     bool  increfsSent;  // A9.5: the owner was told (BR_INCREFS / BR_ACQUIRE) that a remote ref exists
     bool  acquireSent;
+    bool  dead;         // A9.5: the owner died; the slot stays taken while any handle still names it
+    int   hcount;       // A9.5: procs holding a handle to this node
     int   subN;
     int[MAX_DEATH]   subProc;    // subscriber proc indices
     ulong[MAX_DEATH] subCookie;  // the cookie each subscriber wants echoed back on death
@@ -387,39 +396,26 @@ private void binderDestroy(int id) {
     // its strong/weak ref.  Without this a dead client's objects lived on: after SurfaceFlinger died the
     // composer still held its IComposerClient ("previous client was not destroyed") and refused every
     // restarted SurfaceFlinger a new one.
-    foreach (h; 0 .. MAX_HANDLES) {
-        const int nidx = g_procs[id].handleNode[h];
-        if (nidx < 0 || nidx >= MAX_NODES || !g_nodes[nidx].used) continue;
-        auto nd = &g_nodes[nidx];
-        if (nd.owner == id || nd.owner < 0 || nd.owner >= MAX_PROCS || !g_procs[nd.owner].used) continue;
-        bool held = false;
-        foreach (p; 0 .. MAX_PROCS) {
-            if (p == id || !g_procs[p].used || p == nd.owner) continue;
-            foreach (h2; 0 .. MAX_HANDLES) if (g_procs[p].handleNode[h2] == nidx) { held = true; break; }
-            if (held) break;
-        }
-        // drop this proc's death subscriptions on the node either way
-        for (int sidx = 0; sidx < nd.subN; ) {
-            if (nd.subProc[sidx] == id) {
-                foreach (t; sidx .. nd.subN - 1) { nd.subProc[t] = nd.subProc[t + 1]; nd.subCookie[t] = nd.subCookie[t + 1]; }
-                --nd.subN;
-            } else ++sidx;
-        }
-        if (held) continue;
-        BinderTxData pc; pc.target = nd.ptr; pc.cookie = nd.cookie;
-        if (nd.acquireSent && mailPush(nd.owner, BR_RELEASE, pc)) nd.acquireSent = false;
-        if (nd.increfsSent && !nd.acquireSent && mailPush(nd.owner, BR_DECREFS, pc)) nd.increfsSent = false;
-    }
+    foreach (h; 1 .. MAX_HANDLES)
+        if (g_procs[id].handleNode[h] >= 0) handleDrop(id, h);
+    // Its nodes die: each subscriber hears BR_DEAD_BINDER, and the node stays (dead) while any other
+    // proc still holds a handle to it, so the slot is not handed to a new object under that handle.
     foreach (n; 0 .. MAX_NODES) {
-        if (!g_nodes[n].used || g_nodes[n].owner != id) continue;
-        foreach (s; 0 .. g_nodes[n].subN) {
-            const int sp = g_nodes[n].subProc[s];
+        if (!g_nodes[n].used || g_nodes[n].dead || g_nodes[n].owner != id) continue;
+        foreach (s2; 0 .. g_nodes[n].subN) {
+            const int sp = g_nodes[n].subProc[s2];
             if (sp >= 0 && sp < MAX_PROCS && g_procs[sp].used && sp != id) {
-                BinderTxData dm; dm.cookie = g_nodes[n].subCookie[s];
+                BinderTxData dm; dm.cookie = g_nodes[n].subCookie[s2];
                 mailPush(sp, BR_DEAD_BINDER, dm);
             }
         }
-        g_nodes[n] = Node.init;   // the owner is gone; outstanding handles to it are now dead
+        g_nodes[n].subN = 0;
+        g_nodes[n].dead = true;
+        g_nodes[n].owner = -1;
+        g_nodes[n].increfsSent = false;
+        g_nodes[n].acquireSent = false;
+        foreach (c; 0 .. MAX_CONTEXTS) if (g_ctx[c].used && g_ctx[c].ctxMgrNode == n) g_ctx[c].ctxMgrNode = -1;
+        if (g_nodes[n].hcount == 0) g_nodes[n] = Node.init;
     }
     // A9.4: every caller still waiting on this proc -- a call it was servicing, or one still queued
     // for it -- gets BR_DEAD_REPLY instead of waiting forever; then its threads go.
@@ -536,7 +532,14 @@ public void binderFreeBuffer(int id, ulong userptr) {
     if (p.regionUserBase == 0 || userptr < p.regionUserBase ||
         userptr >= p.regionUserBase + p.regionSize) return;
     if (p.allocCount > 0) --p.allocCount;
-    if (p.allocCount == 0) p.bumpUsed = 0;
+    if (p.allocCount == 0) {
+        p.bumpUsed = 0;
+        // A9.5: every buffer that carried a handle is freed: handles userspace never took (or already
+        // dropped) go now.
+        ++p.bufGen;
+        foreach (h; 1 .. MAX_HANDLES)
+            if (p.handleNode[h] >= 0 && p.handleRefs[h] <= 0 && !handlePending(id, h)) handleDrop(id, h);
+    }
 }
 
 // ---- A3: nodes, handles, flat-object translation --------------------------------------------
@@ -562,9 +565,74 @@ private int nodeFindOrCreate(int owner, ulong ptr, ulong cookie) {
 // (handle 0 is reserved for the context manager); -1 when the table is full.
 private int handleForNode(int proc, int nidx) {
     auto p = &g_procs[proc];
-    foreach (h; 1 .. MAX_HANDLES) if (p.handleNode[h] == nidx) return h;
-    foreach (h; 1 .. MAX_HANDLES) if (p.handleNode[h] < 0) { p.handleNode[h] = nidx; return h; }
-    return -1;
+    int h = -1;
+    foreach (i; 1 .. MAX_HANDLES) if (p.handleNode[i] == nidx) { h = i; break; }
+    if (h < 0) {
+        foreach (i; 1 .. MAX_HANDLES) if (p.handleNode[i] < 0) { h = i; break; }
+        if (h < 0) return -1;
+        p.handleNode[h] = nidx;
+        p.handleRefs[h] = 0;
+        ++g_nodes[nidx].hcount;
+    }
+    p.handlePendGen[h] = p.bufGen + 1;   // a buffer carries it: held until that buffer is freed
+    return h;
+}
+
+// A9.5: handle lifetime.  Before this a handle lived as long as its proc, and a node's slot was freed
+// the moment its owner died while other procs' handles still named it -- the slot was then reused by
+// the next new node, so those stale handles silently pointed at an unrelated object.  servicemanager
+// had cached a dead proxy for such a handle (its death already delivered); when system_server
+// registered platform_compat_native, the new node landed in the old slot, servicemanager got the old
+// handle back, its linkToDeath on the dead proxy failed, and system_server aborted ("linkToDeath
+// failure").  Now a dead node keeps its slot until the last handle to it goes, and handles go when
+// userspace drops them (handleRefDelta) -- so a fresh object always gets a fresh handle.
+private bool handlePending(int proc, int h) {
+    return g_procs[proc].handlePendGen[h] == g_procs[proc].bufGen + 1;
+}
+private __gshared uint g_hdropLogN = 0;
+private void handleDrop(int proc, int h) {
+    auto p = &g_procs[proc];
+    const int nidx = p.handleNode[h];
+    p.handleNode[h] = -1;
+    p.handleRefs[h] = 0;
+    p.handlePendGen[h] = 0;
+    if (nidx < 0 || nidx >= MAX_NODES || !g_nodes[nidx].used) return;
+    auto nd = &g_nodes[nidx];
+    for (int sidx = 0; sidx < nd.subN; ) {          // its death subscriptions go with it
+        if (nd.subProc[sidx] == proc) {
+            foreach (t; sidx .. nd.subN - 1) { nd.subProc[t] = nd.subProc[t + 1]; nd.subCookie[t] = nd.subCookie[t + 1]; }
+            --nd.subN;
+        } else ++sidx;
+    }
+    if (nd.hcount > 0) --nd.hcount;
+    if (g_hdropLogN < 24) {
+        ++g_hdropLogN;
+        klog("[bref] drop p="); klog_dec(cast(ulong)proc); klog(" h="); klog_dec(cast(ulong)h);
+        klog(" node="); klog_dec(cast(ulong)nidx); klog(nd.dead ? " dead" : ""); klog(" left="); klog_dec(cast(ulong)nd.hcount); klog("\n");
+    }
+    nodeUnheld(nidx);
+}
+// No proc holds a handle to `nidx` any more: a dead node is freed; a live one is released to its
+// owner (BR_RELEASE / BR_DECREFS, undoing nodeTellOwner) and freed -- the owner sending the object
+// again makes a new node.  A context manager's node is reached as handle 0 and never freed here.
+private void nodeUnheld(int nidx) {
+    auto nd = &g_nodes[nidx];
+    if (!nd.used || nd.hcount > 0) return;
+    foreach (c; 0 .. MAX_CONTEXTS) if (g_ctx[c].used && g_ctx[c].ctxMgrNode == nidx) return;
+    if (!nd.dead && nd.owner >= 0 && nd.owner < MAX_PROCS && g_procs[nd.owner].used) {
+        BinderTxData pc; pc.target = nd.ptr; pc.cookie = nd.cookie;
+        if (nd.acquireSent && mailPush(nd.owner, BR_RELEASE, pc)) nd.acquireSent = false;
+        if (nd.increfsSent && !nd.acquireSent && mailPush(nd.owner, BR_DECREFS, pc)) nd.increfsSent = false;
+        if (nd.acquireSent || nd.increfsSent) return;   // the owner's mailbox is full: keep it for now
+    }
+    *nd = Node.init;
+}
+private void handleRefDelta(int proc, uint h, int delta) {
+    if (h == 0 || h >= MAX_HANDLES) return;          // handle 0: the context manager, not counted
+    auto p = &g_procs[proc];
+    if (p.handleNode[h] < 0) return;
+    p.handleRefs[h] += delta;
+    if (delta < 0 && p.handleRefs[h] <= 0 && !handlePending(proc, cast(int)h)) handleDrop(proc, cast(int)h);
 }
 
 // Resolve a handle in `proc` to a node index; handle 0 is the manager of the proc's context.
@@ -837,9 +905,13 @@ public long binderWriteRead(int id, const(ubyte)* wbuf, ulong wsize, ulong* wcon
             case BC_EXIT_LOOPER:
                 g_procs[id].looper = false;
                 break;
-            case BC_INCREFS: case BC_ACQUIRE: case BC_RELEASE: case BC_DECREFS:
-                wpos += 4;   // a u32 ref target; acknowledged, no BR here
+            case BC_INCREFS: case BC_ACQUIRE: case BC_RELEASE: case BC_DECREFS: {
+                if (wpos + 4 > wsize) { wpos = wsize; break; }
+                const uint rh = rdU32(wbuf, wpos);   // a u32 handle; no BR here
+                wpos += 4;
+                handleRefDelta(id, rh, (cmd == BC_INCREFS || cmd == BC_ACQUIRE) ? 1 : -1);   // A9.5
                 break;
+            }
             case BC_INCREFS_DONE: case BC_ACQUIRE_DONE:
                 wpos += 16;  // binder_ptr_cookie (ptr + cookie); acknowledged
                 break;
@@ -849,7 +921,10 @@ public long binderWriteRead(int id, const(ubyte)* wbuf, ulong wsize, ulong* wcon
                 const ulong cookie = rdU64(wbuf, wpos + 4);
                 wpos += 12;
                 const int nidx = handleResolve(id, handle);
-                if (nidx >= 0 && g_nodes[nidx].subN < MAX_DEATH) {
+                if (nidx >= 0 && g_nodes[nidx].dead) {   // A9.5: already dead -- tell it now
+                    BinderTxData dm; dm.cookie = cookie;
+                    mailPush(id, BR_DEAD_BINDER, dm);
+                } else if (nidx >= 0 && g_nodes[nidx].subN < MAX_DEATH) {
                     g_nodes[nidx].subProc[g_nodes[nidx].subN]   = id;
                     g_nodes[nidx].subCookie[g_nodes[nidx].subN] = cookie;
                     ++g_nodes[nidx].subN;
@@ -932,7 +1007,8 @@ public long binderWriteRead(int id, const(ubyte)* wbuf, ulong wsize, ulong* wcon
                     if (sync && me >= 0) ++g_bthreads[me].outstanding;
                     completeTo(me, rbuf, rsize, rpos, BR_TRANSACTION_COMPLETE);
                 } else {
-                    completeTo(me, rbuf, rsize, rpos, BR_FAILED_REPLY);
+                    // A9.5: a call on a dead object is DEAD_REPLY (libbinder: DEAD_OBJECT), not a failure
+                    completeTo(me, rbuf, rsize, rpos, (tnode >= 0 && g_nodes[tnode].dead) ? BR_DEAD_REPLY : BR_FAILED_REPLY);
                 }
                 break;
             }
@@ -1156,7 +1232,14 @@ private bool binderSelfTestA3() {
         auto f = testFirstFlat(got0);
         ok = ok && (f.type == BINDER_TYPE_HANDLE) && (f.payload != 0);
         svHandle = cast(int)f.payload;
+        // Take the proxy's references before freeing the buffer, as libbinder's BpBinder does
+        // (BC_INCREFS + BC_ACQUIRE); a handle nobody references is released with its buffer.
+        ubyte[16] wbRef = 0; ulong wRef = 0;
+        putU32(wbRef.ptr, wbRef.length, wRef, BC_INCREFS); putU32(wbRef.ptr, wbRef.length, wRef, cast(uint)svHandle);
+        putU32(wbRef.ptr, wbRef.length, wRef, BC_ACQUIRE); putU32(wbRef.ptr, wbRef.length, wRef, cast(uint)svHandle);
+        ok = ok && (binderWriteRead(sv, wbRef.ptr, wRef, null, null, 0, null, &testCopyIn) == 0);
         binderFreeBuffer(sv, got0.data_buffer);
+        ok = ok && (handleResolve(sv, cast(uint)svHandle) >= 0);   // still held
     } else ok = false;
 
     // (2) server BC_REPLY -> client sees BR_REPLY with the reply bytes.

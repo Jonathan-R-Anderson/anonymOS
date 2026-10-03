@@ -448,7 +448,17 @@ void archMapKernel(ulong new_cr3) {
     klog("archMapKernel: done\n");
 }
 
-ulong alloc_phys_page() { physLockAcq(); ulong r = alloc_phys_page_impl(); physLockRel(); return r; }
+// A9.5: a reclaimer of cached pages nobody maps (posix.d's ext4 image page cache), tried before an
+// allocation fails.  It frees through free_phys_page, so it runs outside the allocator lock.
+alias MemReclaimFn = uint function(uint);
+__gshared MemReclaimFn g_memReclaim;
+ulong alloc_phys_page() {
+    physLockAcq(); ulong r = alloc_phys_page_impl(); physLockRel();
+    if (r == 0 && g_memReclaim !is null && g_memReclaim(512) != 0) {
+        physLockAcq(); r = alloc_phys_page_impl(); physLockRel();
+    }
+    return r;
+}
 private ulong alloc_phys_page_impl() {
     uint chargedObj = 0;
     if (!physChargeUntyped(1, chargedObj)) {
@@ -523,8 +533,16 @@ private ulong alloc_phys_page_impl() {
     return 0;
 }
 
-ulong alloc_phys_pages(size_t n) { physLockAcq(); ulong r = alloc_phys_pages_impl(n); physLockRel(); return r; }
-private ulong alloc_phys_pages_impl(size_t n) {
+ulong alloc_phys_pages(size_t n) {
+    physLockAcq(); ulong r = alloc_phys_pages_impl(n); physLockRel();
+    if (r == 0 && g_memReclaim !is null && g_memReclaim(cast(uint)(n < 512 ? 512 : n)) != 0) {
+        physLockAcq(); r = alloc_phys_pages_impl(n); physLockRel();
+    }
+    return r;
+}
+// The same, without the OOM log line: for callers that retry with smaller runs (posix.d memfdExtAppend).
+ulong alloc_phys_pages_try(size_t n) { physLockAcq(); ulong r = alloc_phys_pages_impl(n, true); physLockRel(); return r; }
+private ulong alloc_phys_pages_impl(size_t n, bool quiet = false) {
     if (n == 0) return 0;
 
     uint chargedObj = 0;
@@ -582,7 +600,7 @@ private ulong alloc_phys_pages_impl(size_t n) {
             return ret;
         }
     }
-    klog("OOM in alloc_phys_pages!\n");
+    if (!quiet) klog("OOM in alloc_phys_pages!\n");
     physUnchargeUntyped(chargedObj, n);
     return 0;
 }

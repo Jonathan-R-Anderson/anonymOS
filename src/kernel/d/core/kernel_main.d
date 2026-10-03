@@ -498,6 +498,50 @@ private void androidTaskDump() {
         uint live = 0; foreach (i; 1 .. MAX_TASKS) if (g_tasks[i].active && !g_tasks[i].exited) ++live;
         klog(" binder="); klog_dec(bp); klog("procs/"); klog_dec(bb >> 20); klog("MiB nodes="); klog_dec(bn);
         klog(" tasks="); klog_dec(live); klog("\n");
+        // DIAGNOSTIC (A9.5): who holds the memory -- one line per address space over 8 MiB exclusive.
+        import core.addrspace : userMemCount;
+        ulong sumP = 0, sumE = 0, sumT = 0;
+        foreach (i; 1 .. MAX_TASKS) {
+            if (!g_tasks[i].active || g_tasks[i].exited || g_tasks[i].pml4Phys == 0) continue;
+            bool seen = false;
+            foreach (j; 1 .. i) if (g_tasks[j].active && !g_tasks[j].exited && g_tasks[j].pml4Phys == g_tasks[i].pml4Phys) { seen = true; break; }
+            if (seen) continue;
+            ulong pr, ex, pt; userMemCount(g_tasks[i].pml4Phys, pr, ex, pt);
+            sumP += pr; sumE += ex; sumT += pt;
+            if (ex < 2048 && pt < 256) continue;
+            klog("[arss] t="); klog_dec(cast(ulong)i); klog(" ");
+            klog(g_taskExecName[i] !is null ? g_taskExecName[i] : "?".ptr);
+            klog(" rss="); klog_dec(pr >> 8); klog("M excl="); klog_dec(ex >> 8); klog("M pt="); klog_dec(pt * 4); klog("K\n");
+        }
+        klog("[arss] total rss="); klog_dec(sumP >> 8); klog("M excl="); klog_dec(sumE >> 8);
+        klog("M pt="); klog_dec(sumT >> 8); klog("M\n");
+        // DIAGNOSTIC (A9.5): once, the regions holding a graphics process's exclusive memory.
+        if (g_adumpN == 5) {
+            import core.addrspace : userRangeCount;
+            foreach (i; 1 .. MAX_TASKS) {
+                if (!g_tasks[i].active || g_tasks[i].exited || !g_taskAndroid[i] || g_taskExecName[i] is null) continue;
+                const(char)* nm = g_taskExecName[i];
+                if (!cstrEqK(nm, "surfaceflinger") && !(nm[0] == 'a' && nm[17] == 'g' && (nm[26] == 'a' || nm[26] == 'c'))) continue;  // android.hardware.graphics.alloc* / compo*
+                bool seen = false;
+                foreach (j; 1 .. i) if (g_tasks[j].active && !g_tasks[j].exited && g_tasks[j].pml4Phys == g_tasks[i].pml4Phys) { seen = true; break; }
+                if (seen) continue;
+                ulong inRegions = 0;
+                foreach (ri; 0 .. regionCountOf(g_tasks[i])) {
+                    auto r = &regionAt(g_tasks[i], ri);
+                    ulong pr, ex; userRangeCount(g_tasks[i].pml4Phys, r.start, r.end, pr, ex);
+                    inRegions += ex;
+                    if (ex < 256) continue;   // 1 MiB
+                    klog("[areg] t="); klog_dec(cast(ulong)i); klog(" "); klog_hex(r.start); klog("+"); klog_hex(r.end - r.start);
+                    klog(" excl="); klog_dec(ex >> 8); klog("M rss="); klog_dec(pr >> 8); klog("M");
+                    klog(r.owned ? " own" : ""); klog(r.anon ? " anon" : ""); klog(r.sharedMap ? " smap" : "");
+                    klog(r.type == RegionType.AllocateOnDemand ? " demand" : ""); if (r.vmoObjId) { klog(" vmo="); klog_dec(r.vmoObjId); }
+                    klog("\n");
+                }
+                ulong apr, aex, apt; userMemCount(g_tasks[i].pml4Phys, apr, aex, apt);
+                klog("[areg] t="); klog_dec(cast(ulong)i); klog(" "); klog(nm); klog(" excl="); klog_dec(aex >> 8);
+                klog("M in-regions="); klog_dec(inRegions >> 8); klog("M\n");
+            }
+        }
     }
     if (g_adumpN >= 2 && g_adumpN <= 4) {
         import core.syscalls.posix : androidPropDebugScan;
@@ -3866,6 +3910,42 @@ private void mmapFixedEvict(int tid, ulong va, ulong len) {
     removeRegionShared(tid, va, va + len);
 }
 
+// A9.5: map [moffset, +numPgs pages) of a stable (extent-backed) memfd at `vaddr` (reserved by the
+// caller, MAP_FIXED already evicted): one region per extent piece, each page referenced by the mapping
+// (posix.d memfdExtAppend says why).  The regions are owned + sharedMap, so munmap, exit and exec drop
+// the references and fork shares the frames and takes its own.  A map running past the memfd's end
+// stops there, as the contiguous path's clamp did.
+private long mmapStableMemfd(int tid, ulong vaddr, ulong mfd, ulong moffset, ulong numPgs, bool fixed) {
+    import core.syscalls.posix : fdMmapBacking;
+    import memory.mm : physPageRefInc;
+    auto task = &g_tasks[tid];
+    ulong done = 0;
+    bool tableFull = false;
+    while (done < numPgs) {
+        ulong ph = 0, sz = 0; uint vmo = 0; bool sh = false;
+        if (fdMmapBacking(mfd, moffset + done * 4096, &ph, &sz, &vmo, &sh) <= 0 || sz < 4096) break;
+        ulong n = sz >> 12;
+        if (n > numPgs - done) n = numPgs - done;
+        const ulong va = vaddr + done * 4096;
+        auto r = addRegion(*task, va, va + n * 4096, RegionType.Mapped, RegionPerms.ReadWrite, ph, true, vmo);
+        if (r is null) { tableFull = true; break; }
+        r.anon = false;
+        r.sharedMap = true;
+        foreach (k; 0 .. n) {
+            physPageRefInc(ph + k * 4096);
+            map_page_hhdm(ph + k * 4096, va + k * 4096, PTE_PRESENT | PTE_RW | PTE_USER, &alloc_phys_page);
+        }
+        done += n;
+    }
+    if (done != 0 && !tableFull) return cast(long)vaddr;
+    if (done != 0) {                                    // the region table filled: undo what was mapped
+        sys_munmap(vaddr, done * 4096, true);
+        removeRegion(*task, vaddr, vaddr + done * 4096);
+    }
+    if (!fixed) asMmapUndo(tid, vaddr, numPgs * 4096);
+    return tableFull ? -12 : -22;                       // ENOMEM / EINVAL (no backing at the offset)
+}
+
 // Whether a non-MAP_FIXED mmap may be placed at its caller's address hint [va, va+len).  It is
 // usable only when the range collides with nothing: no tracked region (rangeFreeShared) AND no
 // currently-present page.  The present-page scan matters because the main executable's and the
@@ -5229,6 +5309,15 @@ private void dispatchSyscall(int tid) {
                                              &useObjectBacking);
                 if (backing <= 0) useObjectBacking = false;
             }
+            // A9.5: a stable (Android) memfd maps extent by extent, each page referenced by the map.
+            {
+                import core.syscalls.posix : memfdStableFd;
+                if (useObjectBacking && backingSize > 0 && memfdStableFd(mfd)) {
+                    if (mflags & MAP_FIXED) mmapFixedEvict(tid, vaddr, alignedLen);
+                    ret = mmapStableMemfd(tid, vaddr, mfd, moffset, numPgs, (mflags & MAP_FIXED) != 0);
+                    break;
+                }
+            }
             // SECURITY: clamp the mapping to the backing's valid window.  A
             // valid offset with an oversized length must not map physical
             // pages past the end of the GEM buffer / memfd.
@@ -5426,6 +5515,7 @@ private void dispatchSyscall(int tid) {
             if (mrR.vmoObjId == 0 || memfdPhysByVmo(mrR.vmoObjId, null) == 0) {
                 const ulong gStart = mrR.start, gEnd = mrR.end;
                 const bool gAnon = mrR.anon;
+                const bool gShared = mrR.sharedMap;   // A9.5: a stable memfd map moves its referenced frames
                 const bool gDemand = mrR.type == RegionType.AllocateOnDemand;
                 ulong gDst;
                 if (mrFlags & MREMAP_FIXED) {
@@ -5444,6 +5534,7 @@ private void dispatchSyscall(int tid) {
                                       RegionPerms.ReadWrite, 0, true);
                 if (gNew is null) { ret = -12; break; }
                 gNew.anon = gAnon;
+                gNew.sharedMap = gShared;
                 const ulong moveBytes = (mrOldAligned < mrNewAligned) ? mrOldAligned : mrNewAligned;
                 for (ulong pg = 0; pg < (moveBytes >> 12); pg++) {
                     const ulong ph = unmap_page_hhdm(mrOld + pg * 4096);     // steal the old page

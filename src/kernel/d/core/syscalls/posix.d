@@ -5475,9 +5475,16 @@ public int sys_open(const(char)* path, int flags) {
             // .rc): Android's init skips a group/other-writable file as insecure -- root's, 0644.
             const bool propFile = androidPropIsPath(path);
             const bool overFile = androidPrefixLen(path, "/.aover") != 0;
+            // A9.5: an Android task's file gets the mode it asked for, less the umask, as on Linux --
+            // created 0666, init refused derive_classpath's /data/system/environ/classpath as
+            // group/other-writable ("Skipping insecure file"), the zygote never got the derived boot
+            // classpath (LineageOS's org.lineageos.platform.jar), and system_server's
+            // PowerManagerService died on NoClassDefFoundError.  The desktop keeps 0666.
+            ushort cmode = propFile ? cast(ushort)0x124 /*0444*/ : overFile ? cast(ushort)0x1A4 /*0644*/ : cast(ushort)0x1B6;
+            if (!propFile && !overFile && g_pendingOpenMode != uint.max && androidGlobalPids())
+                cmode = cast(ushort)(g_pendingOpenMode & 0x1FF & ~g_umask);
             const int created = rtCreate(rparent, rleaf, rleafLen, RT_REG,
-                                         propFile ? cast(ushort)0x124 /*0444*/
-                                                  : overFile ? cast(ushort)0x1A4 /*0644*/ : cast(ushort)0x1B6 /*0666*/,
+                                         cmode,
                                          (propFile || overFile) ? 0 : userCurrentUid(),
                                          (propFile || overFile) ? 0 : userCurrentGid());
             if (created < 0) return negErrno(ENOSPC);
@@ -5793,6 +5800,7 @@ public long linux_sys_write(ulong fd, ulong buf, ulong count) {
 // /epin-live-diag.conf (g_diagVerbose) lifts the bound.
 private __gshared uint g_openTracePostDesktop = 0;
 private enum uint OPEN_TRACE_POST_DESKTOP_MAX = 200;
+private __gshared uint g_pendingOpenMode = uint.max;   // the mode of the open() in progress (A9.5)
 public long linux_sys_open(ulong path, ulong flags, ulong _mode) {
     auto p = cast(const(char)*)path;
 
@@ -5806,7 +5814,9 @@ public long linux_sys_open(ulong path, ulong flags, ulong _mode) {
         klog("\n");
     }
 
+    g_pendingOpenMode = cast(uint)_mode;             // A9.5: an Android task's O_CREAT honours it
     const long r = cast(long)sys_open(cast(const(char)*)path, cast(int)flags);
+    g_pendingOpenMode = uint.max;
     // ROADMAP 2.3: the [open] line above records only the ATTEMPT, so a log full of plausible
     // paths says nothing about which of them the caller actually got.  Chasing the fontconfig
     // hang, the question is precisely whether creating <hash>.cache-9.TMP-XXXXXX succeeds.

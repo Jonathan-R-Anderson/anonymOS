@@ -5409,10 +5409,15 @@ public int sys_open(const(char)* path, int flags) {
             // A9.5: a property-area file (Android's init creates them, O_EXCL, mode 0444) is root's and
             // read-only -- bionic's map_prop_area refuses one that is not root-owned or is group/other
             // writable, which the 0666/current-user default would be.
+            // Likewise the container runtime's files over the image (/.aover: waydroid.prop, an init
+            // .rc): Android's init skips a group/other-writable file as insecure -- root's, 0644.
             const bool propFile = androidPropIsPath(path);
+            const bool overFile = androidPrefixLen(path, "/.aover") != 0;
             const int created = rtCreate(rparent, rleaf, rleafLen, RT_REG,
-                                         propFile ? cast(ushort)0x124 /*0444*/ : cast(ushort)0x1B6 /*0666*/,
-                                         propFile ? 0 : userCurrentUid(), propFile ? 0 : userCurrentGid());
+                                         propFile ? cast(ushort)0x124 /*0444*/
+                                                  : overFile ? cast(ushort)0x1A4 /*0644*/ : cast(ushort)0x1B6 /*0666*/,
+                                         (propFile || overFile) ? 0 : userCurrentUid(),
+                                         (propFile || overFile) ? 0 : userCurrentGid());
             if (created < 0) return negErrno(ENOSPC);
             g_fdTable[fd].type     = FileType.FD_RTFILE;
             g_fdTable[fd].flags    = flags;
@@ -19906,6 +19911,7 @@ private void androidDataEnsureRoot() {
     androidEnsureDir("/.astorage\0".ptr);
     androidEnsureDir("/.aapex\0".ptr);
     androidEnsureDir("/.adata_mirror\0".ptr);
+    androidEnsureDir("/.aover\0".ptr);
 }
 // The writable per-container overlays over the read-only image: /data (A9.3f), and /linkerconfig
 // (A9.3n) -- on a device init runs linkerconfig into a tmpfs there; the container runtime
@@ -19915,7 +19921,7 @@ private void androidDataEnsureRoot() {
 // androidOnly: applied only for an Android task or a chroot'd container path (/aroot/...), never to
 // the host's own paths -- /mnt in particular is an ordinary host location.
 private struct AOverlay { string src; string dst; bool androidOnly; }
-private static immutable AOverlay[5] g_aOverlays = [
+private static immutable AOverlay[7] g_aOverlays = [
     AOverlay("/data",         "/.adata",         false),
     AOverlay("/linkerconfig", "/.alinkerconfig", false),
     // A9.4: the tmpfs mounts init lays down (init.rc): the zygote prepares /mnt/user/<id> and
@@ -19923,6 +19929,13 @@ private static immutable AOverlay[5] g_aOverlays = [
     AOverlay("/mnt",          "/.amnt",          true),
     AOverlay("/storage",      "/.astorage",      true),
     AOverlay("/data_mirror",  "/.adata_mirror",  true),
+    // A9.5: files the container runtime (hos-container --android-init) supplies over the image.
+    // Waydroid's host-generated property file: the image ships a dummy /vendor/waydroid.prop that
+    // Waydroid's init loads after the partition build.props (so its keys win) -- written with a
+    // 64-bit-only ABI and ro.zygote=zygote64, since 32-bit (ia32) processes cannot run.  And the
+    // zygote64 service file that ro.zygote=zygote64 imports, which this zygote64_32 image lacks.
+    AOverlay("/vendor/waydroid.prop", "/.aover/waydroid.prop", true),
+    AOverlay("/system/etc/init/hw/init.zygote64.rc", "/.aover/init.zygote64.rc", true),
 ];
 private bool androidOverlayContext(const(char)* path, const(char)* stripped) @nogc nothrow {
     if (stripped != path) return true;                  // rerooted under /aroot: a container path
@@ -19986,8 +19999,12 @@ private bool androidDataIsPath(const(char)* path) @nogc nothrow {
     const(char)* q = androidStripAroot(path);
     const bool actx = androidOverlayContext(path, q);
     foreach (ref ov; g_aOverlays) {
+        // The overlay trees themselves (kernel-private /.a* names) are always theirs: a rewritten
+        // path no longer carries the /aroot that made it a container path, so the container runtime
+        // (not an Android task) writing /vendor/waydroid.prop arrives here as /.aover/... .
+        if (androidPrefixLen(q, ov.dst) != 0) return true;
         if (ov.androidOnly && !actx) continue;
-        if (androidPrefixLen(q, ov.src) != 0 || androidPrefixLen(q, ov.dst) != 0) return true;
+        if (androidPrefixLen(q, ov.src) != 0) return true;
     }
     { size_t la; if (actx && androidApexLooseFile(q, la)) return true; }
     if (androidPrefixLen(q, "/.aapex") != 0) return true;   // A9.5: apexd's loose /apex files

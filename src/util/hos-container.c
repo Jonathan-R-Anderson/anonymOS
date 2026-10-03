@@ -339,6 +339,46 @@ static int container_init(const char *root, int argc, char **argv) {
                            zenv, uenv,
                            NULL };
             if (g_android_init) {
+                /* A9.5: Waydroid's host-generated properties, which init loads from
+                 * /vendor/waydroid.prop after the partition build.props (the kernel redirects that
+                 * path to a writable file).  The image advertises x86 as a 32-bit ABI and
+                 * ro.zygote=zygote64_32, so init would start 32-bit services -- ia32 processes cannot
+                 * run here, and boringssl_self_test32_vendor's crash ('reboot_on_failure') rebooted
+                 * init.  An explicit ro.product.cpu.abilist also stops init deriving the lists from
+                 * the ro.<partition>.product.cpu.abilist* keys; an empty abilist32 leaves the
+                 * `property:ro.product.cpu.abilist32=*` triggers unmatched. */
+                static const char wprop[] =
+                    "ro.product.cpu.abilist=x86_64\n"
+                    "ro.product.cpu.abilist32=\n"
+                    "ro.product.cpu.abilist64=x86_64\n"
+                    "ro.zygote=zygote64\n";
+                int wp = open("/vendor/waydroid.prop", O_WRONLY | O_CREAT | O_TRUNC, 0644);
+                if (wp < 0 || write(wp, wprop, sizeof wprop - 1) != (ssize_t)(sizeof wprop - 1))
+                    printf("[hos-container] exec-bionic: writing /vendor/waydroid.prop failed: %s\n",
+                           strerror(errno));
+                if (wp >= 0) close(wp);
+                /* ro.zygote=zygote64 makes init.rc import init.zygote64.rc, which a zygote64_32
+                 * image does not ship: derive it from init.zygote64_32.rc -- everything before the
+                 * 32-bit `service zygote_secondary` (app_process32), whose crash would also restart
+                 * the 64-bit zygote ('onrestart restart zygote'). */
+                {   static char zrc[8192];
+                    ssize_t zn = -1;
+                    int zf = open("/system/etc/init/hw/init.zygote64_32.rc", O_RDONLY);
+                    if (zf >= 0) { zn = read(zf, zrc, sizeof zrc - 1); close(zf); }
+                    if (zn > 0) {
+                        zrc[zn] = 0;
+                        char *sec = strstr(zrc, "\nservice zygote_secondary ");
+                        if (sec) zn = sec - zrc + 1;
+                        int zo = open("/system/etc/init/hw/init.zygote64.rc", O_WRONLY | O_CREAT | O_TRUNC, 0644);
+                        if (zo < 0 || write(zo, zrc, (size_t)zn) != zn)
+                            printf("[hos-container] exec-bionic: writing init.zygote64.rc failed: %s\n",
+                                   strerror(errno));
+                        if (zo >= 0) close(zo);
+                    } else {
+                        printf("[hos-container] exec-bionic: reading init.zygote64_32.rc failed: %s\n",
+                               strerror(errno));
+                    }
+                }
                 char *iav[] = { (char *)"/system/bin/init", (char *)"second_stage", NULL };
                 { const char *pb = "[exec-bionic] android init: exec /system/bin/init second_stage\n";
                   (void)!write(2, pb, strlen(pb)); }

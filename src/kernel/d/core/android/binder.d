@@ -38,8 +38,14 @@ enum uint BINDER_THREAD_EXIT     = 0x4004_6208;
 enum int  BINDER_CURRENT_PROTOCOL_VERSION = 8;
 
 // BC_* : commands written by userspace (low 16 bits of the _IOC code; the driver reads the full u32).
-enum uint BC_TRANSACTION    = 0xC030_6300;  // _IOW('c',0, binder_transaction_data)
-enum uint BC_REPLY          = 0xC030_6301;  // _IOW('c',1, binder_transaction_data)
+// A9.4: the transaction codes carry sizeof(binder_transaction_data) = 64 (0x40) and _IOW's direction:
+// they were 0xC030_63xx (size 0x30), so real libbinder traffic never parsed -- "unhandled BC command
+// 0x40406300" the first time system_server called servicemanager.  The self-tests used the same wrong
+// values, which is why they passed.
+enum uint BC_TRANSACTION    = 0x4040_6300;  // _IOW('c',0, binder_transaction_data)
+enum uint BC_REPLY          = 0x4040_6301;  // _IOW('c',1, binder_transaction_data)
+enum uint BC_TRANSACTION_SG = 0x4048_6311;  // _IOW('c',17, binder_transaction_data_sg): + buffers_size
+enum uint BC_REPLY_SG       = 0x4048_6312;  // _IOW('c',18, binder_transaction_data_sg)
 enum uint BC_FREE_BUFFER    = 0x4008_6303;  // _IOW('c',3, binder_uintptr_t)
 enum uint BC_INCREFS        = 0x4004_6304;
 enum uint BC_ACQUIRE        = 0x4004_6305;
@@ -56,8 +62,8 @@ enum uint BC_CLEAR_DEATH_NOTIFICATION   = 0x400C_630F;  // _IOW('c',15, binder_h
 enum uint BC_DEAD_BINDER_DONE           = 0x4008_6310;  // _IOW('c',16, binder_uintptr_t)
 
 // BR_* : returns delivered to userspace.
-enum uint BR_TRANSACTION          = 0x8030_7202;  // _IOR('r',2, binder_transaction_data)
-enum uint BR_REPLY                = 0x8030_7203;  // _IOR('r',3, binder_transaction_data)
+enum uint BR_TRANSACTION          = 0x8040_7202;  // _IOR('r',2, binder_transaction_data)
+enum uint BR_REPLY                = 0x8040_7203;  // _IOR('r',3, binder_transaction_data)
 enum uint BR_DEAD_REPLY           = 0x0000_7205;  // _IO('r',5) -- target gone mid-transaction
 enum uint BR_TRANSACTION_COMPLETE = 0x0000_7206;  // _IO('r',6)
 enum uint BR_NOOP                 = 0x0000_720C;  // _IO('r',12)
@@ -114,6 +120,8 @@ private enum int MAX_TXSTACK = 16;    // depth of nested synchronous transaction
 private struct Mail {
     uint code;          // BR_TRANSACTION / BR_REPLY (tx used), or BR_DEAD_BINDER (tx.cookie used)
     BinderTxData tx;
+    int  fromThread;        // A9.4: a synchronous BR_TRANSACTION's calling thread, g_bthreads index + 1
+                            // (0 = none; zero-initialized so the mailbox arrays stay in .bss)
 }
 
 private struct BinderProc {
@@ -130,11 +138,9 @@ private struct BinderProc {
     uint  regionSize;
     uint  bumpUsed;     // simple bump allocator; reset when the last buffer is freed (A3: real freelist)
     int   allocCount;
-    // A3: this proc's handle table (handle -> node index; -1 = free) and its stack of incoming
-    // synchronous transactions, each recording the sender to route the eventual BC_REPLY back to.
+    // A3: this proc's handle table (handle -> node index; -1 = free).  (Reply routing is per
+    // thread since A9.4 -- g_bthreads.)
     int[MAX_HANDLES] handleNode = -1;
-    int  txStackN;
-    int[MAX_TXSTACK] txStackSender;
     // A3b: the fd-table id of the task that opened this /dev/binder, so a TYPE_FD object can be
     // installed into the right process's fd table.  -1 until posix.d records it (binderSetProcTab).
     int  ownerTab = -1;
@@ -148,6 +154,83 @@ private struct BinderProc {
 private enum uint BINDER_VM_MAX = 4 * 1024 * 1024;
 
 private __gshared BinderProc[MAX_PROCS] g_procs;
+
+// ---- A9.4: binder threads --------------------------------------------------------------------
+// Real binder routes per THREAD: a reply goes to the thread that made the call; an incoming
+// transaction goes to any idle thread of the target process -- or, when a call comes back into a
+// process whose thread is itself waiting on the caller, to that waiting thread; and a thread with
+// nothing to do BLOCKS in BINDER_WRITE_READ.  Android's thread pools depend on all three: with one
+// mailbox per process, a looper thread could swallow the reply another thread is waiting for.
+// Threads are keyed by (proc, kernel task id); the self-test passes no tid and gets one pseudo-thread
+// per proc, which is the old single-threaded behaviour exactly.
+private enum int MAX_BTHREADS = 256;
+private enum int TMAIL_CAP    = 8;
+private struct BinderThread {
+    bool used;
+    int  proc;
+    int  tid;
+    int  outstanding;               // synchronous calls sent whose reply has not been read yet
+    int  inN;                       // synchronous calls received whose reply has not been sent (a stack)
+    int[MAX_TXSTACK] inFrom;        // the calling thread of each
+    int  mailHead, mailLen;
+    Mail[TMAIL_CAP] mail;           // this thread's own todo: replies, and calls routed to it
+}
+private __gshared BinderThread[MAX_BTHREADS] g_bthreads;
+
+private int threadFor(int proc, int tid) {
+    int free = -1;
+    foreach (i; 0 .. MAX_BTHREADS) {
+        if (g_bthreads[i].used) {
+            if (g_bthreads[i].proc == proc && g_bthreads[i].tid == tid) return cast(int)i;
+        } else if (free < 0) free = cast(int)i;
+    }
+    if (free < 0) return -1;
+    g_bthreads[free] = BinderThread.init;
+    g_bthreads[free].used = true;
+    g_bthreads[free].proc = proc;
+    g_bthreads[free].tid  = tid;
+    return free;
+}
+private bool tmailPush(int t, uint code, const ref BinderTxData tx, int fromThread) {
+    auto th = &g_bthreads[t];
+    if (!th.used || th.mailLen >= TMAIL_CAP) return false;
+    const int slot = (th.mailHead + th.mailLen) % TMAIL_CAP;
+    th.mail[slot].code = code;
+    th.mail[slot].tx = tx;
+    th.mail[slot].fromThread = fromThread + 1;
+    ++th.mailLen;
+    return true;
+}
+// A caller whose callee went away before replying gets BR_DEAD_REPLY, as from real binder.
+private void deadReplyTo(int caller) {
+    if (caller < 0 || caller >= MAX_BTHREADS || !g_bthreads[caller].used) return;
+    BinderTxData none;
+    tmailPush(caller, BR_DEAD_REPLY, none, -1);
+}
+// Returns that carry no payload after the code.
+private bool payloadless(uint code) @nogc nothrow {
+    return code == BR_DEAD_REPLY || code == BR_FAILED_REPLY || code == BR_TRANSACTION_COMPLETE;
+}
+
+/// Readiness for poll/epoll: anything queued for the proc or any of its threads.  (A superset of what
+/// a particular thread may take, so a parked waiter is never left asleep with work pending.)
+public bool binderPollReadable(int id) {
+    if (id < 0 || id >= MAX_PROCS || !g_procs[id].used) return false;
+    if (g_procs[id].mailLen > 0) return true;
+    foreach (i; 0 .. MAX_BTHREADS)
+        if (g_bthreads[i].used && g_bthreads[i].proc == id && g_bthreads[i].mailLen > 0) return true;
+    return false;
+}
+
+/// BINDER_THREAD_EXIT: the thread leaves; callers still waiting on it get BR_DEAD_REPLY.
+public void binderThreadExit(int id, int tid) {
+    foreach (i; 0 .. MAX_BTHREADS) {
+        auto th = &g_bthreads[i];
+        if (!th.used || th.proc != id || th.tid != tid) continue;
+        foreach (k; 0 .. th.inN) deadReplyTo(th.inFrom[k]);
+        *th = BinderThread.init;
+    }
+}
 
 // ---- A4: binder contexts ---------------------------------------------------------------------
 // Each context is an independent binder world: its own context manager (handle 0) and, through it,
@@ -220,6 +303,22 @@ public void binderFree(int id) {
             }
         }
         g_nodes[n] = Node.init;   // the owner is gone; outstanding handles to it are now dead
+    }
+    // A9.4: every caller still waiting on this proc -- a call it was servicing, or one still queued
+    // for it -- gets BR_DEAD_REPLY instead of waiting forever; then its threads go.
+    foreach (i; 0 .. MAX_BTHREADS) {
+        auto th = &g_bthreads[i];
+        if (!th.used || th.proc != id) continue;
+        foreach (k; 0 .. th.inN) deadReplyTo(th.inFrom[k]);
+        foreach (k; 0 .. th.mailLen) {
+            const auto m = &th.mail[(th.mailHead + k) % TMAIL_CAP];
+            if (m.code == BR_TRANSACTION) deadReplyTo(m.fromThread - 1);
+        }
+        *th = BinderThread.init;
+    }
+    foreach (k; 0 .. g_procs[id].mailLen) {
+        const auto m = &g_procs[id].mail[(g_procs[id].mailHead + k) % MAILBOX_CAP];
+        if (m.code == BR_TRANSACTION) deadReplyTo(m.fromThread - 1);
     }
     {
         auto c = &g_ctx[g_procs[id].ctx];
@@ -416,7 +515,8 @@ private bool translateObject(int sender, int target, FlatBinderObject* fo) {
 // region, translate every flat object the offsets point at, and rewrite `tx` to point into the
 // target region.  Returns 0 on success, -1 on failure (no room, bad offsets, or an object that
 // cannot cross); on failure nothing is enqueued.
-private long deliverTxn(int sender, int target, ref BinderTxData tx, bool isReply, BinderCopyIn copyin) {
+private long deliverTxn(int sender, int target, ref BinderTxData tx, bool isReply, BinderCopyIn copyin,
+                        int toThread = -1, int fromThread = -1) {
     if (target < 0 || target >= MAX_PROCS || !g_procs[target].used || g_procs[target].regionPhys == 0)
         return -1;
     const uint dsz = (tx.data_size    > BINDER_VM_MAX) ? 0 : cast(uint)tx.data_size;
@@ -438,33 +538,19 @@ private long deliverTxn(int sender, int target, ref BinderTxData tx, bool isRepl
     tx.offsets_size = osz;
     tx.data_buffer  = g_procs[target].regionUserBase + cast(ulong)base;
     tx.data_offsets = g_procs[target].regionUserBase + cast(ulong)base + dAligned;
-    return mailPush(target, isReply ? BR_REPLY : BR_TRANSACTION, tx) ? 0 : -1;
+    const uint code = isReply ? BR_REPLY : BR_TRANSACTION;
+    if (toThread >= 0) return tmailPush(toThread, code, tx, fromThread) ? 0 : -1;
+    return mailPush(target, code, tx, fromThread) ? 0 : -1;
 }
 
-private bool mailPush(int id, uint code, const ref BinderTxData tx) {
+private bool mailPush(int id, uint code, const ref BinderTxData tx, int fromThread = -1) {
     auto p = &g_procs[id];
     if (p.mailLen >= MAILBOX_CAP) return false;
     const int slot = (p.mailHead + p.mailLen) % MAILBOX_CAP;
     p.mail[slot].code = code;
     p.mail[slot].tx = tx;
+    p.mail[slot].fromThread = fromThread + 1;
     ++p.mailLen;
-    return true;
-}
-
-private bool mailPop(int id, ref Mail out_) {
-    auto p = &g_procs[id];
-    if (p.mailLen == 0) return false;
-    out_ = p.mail[p.mailHead];
-    p.mailHead = (p.mailHead + 1) % MAILBOX_CAP;
-    --p.mailLen;
-    return true;
-}
-
-// Peek the head return code without consuming it, so the drain can size-check before popping.
-private bool mailPeek(int id, ref uint code) {
-    auto p = &g_procs[id];
-    if (p.mailLen == 0) return false;
-    code = p.mail[p.mailHead].code;
     return true;
 }
 
@@ -507,11 +593,20 @@ private ulong rdU64(const(ubyte)* b, ulong off) {
  * writes a BR_* return stream into `rbuf[0..rsize]`.  Sets *wconsumed = bytes of write consumed and
  * *rconsumed = bytes of read produced.  Returns 0, or -errno.
  */
+/// A9.4: `tid` names the calling thread (per-thread routing), `senderPid`/`senderEuid` fill a
+/// transaction's sender fields, and `mayBlock` lets a read with nothing to deliver return
+/// BINDER_WOULD_BLOCK -- after the write stream is consumed and with nothing written to the read
+/// stream -- so the caller can park the thread and re-run the call (the re-run starts at the
+/// recorded write_consumed, so nothing is sent twice).
+enum long BINDER_WOULD_BLOCK = -11;   // EAGAIN
+private __gshared uint g_binderUnknownBcN = 0;
 public long binderWriteRead(int id, const(ubyte)* wbuf, ulong wsize, ulong* wconsumed,
-                            ubyte* rbuf, ulong rsize, ulong* rconsumed, BinderCopyIn copyin) {
+                            ubyte* rbuf, ulong rsize, ulong* rconsumed, BinderCopyIn copyin,
+                            int tid = -1, int senderPid = 0, uint senderEuid = 0, bool mayBlock = false) {
     if (id < 0 || id >= MAX_PROCS || !g_procs[id].used) return -22; // EINVAL
     ulong rpos = 0;
     ulong wpos = 0;
+    const int me = threadFor(id, tid);   // -1 only when the thread table is full
 
     // Process the write command stream.
     while (wpos + 4 <= wsize) {
@@ -577,12 +672,15 @@ public long binderWriteRead(int id, const(ubyte)* wbuf, ulong wsize, ulong* wcon
                 binderFreeBuffer(id, bufptr);   // A2: reclaim the received buffer
                 break;
             }
-            case BC_TRANSACTION: {
-                if (wpos + BinderTxData.sizeof > wsize) { wpos = wsize; break; }
+            case BC_TRANSACTION: case BC_TRANSACTION_SG: {
+                // _SG appends a binder_size_t buffers_size (scatter-gather BINDER_TYPE_PTR payloads,
+                // used by HIDL); the transaction itself is the same.
+                const ulong sgExtra = (cmd == BC_TRANSACTION_SG) ? 8 : 0;
+                if (wpos + BinderTxData.sizeof + sgExtra > wsize) { wpos = wsize; break; }
                 BinderTxData tx;
                 auto d = cast(ubyte*)&tx;
                 foreach (i; 0 .. BinderTxData.sizeof) d[i] = wbuf[wpos + i];
-                wpos += BinderTxData.sizeof;
+                wpos += BinderTxData.sizeof + sgExtra;
                 const uint origFlags = tx.flags;
                 // Route by target: handle 0 is the context manager; any other handle resolves
                 // through this proc's handle table to the owning proc (A3).
@@ -592,30 +690,41 @@ public long binderWriteRead(int id, const(ubyte)* wbuf, ulong wsize, ulong* wcon
                     const int nidx = handleResolve(id, cast(uint)tx.target);
                     if (nidx >= 0) tgt = g_nodes[nidx].owner;
                 }
-                if (tgt >= 0 && deliverTxn(id, tgt, tx, false, copyin) == 0) {
-                    // A synchronous call records us as the sender so the target's BC_REPLY routes
-                    // back here; a one-way call expects no reply.
-                    if ((origFlags & TF_ONE_WAY) == 0) {
-                        auto tp = &g_procs[tgt];
-                        if (tp.txStackN < MAX_TXSTACK) tp.txStackSender[tp.txStackN++] = id;
-                    }
+                tx.sender_pid  = senderPid;      // the driver fills these, never the sender
+                tx.sender_euid = senderEuid;
+                // A synchronous call carries this thread, so the BC_REPLY comes back to it.  A call
+                // back into the process whose thread is waiting on us goes to that thread (it is
+                // blocked in our call and must service this one to make progress).
+                const bool sync = (origFlags & TF_ONE_WAY) == 0;
+                int toThread = -1;
+                if (sync && me >= 0 && g_bthreads[me].inN > 0) {
+                    const int caller = g_bthreads[me].inFrom[g_bthreads[me].inN - 1];
+                    if (caller >= 0 && g_bthreads[caller].used && g_bthreads[caller].proc == tgt)
+                        toThread = caller;
+                }
+                if (tgt >= 0 && deliverTxn(id, tgt, tx, false, copyin, toThread, sync ? me : -1) == 0) {
+                    if (sync && me >= 0) ++g_bthreads[me].outstanding;
                     putU32(rbuf, rsize, rpos, BR_TRANSACTION_COMPLETE);
                 } else {
                     putU32(rbuf, rsize, rpos, BR_FAILED_REPLY);
                 }
                 break;
             }
-            case BC_REPLY: {
-                if (wpos + BinderTxData.sizeof > wsize) { wpos = wsize; break; }
+            case BC_REPLY: case BC_REPLY_SG: {
+                const ulong sgExtra = (cmd == BC_REPLY_SG) ? 8 : 0;
+                if (wpos + BinderTxData.sizeof + sgExtra > wsize) { wpos = wsize; break; }
                 BinderTxData tx;
                 auto d = cast(ubyte*)&tx;
                 foreach (i; 0 .. BinderTxData.sizeof) d[i] = wbuf[wpos + i];
-                wpos += BinderTxData.sizeof;
-                // Pop the sender of the transaction we are replying to, and deliver BR_REPLY there.
-                auto me = &g_procs[id];
-                int dest = -1;
-                if (me.txStackN > 0) dest = me.txStackSender[--me.txStackN];
-                if (dest >= 0 && deliverTxn(id, dest, tx, true, copyin) == 0)
+                wpos += BinderTxData.sizeof + sgExtra;
+                // Pop the calling thread of the transaction we are replying to; BR_REPLY goes to it.
+                int dest = -1, destThread = -1;
+                if (me >= 0 && g_bthreads[me].inN > 0) {
+                    destThread = g_bthreads[me].inFrom[--g_bthreads[me].inN];
+                    if (destThread >= 0 && g_bthreads[destThread].used) dest = g_bthreads[destThread].proc;
+                    else destThread = -1;
+                }
+                if (dest >= 0 && deliverTxn(id, dest, tx, true, copyin, destThread, -1) == 0)
                     putU32(rbuf, rsize, rpos, BR_TRANSACTION_COMPLETE);
                 else
                     putU32(rbuf, rsize, rpos, BR_FAILED_REPLY);
@@ -623,6 +732,10 @@ public long binderWriteRead(int id, const(ubyte)* wbuf, ulong wsize, ulong* wcon
             }
             default:
                 // Unknown command: stop parsing rather than misread the stream (A1 is a subset).
+                if (g_binderUnknownBcN < 8) {
+                    ++g_binderUnknownBcN;
+                    klog("[binder] unhandled BC command "); klog_hex(cmd); klog("\n");
+                }
                 wpos = wsize;
                 break;
         }
@@ -633,18 +746,41 @@ public long binderWriteRead(int id, const(ubyte)* wbuf, ulong wsize, ulong* wcon
     // each pending return.  A transaction/reply carries a binder_transaction_data; a death
     // notification carries only its cookie.  Size-check before popping so a record that will not fit
     // stays queued for the next read.
+    // A9.4: this thread takes its own todo first; it may take the proc's todo only while it is
+    // neither waiting for a reply nor servicing a call (re-checked after each item: taking a
+    // synchronous transaction makes it busy).
+    bool eligible() { return me < 0 || (g_bthreads[me].outstanding == 0 && g_bthreads[me].inN == 0); }
+    bool ownWork()  { return me >= 0 && g_bthreads[me].mailLen > 0; }
+    if (mayBlock && rsize > 0 && rpos == 0 && !ownWork() && !(eligible() && g_procs[id].mailLen > 0)) {
+        if (rconsumed !is null) *rconsumed = 0;
+        return BINDER_WOULD_BLOCK;
+    }
     if (rsize >= 4) putU32(rbuf, rsize, rpos, BR_NOOP);
     for (;;) {
-        uint code;
-        if (!mailPeek(id, code)) break;
+        Mail* src;
+        bool fromOwn;
+        if (ownWork()) {
+            src = &g_bthreads[me].mail[g_bthreads[me].mailHead]; fromOwn = true;
+        } else if (eligible() && g_procs[id].mailLen > 0) {
+            src = &g_procs[id].mail[g_procs[id].mailHead]; fromOwn = false;
+        } else break;
+        const uint code = src.code;
         const bool isDeath = (code == BR_DEAD_BINDER || code == BR_CLEAR_DEATH_NOTIFICATION_DONE);
-        const ulong need = isDeath ? (4 + 8) : (4 + BinderTxData.sizeof);
+        const ulong need = payloadless(code) ? 4 : isDeath ? (4 + 8) : (4 + BinderTxData.sizeof);
         if (rpos + need > rsize) break;
-        Mail m;
-        mailPop(id, m);
+        const Mail m = *src;
+        if (fromOwn) { g_bthreads[me].mailHead = (g_bthreads[me].mailHead + 1) % TMAIL_CAP; --g_bthreads[me].mailLen; }
+        else         { g_procs[id].mailHead = (g_procs[id].mailHead + 1) % MAILBOX_CAP; --g_procs[id].mailLen; }
         putU32(rbuf, rsize, rpos, m.code);
         if (isDeath) putU64(rbuf, rsize, rpos, m.tx.cookie);
-        else         putTx(rbuf, rsize, rpos, m.tx);
+        else if (!payloadless(code)) putTx(rbuf, rsize, rpos, m.tx);
+        if (me >= 0) {
+            if (code == BR_TRANSACTION && m.fromThread > 0 && g_bthreads[me].inN < MAX_TXSTACK)
+                g_bthreads[me].inFrom[g_bthreads[me].inN++] = m.fromThread - 1;   // we owe this caller a reply
+            if ((code == BR_REPLY || code == BR_DEAD_REPLY) && g_bthreads[me].outstanding > 0)
+                --g_bthreads[me].outstanding;
+        }
+        if (code == BR_TRANSACTION || code == BR_REPLY || code == BR_DEAD_REPLY) break;   // one call per read
     }
     if (rconsumed !is null) *rconsumed = rpos;
     return 0;
@@ -652,7 +788,7 @@ public long binderWriteRead(int id, const(ubyte)* wbuf, ulong wsize, ulong* wcon
 
 // ---- boot self-test --------------------------------------------------------------------------
 
-import core.io : klog;
+import core.io : klog, klog_hex;
 
 // A test copy-in: the self-test has no user context, so a "user address" is a kernel pointer.
 private ulong testCopyIn(ulong uaddr, ubyte* dst, ulong n) @nogc nothrow {
@@ -924,9 +1060,19 @@ public void binderSelfTest() {
     ulong wc = 0, rc = 0;
     const long r = binderWriteRead(a, wbuf.ptr, w, &wc, rbuf.ptr, rbuf.length, &rc, &testCopyIn);
     ok = ok && (r == 0) && (wc == w);
+    // A9.4: the sending thread now waits for its reply and so takes no process work -- as in real
+    // binder, a single-threaded self-call would deadlock.  A second looper thread of the same proc
+    // (pseudo-tid -2) receives the transaction; its stream is appended to the sender's.
+    {
+        ulong rc2 = 0;
+        const long r2 = binderWriteRead(a, null, 0, null, rbuf.ptr + rc, rbuf.length - rc, &rc2, &testCopyIn, -2);
+        ok = ok && (r2 == 0);
+        rc += rc2;
+    }
 
-    // The sender's read stream must contain BR_TRANSACTION_COMPLETE; and because the sender IS the
-    // context manager, the transaction it sent to handle 0 must come back as BR_TRANSACTION(code 0x2a).
+    // The combined stream must contain BR_TRANSACTION_COMPLETE (for the sender); and because the
+    // sender IS the context manager, the transaction it sent to handle 0 arrives as
+    // BR_TRANSACTION(code 0x2a) at the proc's other thread.
     bool sawComplete = false, sawTxn = false;
     ulong p = 0;
     while (p + 4 <= rc) {

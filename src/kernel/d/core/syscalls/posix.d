@@ -18,7 +18,7 @@ import core.task : g_tasks, MAX_TASKS, linuxPidForTask, linuxTidForTask,
                    g_taskPendingSig,                                 // ITIMER_REAL -> SIGALRM
                    g_sigFlags, g_sigAltSp, g_sigAltSize, g_sigAltOn, sigProc, sigIgnored,
                    mainStackRange, USER_STACK_TOP, USER_STACK_RLIMIT,  // A9.3n: /proc/<pid>/stat+maps
-                   g_taskAndroid;
+                   g_taskAndroid, g_androidUidP1, g_androidGidP1;
 import core.objmgr : ObjType, ObjHeader, objAlloc, objRetain, objRelease, objGet,
                      g_objOps, g_objOpsDispatch; // Phase 2/5 object mgr
 import core.cap : Capability, CAP_INVALID,
@@ -1062,7 +1062,15 @@ private uint capRightsForFile(File* f) {
             rights |= CAP_RIGHT_READ | CAP_RIGHT_WRITE | CAP_RIGHT_IOCTL | CAP_RIGHT_MMAP;
             break;
         case FileType.FD_MEMFD:
-            rights |= CAP_RIGHT_READ | CAP_RIGHT_WRITE | CAP_RIGHT_MMAP;
+            // + IOCTL: /dev/ashmem is a memfd underneath and is driven by ASHMEM_* ioctls (A5).
+            rights |= CAP_RIGHT_READ | CAP_RIGHT_WRITE | CAP_RIGHT_MMAP | CAP_RIGHT_IOCTL;
+            break;
+        case FileType.FD_BINDER:
+        case FileType.FD_BINDER_CTL:
+            // A9.4: binder is driven entirely by ioctl (VERSION, WRITE_READ, ...) and its receive
+            // buffer is an mmap; the default rights had neither, so servicemanager's first
+            // BINDER_VERSION failed EBADF.
+            rights |= CAP_RIGHT_READ | CAP_RIGHT_WRITE | CAP_RIGHT_IOCTL | CAP_RIGHT_MMAP;
             break;
         case FileType.FD_CONSOLE:
             if ((f.flags & 3) == O_WRONLY) rights |= CAP_RIGHT_WRITE;
@@ -1466,6 +1474,7 @@ private struct LocalSocket
     // with no peer, and every datagram is decoded (bionic logdw wire format) and printed to the
     // kernel log instead of delivered -- which is what makes ART's own diagnostics visible.
     bool isLogSink;
+    bool isPropService;   // A9.4: connected to /dev/socket/property_service, served in-kernel
 }
 
 __gshared LocalSocket[localSocketMax] g_localSockets;
@@ -1618,6 +1627,87 @@ private bool unixAddrEqualsLiteral(const(sockaddr_un)* addr, size_t len, string 
 private bool sockPathIsLogd(const(sockaddr_un)* addr, size_t len)
 {
     return unixAddrEqualsLiteral(addr, len, "/dev/socket/logdw");
+}
+
+// ── A9.4: an in-kernel Android property service ────────────────────────────────────────────────────
+// SystemProperties.set() reaches init's property service over /dev/socket/property_service; there is
+// no init, and system_server sets properties within its first steps (a failed set throws
+// "failed to set system property").  bionic's protocol 2 (ro.property_service.version=2, seeded):
+// u32 PROP_MSG_SETPROP2, u32 namelen, name, u32 valuelen, value -- written with one writev, answered
+// with an int32 result.  The kernel applies the set to the live property area every process maps
+// shared (propAreaSet), so the new value is visible everywhere at once.  ctl.* (service control) is
+// accepted and ignored; an existing ro.* property cannot change, as with init.
+private bool sockPathIsPropService(const(sockaddr_un)* addr, size_t len)
+{
+    return unixAddrEqualsLiteral(addr, len, "/dev/socket/property_service");
+}
+private enum uint PROP_MSG_SETPROP2 = 0x0002_0001;
+private enum int  PROP_SUCCESS = 0, PROP_ERROR_READ_ONLY_PROPERTY = 0x0B, PROP_ERROR_INVALID_CMD = 0x1B,
+                  PROP_ERROR_SET_FAILED = 0x24;
+private __gshared ubyte[4096] g_propSvcBuf;        // one message being assembled (writev = 5 writes)
+private __gshared size_t g_propSvcLen;
+private __gshared LocalSocket* g_propSvcOwner;
+private __gshared uint g_propSvcLogN = 0;
+
+private int propServiceSet(const(char)[] name, const(char)[] value) {
+    if (g_propSvcLogN < 64) {
+        ++g_propSvcLogN;
+        klog("[propsvc] "); foreach (c; name) { char[2] t = [c, 0]; klog(t.ptr); }
+        klog("="); foreach (i, c; value) { if (i >= 80) break; char[2] t = [c, 0]; klog(t.ptr); }
+        klog("\n");
+    }
+    if (name.length > 4 && name[0 .. 4] == "ctl.") return PROP_SUCCESS;     // no services to control
+    int rp; const(char)* rl; size_t rll;
+    const int idx = rtResolve("/.__properties__/u:object_r:default_prop:s0\0".ptr, rp, rl, rll);
+    if (idx < 0 || g_rt[idx].data is null || g_rt[idx].size < PA_HDR) return PROP_ERROR_SET_FAILED;
+    if (name.length > 3 && name[0 .. 3] == "ro.") {
+        // ro.* is write-once: refuse a change to one that exists.
+        bool exists = false;
+        foreach (i; 0 .. g_apropCount) if (g_apropN[i] == name) { exists = true; break; }
+        if (exists) return PROP_ERROR_READ_ONLY_PROPERTY;
+    }
+    if (!propAreaSet(g_rt[idx].data, g_rt[idx].size, name, value)) return PROP_ERROR_SET_FAILED;
+    // Bump the area's serial and the global one (properties_serial), which property waiters watch.
+    paPut32(g_rt[idx].data, 4, paGet32(g_rt[idx].data, 4) + 1);
+    const int sidx = rtResolve("/.__properties__/properties_serial\0".ptr, rp, rl, rll);
+    if (sidx >= 0 && g_rt[sidx].data !is null && g_rt[sidx].size >= PA_HDR)
+        paPut32(g_rt[sidx].data, 4, paGet32(g_rt[sidx].data, 4) + 1);
+    return PROP_SUCCESS;
+}
+
+// Feed bytes written to a property-service socket; answer each complete message on that socket.
+private void propServiceFeed(LocalSocket* sock, const(ubyte)* src, size_t len) {
+    if (g_propSvcOwner !is sock) { g_propSvcOwner = sock; g_propSvcLen = 0; }
+    foreach (i; 0 .. len) if (g_propSvcLen < g_propSvcBuf.length) g_propSvcBuf[g_propSvcLen++] = src[i];
+    for (;;) {
+        if (g_propSvcLen < 8) return;
+        const uint cmd  = paGet32(g_propSvcBuf.ptr, 0);
+        int result;
+        size_t consumed;
+        if (cmd != PROP_MSG_SETPROP2) {
+            result = PROP_ERROR_INVALID_CMD; consumed = g_propSvcLen;
+        } else {
+            const uint nlen = paGet32(g_propSvcBuf.ptr, 4);
+            if (nlen > 1024) { result = PROP_ERROR_INVALID_CMD; consumed = g_propSvcLen; }
+            else {
+                if (g_propSvcLen < 8 + nlen + 4) return;
+                const uint vlen = paGet32(g_propSvcBuf.ptr, 8 + nlen);
+                if (vlen > 2048) { result = PROP_ERROR_INVALID_CMD; consumed = g_propSvcLen; }
+                else {
+                    if (g_propSvcLen < 12 + nlen + vlen) return;
+                    auto nm = cast(const(char)[])g_propSvcBuf[8 .. 8 + nlen];
+                    auto vl = cast(const(char)[])g_propSvcBuf[12 + nlen .. 12 + nlen + vlen];
+                    result = propServiceSet(nm, vl);
+                    consumed = 12 + nlen + vlen;
+                }
+            }
+        }
+        ubyte[4] reply;
+        paPut32(reply.ptr, 0, cast(uint)result);
+        socketBufferWrite(sock.rx, reply.ptr, 4);
+        foreach (k; consumed .. g_propSvcLen) g_propSvcBuf[k - consumed] = g_propSvcBuf[k];
+        g_propSvcLen -= consumed;
+    }
 }
 
 // A9.3h: print one bionic logdw datagram to the kernel log.  The record begins with a small binary
@@ -2015,6 +2105,11 @@ private ssize_t localSocketWrite(File* f, const(void)* buffer, size_t length)
     if (sock.isLogSink)
     {
         logSinkDrain(cast(const(ubyte)*)buffer, length);
+        return cast(ssize_t)length;
+    }
+    if (sock.isPropService)
+    {
+        propServiceFeed(sock, cast(const(ubyte)*)buffer, length);
         return cast(ssize_t)length;
     }
     if (sock.state != LocalSocketState.connected)
@@ -3209,6 +3304,13 @@ private int namespaceCheckOpen(const(char)* path, int flags) {
     if (aVfsIsPath(path)) return 0;
     // A9.3f: a container owns its own writable /data (redirected to per-domain rtfs /.adata).
     if (androidDataIsPath(path)) return 0;
+    // A9.4: binder is the Android runtime's IPC; a confined Android process (servicemanager placed in
+    // the System domain) must be able to open its binder devices.  Binder contexts are independent
+    // per device and reach only procs that opened the same one (A4).
+    {   const int ct = cast(int)g_current_task_id;
+        if (ct >= 0 && ct < MAX_TASKS && g_taskAndroid[ct] &&
+            (cstrEq(path, "/dev/binder") || cstrEq(path, "/dev/hwbinder") || cstrEq(path, "/dev/vndbinder")
+             || cstrEqPrefix(path, "/dev/binderfs/"))) return 0; }
     {   const int v = nsPathVerdict(path, need);
         if (v != 0) return v; }
 
@@ -3671,7 +3773,15 @@ private int procParsePid(const(char)* path, out const(char)* sub, out size_t sub
     int pid = 0;
     // /proc/self/... is the caller's own entry, and /proc/self/task/<tid>/... one of its threads
     // (Firefox reads both) -- the same data as /proc/<pid>/...
-    if (p[0] == 's' && p[1] == 'e' && p[2] == 'l' && p[3] == 'f' && (p[4] == '/' || p[4] == 0)) {
+    // /proc/thread-self is the calling thread's entry (libselinux opens its attr files there).
+    static immutable string ts = "thread-self";
+    bool isThreadSelf = true;
+    foreach (k; 0 .. ts.length) if (p[k] != ts[k]) { isThreadSelf = false; break; }
+    if (isThreadSelf && (p[ts.length] == '/' || p[ts.length] == 0)) {
+        pid = linuxPidForTask(cast(int)g_current_task_id);
+        if (pid <= 0) return -1;
+        p += ts.length;
+    } else if (p[0] == 's' && p[1] == 'e' && p[2] == 'l' && p[3] == 'f' && (p[4] == '/' || p[4] == 0)) {
         pid = linuxPidForTask(cast(int)g_current_task_id);
         p += 4;
         if (p[0] == '/' && p[1] == 't' && p[2] == 'a' && p[3] == 's' && p[4] == 'k' && p[5] == '/'
@@ -4376,6 +4486,12 @@ public int sys_open(const(char)* path, int flags) {
     {
         const(char)* ad = androidDataRewrite(path, _adataAbs.ptr, _adataAbs.length);
         if (ad !is null) path = ad;
+    }
+    // A9.4: an Android task's /proc/<pid>/attr/* -> its writable rtfs file (androidAttrRewrite).
+    char[64] _aattrAbs = void;
+    {
+        const(char)* aa = androidAttrRewrite(path, _aattrAbs.ptr, _aattrAbs.length);
+        if (aa !is null) path = aa;
     }
 
     // F1: /objects/processes is the live process view = /proc. Rewrite the prefix so
@@ -10057,6 +10173,9 @@ private immutable VFEntry[] g_vfs = [
     { "/sys/fs/selinux/policyvers",              "33\n"                                                },
     { "/sys/fs/selinux/checkreqprot",            "0\n"                                                 },
     { "/sys/fs/selinux/mls",                     "1\n"                                                 },
+    // A9.4: no policy is loaded, so libselinux finds no security classes; deny_unknown=0 makes
+    // selinux_check_access allow an unknown class (servicemanager's add/find checks) instead of denying.
+    { "/sys/fs/selinux/deny_unknown",            "0"                                                   },
     { "/sys/power/state",                        "freeze mem disk\n"                                   },
     { "/sys/power/wakeup_count",                 "0\n"                                                 },
     { "/sys/class/tty/tty0/active",              "tty1\n"                                              },
@@ -12336,11 +12455,25 @@ extern(D) ulong binderCopyInUser(ulong uaddr, ubyte* dst, ulong n) @nogc nothrow
     return n;
 }
 
+// A9.4: is this a BINDER_WRITE_READ on a blocking binder fd -- one the dispatcher parks and re-runs
+// when binder had nothing to deliver (BINDER_WOULD_BLOCK)?
+public bool binderParkable(ulong fd, ulong cmd) @nogc nothrow {
+    import core.android.binder : BINDER_WRITE_READ;
+    if (fd >= 1024 || g_fdTable is null || cast(uint)cmd != BINDER_WRITE_READ) return false;
+    return g_fdTable[cast(int)fd].type == FileType.FD_BINDER && (g_fdTable[cast(int)fd].flags & 0x800 /*O_NONBLOCK*/) == 0;
+}
+// The binder proc behind fd (for the parked waiter's wake filter); -1 if fd is not binder.
+public int binderProcOfFd(ulong fd) @nogc nothrow {
+    if (fd >= 1024 || g_fdTable is null || g_fdTable[cast(int)fd].type != FileType.FD_BINDER) return -1;
+    return cast(int)cast(size_t)g_fdTable[cast(int)fd].backend;
+}
+
 private long binderIoctl(int id, uint cmd, ulong arg) {
     import core.android.binder : binderVersion, binderSetMaxThreads, binderSetContextMgr,
-                                 binderWriteRead, BINDER_VERSION, BINDER_SET_MAX_THREADS,
+                                 binderWriteRead, binderThreadExit, BINDER_WOULD_BLOCK,
+                                 BINDER_VERSION, BINDER_SET_MAX_THREADS,
                                  BINDER_SET_CONTEXT_MGR, BINDER_WRITE_READ, BINDER_THREAD_EXIT;
-    enum uint BINDER_SET_CONTEXT_MGR_EXT = 0x4020_620D;
+    enum uint BINDER_SET_CONTEXT_MGR_EXT = 0x4018_620D;   // _IOW('b',13, flat_binder_object (24 bytes))
     switch (cmd) {
         case BINDER_VERSION:
             if (arg == 0) return negErrno(EFAULT);
@@ -12355,6 +12488,7 @@ private long binderIoctl(int id, uint cmd, ulong arg) {
         case BINDER_SET_CONTEXT_MGR_EXT:
             return binderSetContextMgr(id);
         case BINDER_THREAD_EXIT:
+            binderThreadExit(id, cast(int)g_current_task_id);
             return 0;
         case BINDER_WRITE_READ: {
             if (arg == 0) return negErrno(EFAULT);
@@ -12375,8 +12509,17 @@ private long binderIoctl(int id, uint cmd, ulong arg) {
                 smapEnd();
             }
             ulong wc = 0, rc = 0;
+            // A9.4: the calling thread, and the sender identity the driver stamps on transactions.
+            const int ct = cast(int)g_current_task_id;
             const long r = binderWriteRead(id, g_binderWBounce.ptr, wavail, &wc,
-                                           g_binderRBounce.ptr, ravail, &rc, &binderCopyInUser);
+                                           g_binderRBounce.ptr, ravail, &rc, &binderCopyInUser,
+                                           ct, linuxPidForTask(ct), effUid(), true);
+            if (r == BINDER_WOULD_BLOCK) {
+                // Nothing to read yet: record what the write consumed, so the re-run (parked by the
+                // dispatcher, or retried by a non-blocking caller) does not send it again.
+                smapBegin(); u[1] = wconsumed + wc; smapEnd();
+                return negErrno(EAGAIN);
+            }
             if (r < 0) return r;
             if (rc > 0 && rbuf != 0) {
                 smapBegin();
@@ -13635,7 +13778,11 @@ public int sys_socket(int domain, int type, int protocol) {
     // SOCK_DGRAM: created so it can carry the interface ioctls (SIOC*) a VMM issues through a
     // throwaway AF_UNIX datagram socket to bring its TAP up -- datagram transfer itself is not
     // implemented on it.
-    if (baseType != SOCK_STREAM && baseType != 2 /*SOCK_DGRAM*/) return negErrno(EPROTONOSUPPORT);
+    // A9.4: an Android task also gets SOCK_SEQPACKET (lmkd's control socket and others; socketpair
+    // already makes them) and SOCK_NONBLOCK honoured -- the desktop's sockets keep their old behaviour.
+    const bool android = androidIdTask() >= 0;
+    if (baseType != SOCK_STREAM && baseType != 2 /*SOCK_DGRAM*/ && !(android && baseType == SOCK_SEQPACKET))
+        return negErrno(EPROTONOSUPPORT);
     if (protocol != 0) return negErrno(EPROTONOSUPPORT);
 
     const int socketId = allocLocalSocket(domain, baseType);
@@ -13646,6 +13793,7 @@ public int sys_socket(int domain, int type, int protocol) {
         releaseLocalSocket(socketId);
         return negErrno(EMFILE);
     }
+    if (android && (type & 0x800 /*SOCK_NONBLOCK*/)) g_fdTable[fd].flags |= 0x800 /*O_NONBLOCK*/;
     return publishActiveFdReturn(fd);
 }
 
@@ -13756,6 +13904,12 @@ public int sys_connect(int sockfd, const(sockaddr)* addr, uint addrlen) {
     // A9.3h: Android's log writer -- answer as an in-kernel sink.  There is no logd to listen, so
     // mark the socket connected with no peer; every datagram then routes into logSinkDrain.  Done
     // before findUnixListener so it never trips the ECONNREFUSED path.
+    if (sockPathIsPropService(un, pathLen)) {
+        client.state = LocalSocketState.connected;
+        client.isPropService = true;
+        client.peerId = -1;
+        return 0;
+    }
     if (sockPathIsLogd(un, pathLen)) {
         client.state = LocalSocketState.connected;
         client.isLogSink = true;
@@ -13944,6 +14098,16 @@ public ssize_t sys_sendmsg(int sockfd, msghdr* msg, int flags) {
     // several iovecs) decodes as a single datagram, then report the whole length as sent.
     {
         auto lsock = fileSocket(f);
+        if (lsock !is null && lsock.isPropService) {
+            size_t req = 0;
+            foreach (i; 0 .. msg.msg_iovlen) {
+                auto iov = &msg.msg_iov[i];
+                req += iov.iov_len;
+                if (iov.iov_len != 0 && iov.iov_base !is null)
+                    propServiceFeed(lsock, cast(const(ubyte)*)iov.iov_base, iov.iov_len);
+            }
+            return cast(ssize_t)req;
+        }
         if (lsock !is null && lsock.isLogSink) {
             size_t total = 0, req = 0;
             foreach (i; 0 .. msg.msg_iovlen) {
@@ -14682,10 +14846,24 @@ public long linux_sys_arch_prctl(ulong code, ulong addr) {
 // Phase 10 / IR-P3: identity is read from the active task's User object. The
 // default subject is non-root; privileged actions are gated by typed admin
 // capabilities, not uid 0.
-public long linux_sys_getuid()  { return cast(long)userCurrentUid(); }
-public long linux_sys_geteuid() { return cast(long)userCurrentUid(); }
-public long linux_sys_getgid()  { return cast(long)userCurrentGid(); }
-public long linux_sys_getegid() { return cast(long)userCurrentGid(); }
+// A9.4: an Android task reports its container uid/gid once it has switched to one (task.d
+// g_androidUidP1); everything else, and host access checks, use the anonymOS user.
+private int androidIdTask() @nogc nothrow {
+    const int ct = cast(int)g_current_task_id;
+    return (ct >= 0 && ct < MAX_TASKS && g_taskAndroid[ct]) ? ct : -1;
+}
+private uint effUid() {
+    const int at = androidIdTask();
+    return (at >= 0 && g_androidUidP1[at] != 0) ? g_androidUidP1[at] - 1 : userCurrentUid();
+}
+private uint effGid() {
+    const int at = androidIdTask();
+    return (at >= 0 && g_androidGidP1[at] != 0) ? g_androidGidP1[at] - 1 : userCurrentGid();
+}
+public long linux_sys_getuid()  { return cast(long)effUid(); }
+public long linux_sys_geteuid() { return cast(long)effUid(); }
+public long linux_sys_getgid()  { return cast(long)effGid(); }
+public long linux_sys_getegid() { return cast(long)effGid(); }
 public long linux_sys_getppid() {
     int tid = cast(int)g_current_task_id;
     if (tid < 0 || tid >= MAX_TASKS) return 0;
@@ -14716,6 +14894,7 @@ public long linux_sys_gettid()  {
 public long linux_sys_getgroups(ulong size, ulong list) { return 0; }
 public long linux_sys_setgroups(ulong size, ulong list) {
     if (size == 0) return 0;
+    if (androidIdTask() >= 0) return 0;   // A9.4: container supplementary groups (system_server's)
     return adminRequire(CAP_RIGHT_ADMIN_USER) ? 0 : negErrno(EPERM);
 }
 
@@ -14749,11 +14928,13 @@ private bool idArgSpecified(ulong v) {
 
 public long linux_sys_setuid(ulong uid) {
     if (uid > uint.max) return negErrno(EINVAL);
+    { const int at = androidIdTask(); if (at >= 0) { g_androidUidP1[at] = cast(uint)uid + 1; return 0; } }
     return switchCurrentUid(cast(uint)uid);
 }
 
 public long linux_sys_setgid(ulong gid) {
     if (gid > uint.max) return negErrno(EINVAL);
+    { const int at = androidIdTask(); if (at >= 0) { g_androidGidP1[at] = cast(uint)gid + 1; return 0; } }
     return switchCurrentGid(cast(uint)gid);
 }
 
@@ -14762,6 +14943,12 @@ public long linux_sys_setresuid(ulong r, ulong e, ulong s) {
         (idArgSpecified(e) && e > uint.max) ||
         (idArgSpecified(s) && s > uint.max))
         return negErrno(EINVAL);
+    {   const int at = androidIdTask();
+        if (at >= 0) {   // the effective id is what the process acts as
+            if (idArgSpecified(e)) g_androidUidP1[at] = cast(uint)e + 1;
+            else if (idArgSpecified(r)) g_androidUidP1[at] = cast(uint)r + 1;
+            return 0;
+        } }
     uint target = userCurrentUid();
     if (idArgSpecified(r)) target = cast(uint)r;
     if (idArgSpecified(e) && cast(uint)e != target) return negErrno(EINVAL);
@@ -14774,6 +14961,12 @@ public long linux_sys_setresgid(ulong r, ulong e, ulong s) {
         (idArgSpecified(e) && e > uint.max) ||
         (idArgSpecified(s) && s > uint.max))
         return negErrno(EINVAL);
+    {   const int at = androidIdTask();
+        if (at >= 0) {
+            if (idArgSpecified(e)) g_androidGidP1[at] = cast(uint)e + 1;
+            else if (idArgSpecified(r)) g_androidGidP1[at] = cast(uint)r + 1;
+            return 0;
+        } }
     uint target = userCurrentGid();
     if (idArgSpecified(r)) target = cast(uint)r;
     if (idArgSpecified(e) && cast(uint)e != target) return negErrno(EINVAL);
@@ -14781,14 +14974,14 @@ public long linux_sys_setresgid(ulong r, ulong e, ulong s) {
     return switchCurrentGid(target);
 }
 public long linux_sys_getresuid(ulong rp, ulong ep, ulong sp) {
-    const uint uid = userCurrentUid();
+    const uint uid = effUid();
     if (rp) *cast(uint*)rp = uid;
     if (ep) *cast(uint*)ep = uid;
     if (sp) *cast(uint*)sp = uid;
     return 0;
 }
 public long linux_sys_getresgid(ulong rp, ulong ep, ulong sp) {
-    const uint gid = userCurrentGid();
+    const uint gid = effGid();
     if (rp) *cast(uint*)rp = gid;
     if (ep) *cast(uint*)ep = gid;
     if (sp) *cast(uint*)sp = gid;
@@ -17050,6 +17243,8 @@ public void binderNoteMmapFd(ulong fd, ulong uvaddr, ulong mappedLen) {
 // elogind startup that chmods pseudo-paths doesn't fail.
 private long rtChmodPath(const(char)* p, ushort mode) {
     if (p is null) return negErrno(EFAULT);
+    char[1024] _adm2 = void;   // A9.4: a container's overlays (/data, /mnt, ...) keep their modes too
+    { const(char)* ad = androidDataRewrite(p, _adm2.ptr, _adm2.length); if (ad !is null) p = ad; }
     { const int g = nsWriteGate(p); if (g != 0) return g; }   // appgate: the domain's view
     int rp; const(char)* rl; size_t rll;
     const int ri = rtResolve(p, rp, rl, rll);
@@ -17505,6 +17700,10 @@ private bool fdReadableImpl(int fd) @nogc nothrow {
     if (f.type == FileType.FD_DRM) {
         // Readable when a page-flip completion event is queued for this fd.
         return drmEventPending(fd);
+    }
+    if (f.type == FileType.FD_BINDER) {   // A9.4: servicemanager's Looper polls its binder fd
+        import core.android.binder : binderPollReadable;
+        return binderPollReadable(cast(int)cast(size_t)f.backend);
     }
     if (f.type == FileType.FD_PTY_MASTER || f.type == FileType.FD_PTY_SLAVE) {
         int idx = cast(int)cast(size_t)f.backend;
@@ -18208,7 +18407,24 @@ public long linux_sys_inotify_rm_watch(ulong fd, ulong wd) {
 }
 
 // --- prctl / scheduling ---
-public long linux_sys_prctl(ulong opt, ulong a2, ulong a3, ulong a4, ulong a5) { return 0; }
+// prctl: success for the options this kernel does not model, except the capability-set queries,
+// which must answer like Linux -- callers walk them until EINVAL: the zygote's
+// DropCapabilitiesBoundingSet loops `for (i = 0; prctl(PR_CAPBSET_READ, i) >= 0; i++)`, which an
+// unconditional 0 turned into an endless loop.
+public long linux_sys_prctl(ulong opt, ulong a2, ulong a3, ulong a4, ulong a5) {
+    enum CAP_LAST_CAP = 40;
+    enum PR_CAPBSET_READ = 23, PR_CAPBSET_DROP = 24, PR_CAP_AMBIENT = 47;
+    enum PR_CAP_AMBIENT_IS_SET = 1, PR_CAP_AMBIENT_CLEAR_ALL = 4;
+    switch (opt) {
+        case PR_CAPBSET_READ: return a2 <= CAP_LAST_CAP ? 1 : negErrno(EINVAL);   // every cap is in the set
+        case PR_CAPBSET_DROP: return a2 <= CAP_LAST_CAP ? 0 : negErrno(EINVAL);
+        case PR_CAP_AMBIENT:
+            if (a2 == PR_CAP_AMBIENT_CLEAR_ALL) return 0;
+            if (a3 > CAP_LAST_CAP) return negErrno(EINVAL);
+            return a2 == PR_CAP_AMBIENT_IS_SET ? 0 : 0;
+        default: return 0;
+    }
+}
 public long linux_sys_sched_yield() { return 0; }
 public long linux_sys_sched_getaffinity(ulong pid, ulong sz, ulong mask) {
     if (!mask) return negErrno(EFAULT);
@@ -18245,7 +18461,26 @@ public long linux_sys_fdatasync(ulong fd)  { return linux_sys_fsync(fd); }
 public long linux_sys_fadvise64(ulong fd, ulong off, ulong len, ulong adv) { return 0; }
 public long linux_sys_getpriority(ulong w, ulong who) { return 0; }
 public long linux_sys_setpriority(ulong w, ulong who, ulong p) { return 0; }
-public long linux_sys_capget(ulong hdr, ulong dat)  { return 0; }
+// A9.4: capget reports the full capability set: this kernel does not enforce Linux capabilities
+// (its own capability model gates access), so a process holds every one it could ask for.  The
+// zygote masks the set it gives system_server by what capget reports ("containers run without some
+// capabilities").  struct __user_cap_header_struct { u32 version; int pid; }; data is 1 (v1) or 2
+// (v2/v3) x { u32 effective, permitted, inheritable }.  An unknown version gets the preferred one
+// written back and EINVAL, as on Linux (libcap probes this way).
+public long linux_sys_capget(ulong hdr, ulong dat) {
+    enum uint V1 = 0x19980330, V2 = 0x20071026, V3 = 0x20080522;
+    if (hdr == 0) return negErrno(EFAULT);
+    smapBegin();
+    const uint ver = *cast(uint*)hdr;
+    if (ver != V1 && ver != V2 && ver != V3) { *cast(uint*)hdr = V3; smapEnd(); return negErrno(EINVAL); }
+    if (dat != 0) {
+        auto d = cast(uint*)dat;
+        d[0] = 0xFFFF_FFFF; d[1] = 0xFFFF_FFFF; d[2] = 0;          // caps 0..31
+        if (ver != V1) { d[3] = 0x1FF; d[4] = 0x1FF; d[5] = 0; }   // caps 32..40 (CAP_LAST_CAP 40)
+    }
+    smapEnd();
+    return 0;
+}
 public long linux_sys_capset(ulong hdr, ulong dat)  { return 0; }
 public long linux_sys_personality(ulong p)          { return 0; }
 public long linux_sys_chroot(ulong path) {
@@ -19096,14 +19331,18 @@ private uint paAlign4(uint x) @nogc nothrow { return (x + 3) & ~3u; }
 // prop_area::new_prop_info).  A property that would not fit in `cap` is skipped, never half-written.
 private enum uint PROP_LONG_FLAG = 1u << 16;
 private static immutable string PROP_LONG_ERR = "Must use __system_property_read_callback() to read";
-private uint buildPropArea(const(char[])[] names, const(char[])[] values, ubyte* o, uint cap) @nogc nothrow {
-    foreach (i; 0 .. cap) o[i] = 0;
-    paPut32(o, 8,  PROP_AREA_MAGIC);
-    paPut32(o, 12, PROP_AREA_VERSION);
-    uint used = 20;                                  // root prop_bt (namelen 0) occupies data_[0..20)
+// Insert or update one property in a live prop_area `o` of `cap` bytes (header + trie).  The area's
+// bytes_used (header word 0, data_-relative) is the allocation cursor.  A new property's nodes and
+// prop_info are written first and linked last, so a concurrent bionic reader sees it whole or not at
+// all.  An existing short value is rewritten and its serial bumped (length in the top byte, even =
+// not dirty); an existing long (ro.*) value cannot change.  False when there is no room.
+private bool propAreaSet(ubyte* o, uint cap, const(char)[] full, const(char)[] value) @nogc nothrow {
+    if (full.length == 0) return false;
+    uint used = paGet32(o, 0);
     uint alloc(uint sz) @nogc nothrow { const uint r = used; used = paAlign4(used + sz); return r; }
     uint newBt(const(char)* nm, uint nl) @nogc nothrow {
         const uint off = alloc(20 + nl + 1);
+        foreach (k; 0 .. 20 + nl + 1) o[PA_HDR + off + k] = 0;
         paPut32(o, PA_HDR + off, nl);
         foreach (k; 0 .. nl) o[PA_HDR + off + 20 + k] = cast(ubyte)nm[k];
         return off;
@@ -19130,44 +19369,60 @@ private uint buildPropArea(const(char[])[] names, const(char[])[] values, ubyte*
             const uint nb = newBt(nm, nl); paPut32(o, link, nb); return nb;
         }
     }
-    foreach (pi; 0 .. names.length) {
-        const(char)[] full = names[pi];
-        if (full.length == 0) continue;
-        {   // worst case: a fresh trie node per segment, the prop_info, a long value
-            uint need = 4 + PROP_VALUE_MAX + cast(uint)full.length + 1 + 8;
-            uint s0 = 0;
-            while (s0 < full.length) {
-                uint e0 = s0; while (e0 < full.length && full[e0] != '.') ++e0;
-                need += paAlign4(20 + (e0 - s0) + 1);
-                s0 = (e0 < full.length) ? e0 + 1 : e0;
-            }
-            if (values[pi].length >= PROP_VALUE_MAX) need += paAlign4(cast(uint)values[pi].length + 1);
-            if (PA_HDR + used + need > cap) continue;
+    {   // worst case: a fresh trie node per segment, the prop_info, a long value
+        uint need = 4 + PROP_VALUE_MAX + cast(uint)full.length + 1 + 8;
+        uint s0 = 0;
+        while (s0 < full.length) {
+            uint e0 = s0; while (e0 < full.length && full[e0] != '.') ++e0;
+            need += paAlign4(20 + (e0 - s0) + 1);
+            s0 = (e0 < full.length) ? e0 + 1 : e0;
         }
-        uint node = 0, s = 0;
-        while (s < full.length) {
-            uint e = s; while (e < full.length && full[e] != '.') ++e;
-            node = findChild(node, full.ptr + s, cast(uint)(e - s));
-            s = (e < full.length) ? e + 1 : e;
-        }
-        const uint vlen = cast(uint)values[pi].length;
-        const uint nlen = cast(uint)full.length;
-        const uint io = alloc(4 + PROP_VALUE_MAX + nlen + 1);
-        if (vlen < PROP_VALUE_MAX) {
-            paPut32(o, PA_HDR + io, vlen << 24);
-            foreach (k; 0 .. vlen) o[PA_HDR + io + 4 + k] = cast(ubyte)values[pi][k];
-        } else {
-            const uint lo = alloc(vlen + 1);
-            foreach (k; 0 .. vlen) o[PA_HDR + lo + k] = cast(ubyte)values[pi][k];
-            paPut32(o, PA_HDR + io, (cast(uint)PROP_LONG_ERR.length << 24) | PROP_LONG_FLAG);
-            foreach (k; 0 .. PROP_LONG_ERR.length) o[PA_HDR + io + 4 + k] = cast(ubyte)PROP_LONG_ERR[k];
-            paPut32(o, PA_HDR + io + 4 + 56, lo - io);
-        }
-        foreach (k; 0 .. nlen) o[PA_HDR + io + 4 + PROP_VALUE_MAX + k] = cast(ubyte)full[k];
-        paPut32(o, PA_HDR + node + 4, io);
+        if (value.length >= PROP_VALUE_MAX) need += paAlign4(cast(uint)value.length + 1);
+        if (PA_HDR + used + need > cap) return false;
     }
+    uint node = 0, s = 0;
+    while (s < full.length) {
+        uint e = s; while (e < full.length && full[e] != '.') ++e;
+        node = findChild(node, full.ptr + s, cast(uint)(e - s));
+        s = (e < full.length) ? e + 1 : e;
+    }
+    const uint vlen = cast(uint)value.length;
+    const uint existing = paGet32(o, PA_HDR + node + 4);
+    if (existing != 0) {
+        const uint ser = paGet32(o, PA_HDR + existing);
+        if ((ser & PROP_LONG_FLAG) != 0 || vlen >= PROP_VALUE_MAX) { paPut32(o, 0, used); return false; }
+        foreach (k; 0 .. PROP_VALUE_MAX) o[PA_HDR + existing + 4 + k] = k < vlen ? cast(ubyte)value[k] : 0;
+        paPut32(o, PA_HDR + existing, (vlen << 24) | (((ser & 0xFF_FFFF) + 2) & 0xFF_FFFE));
+        paPut32(o, 0, used);
+        return true;
+    }
+    const uint nlen = cast(uint)full.length;
+    const uint io = alloc(4 + PROP_VALUE_MAX + nlen + 1);
+    foreach (k; 0 .. 4 + PROP_VALUE_MAX + nlen + 1) o[PA_HDR + io + k] = 0;
+    if (vlen < PROP_VALUE_MAX) {
+        paPut32(o, PA_HDR + io, vlen << 24);
+        foreach (k; 0 .. vlen) o[PA_HDR + io + 4 + k] = cast(ubyte)value[k];
+    } else {
+        const uint lo = alloc(vlen + 1);
+        foreach (k; 0 .. vlen) o[PA_HDR + lo + k] = cast(ubyte)value[k];
+        o[PA_HDR + lo + vlen] = 0;
+        paPut32(o, PA_HDR + io, (cast(uint)PROP_LONG_ERR.length << 24) | PROP_LONG_FLAG);
+        foreach (k; 0 .. PROP_LONG_ERR.length) o[PA_HDR + io + 4 + k] = cast(ubyte)PROP_LONG_ERR[k];
+        paPut32(o, PA_HDR + io + 4 + 56, lo - io);
+    }
+    foreach (k; 0 .. nlen) o[PA_HDR + io + 4 + PROP_VALUE_MAX + k] = cast(ubyte)full[k];
     paPut32(o, 0, used);
-    return PA_HDR + used;
+    paPut32(o, PA_HDR + node + 4, io);              // link last
+    return true;
+}
+
+private uint buildPropArea(const(char[])[] names, const(char[])[] values, ubyte* o, uint cap) @nogc nothrow {
+    foreach (i; 0 .. cap) o[i] = 0;
+    paPut32(o, 8,  PROP_AREA_MAGIC);
+    paPut32(o, 12, PROP_AREA_VERSION);
+    paPut32(o, 0, 20);                               // root prop_bt (namelen 0) occupies data_[0..20)
+    foreach (pi; 0 .. names.length) propAreaSet(o, cap, names[pi], values[pi]);   // a misfit is skipped whole
+    return PA_HDR + paGet32(o, 0);
 }
 
 // Build a minimal serialized property_info (bionic layout from property_info_parser.h): one context,
@@ -19276,12 +19531,18 @@ private void androidPropsSeed() {
         "ro.vndk.version", "ro.zygote", "ro.build.type", "ro.debuggable",
         // The zygote would eglGetDisplay() the vendor Mesa driver while preloading; graphics is a
         // later phase (SurfaceFlinger -> Wayland), so skip the driver preload until then.
-        "ro.zygote.disable_gl_preload" ];
+        "ro.zygote.disable_gl_preload",
+        // A9.4: bionic speaks property-service protocol 2 (long names, a result reply) when this says
+        // so -- init sets it; our in-kernel property service (propServiceSet) answers protocol 2.
+        "ro.property_service.version" ];
+    // A9.4: 64-bit only -- only the 64-bit zygote runs, so advertising x86 sent system_server's
+    // SecondaryZygotePreload retrying a 32-bit zygote that will never exist.
     static immutable string[] V = [
-        "x86_64", "x86", "x86_64,x86",
+        "x86_64", "", "x86_64",
         "33", "13", "0",
         "33", "zygote64", "userdebug", "1",
-        "1" ];
+        "1",
+        "2" ];
     g_apropCount = 0; g_apropTextLen = 0;
     apropLoadImageFile("/aroot/system/build.prop\0".ptr);
     apropLoadImageFile("/aroot/system_ext/etc/build.prop\0".ptr);
@@ -19314,8 +19575,11 @@ private void androidPropsSeed() {
     klog_dec(g_apropCount); klog(" seeded\n");
     const uint pa = buildPropArea(g_apropN[0 .. g_apropCount], g_apropV[0 .. g_apropCount],
                                   g_paBuf.ptr, g_paBuf.length);
+    // The file carries the area's full capacity, not just its used bytes: the in-kernel property
+    // service (A9.4) appends new properties in place, inside the range every process already mapped.
+    cast(void)pa;
     rtAddFile(".__properties__/u:object_r:default_prop:s0\0".ptr,
-              ".__properties__/u:object_r:default_prop:s0".length, g_paBuf.ptr, pa);
+              ".__properties__/u:object_r:default_prop:s0".length, g_paBuf.ptr, cast(uint)g_paBuf.length);
     const uint pinf = buildPropertyInfo(g_piBuf.ptr, g_piBuf.length);
     rtAddFile(".__properties__/property_info\0".ptr, ".__properties__/property_info".length, g_piBuf.ptr, pinf);
     const uint ps = buildPropArea(null, null, g_psBuf.ptr, g_psBuf.length);
@@ -19410,17 +19674,38 @@ private void androidDataEnsureRoot() {
     androidEnsureDir("/.adata/misc\0".ptr);
     androidEnsureDir("/.adata/app\0".ptr);
     androidEnsureDir("/.alinkerconfig\0".ptr);
+    // A9.4: init.rc's /mnt skeleton (the zygote creates /mnt/user/<id> etc. inside it) and the other
+    // tmpfs mount points.
+    androidEnsureDir("/.amnt\0".ptr);
+    foreach (d; ["/.amnt/user\0", "/.amnt/pass_through\0", "/.amnt/installer\0", "/.amnt/androidwritable\0",
+                 "/.amnt/runtime\0", "/.amnt/media_rw\0", "/.amnt/obb\0", "/.amnt/expand\0", "/.amnt/appfuse\0",
+                 "/.amnt/asec\0", "/.amnt/secure\0", "/.amnt/vendor\0", "/.amnt/product\0", "/.amnt/data_mirror\0"])
+        androidEnsureDir(d.ptr);
+    androidEnsureDir("/.astorage\0".ptr);
+    androidEnsureDir("/.adata_mirror\0".ptr);
 }
 // The writable per-container overlays over the read-only image: /data (A9.3f), and /linkerconfig
 // (A9.3n) -- on a device init runs linkerconfig into a tmpfs there; the container runtime
 // (hos-container) writes the linker's ld.config.txt into it instead.  Without that file bionic's
 // linker builds only an unexported default namespace, and libnativeloader's OpenSystemLibrary()
 // LOG_ALWAYS_FATALs "Failed to get system namespace for loading libandroid.so".
-private struct AOverlay { string src; string dst; }
-private static immutable AOverlay[2] g_aOverlays = [
-    AOverlay("/data",         "/.adata"),
-    AOverlay("/linkerconfig", "/.alinkerconfig"),
+// androidOnly: applied only for an Android task or a chroot'd container path (/aroot/...), never to
+// the host's own paths -- /mnt in particular is an ordinary host location.
+private struct AOverlay { string src; string dst; bool androidOnly; }
+private static immutable AOverlay[5] g_aOverlays = [
+    AOverlay("/data",         "/.adata",         false),
+    AOverlay("/linkerconfig", "/.alinkerconfig", false),
+    // A9.4: the tmpfs mounts init lays down (init.rc): the zygote prepares /mnt/user/<id> and
+    // bind-mounts storage while specializing system_server and apps.
+    AOverlay("/mnt",          "/.amnt",          true),
+    AOverlay("/storage",      "/.astorage",      true),
+    AOverlay("/data_mirror",  "/.adata_mirror",  true),
 ];
+private bool androidOverlayContext(const(char)* path, const(char)* stripped) @nogc nothrow {
+    if (stripped != path) return true;                  // rerooted under /aroot: a container path
+    const int ct = cast(int)g_current_task_id;
+    return ct >= 0 && ct < MAX_TASKS && g_taskAndroid[ct];
+}
 // Strip a leading /aroot (a chroot'd container's paths arrive rerooted under it).
 private const(char)* androidStripAroot(const(char)* q) @nogc nothrow {
     static immutable string ar = "/aroot";
@@ -19437,7 +19722,9 @@ private size_t androidPrefixLen(const(char)* q, string pre) @nogc nothrow {
 // Rewrite an overlay path (plain or the /aroot chroot form) to its writable rtfs tree; null = not one.
 private const(char)* androidDataRewrite(const(char)* path, char* buf, size_t cap) {
     const(char)* q = androidStripAroot(path);
+    const bool actx = androidOverlayContext(path, q);
     foreach (ref ov; g_aOverlays) {
+        if (ov.androidOnly && !actx) continue;
         const size_t k = androidPrefixLen(q, ov.src);
         if (k == 0) continue;
         androidDataEnsureRoot();
@@ -19451,9 +19738,59 @@ private const(char)* androidDataRewrite(const(char)* path, char* buf, size_t cap
 }
 private bool androidDataIsPath(const(char)* path) @nogc nothrow {
     const(char)* q = androidStripAroot(path);
-    foreach (ref ov; g_aOverlays)
+    const bool actx = androidOverlayContext(path, q);
+    foreach (ref ov; g_aOverlays) {
+        if (ov.androidOnly && !actx) continue;
         if (androidPrefixLen(q, ov.src) != 0 || androidPrefixLen(q, ov.dst) != 0) return true;
-    return false;
+    }
+    return androidPrefixLen(q, "/.aattr") != 0;   // A9.4: per-process SELinux attr files
+}
+
+// A9.4: /proc/<pid>/attr/<x> for Android tasks -- a writable per-process rtfs file /.aattr/<pid>-<x>.
+// SELinux reads as enabled (permissive) through the selinuxfs stub, so libselinux uses these:
+// servicemanager CHECK()s getcon() at startup, getpidcon() names binder callers, and the zygote's
+// specialization of system_server setcon()s.  Created on first touch holding the process's starting
+// context (by executable), world-writable like the real proc file is to its owner.
+private const(char)[] androidStartContext(int pid) {
+    const int t = taskIdFromLinuxPid(pid);
+    const(char)* n = (t >= 0 && t < MAX_TASKS) ? g_taskExecName[t] : null;
+    if (n !is null) {
+        if (cstrEq(n, "servicemanager")) return "u:r:servicemanager:s0";
+        if (cstrEq(n, "app_process64"))  return "u:r:zygote:s0";
+    }
+    return "u:r:init:s0";
+}
+private const(char)* androidAttrRewrite(const(char)* path, char* buf, size_t cap) {
+    const int ct = cast(int)g_current_task_id;
+    if (ct < 0 || ct >= MAX_TASKS || !g_taskAndroid[ct]) return null;
+    if (path[0] != '/' || path[1] != 'p') return null;
+    const(char)* sub; size_t subLen;
+    const int pid = procParsePid(path, sub, subLen);
+    if (pid <= 0 || sub is null || subLen < 6 || sub[0 .. 5] != "attr/") return null;
+    const(char)[] name = sub[5 .. subLen];
+    static immutable string[6] OK = ["current", "prev", "exec", "fscreate", "keycreate", "sockcreate"];
+    bool known = false;
+    foreach (o; OK) if (name == o) { known = true; break; }
+    if (!known) return null;
+    androidEnsureDir("/.aattr\0".ptr);
+    size_t p = 0;
+    void put(const(char)[] x) { foreach (c; x) if (p + 1 < cap) buf[p++] = c; }
+    put("/.aattr/");
+    {   char[12] d; int dl = 0; int v = pid;
+        do { d[dl++] = cast(char)('0' + v % 10); v /= 10; } while (v > 0 && dl < 12);
+        while (dl > 0) { if (p + 1 < cap) buf[p++] = d[--dl]; } }
+    put("-"); put(name);
+    buf[p] = 0;
+    int rp; const(char)* rl; size_t rll;
+    if (rtResolve(buf, rp, rl, rll) < 0) {
+        char[64] ctx = 0;
+        size_t cl = 0;
+        if (name == "current") foreach (c; androidStartContext(pid)) if (cl + 1 < ctx.length) ctx[cl++] = c;
+        rtAddFile(buf + 1, p - 1, cast(const(ubyte)*)ctx.ptr, cast(uint)(cl ? cl + 1 : 0));   // NUL-terminated, as setcon writes it
+        const int idx = rtResolve(buf, rp, rl, rll);
+        if (idx >= 0) g_rt[idx].mode = 0x1B6;                                               // 0666
+    }
+    return buf;
 }
 
 // ── A9.3b: the Android ext4 images mounted into the VFS ─────────────────────────────────────────────

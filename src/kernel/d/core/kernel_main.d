@@ -427,7 +427,16 @@ private void wakePollers() @nogc nothrow {
             const uint nowMs = cast(uint)pitMs();
             const bool due = (dl != 0 && nowMs >= dl);
             pollNoteParked(i, nowMs);   // measure how long this park really lasts
-            if (ep >= 0) {
+            if (g_binderWaitProc[i] != 0) {
+                // A9.4: a thread parked in BINDER_WRITE_READ -- binder readiness is exact here (its
+                // proc's queues), so wake it on the next tick once there is mail, and never before.
+                import core.android.binder : binderPollReadable;
+                if (!binderPollReadable(g_binderWaitProc[i] - 1)) continue;
+                g_binderWaitProc[i] = 0;
+            } else if (g_sigWaitMask[i] != 0) {
+                // A9.4: parked in rt_sigtimedwait -- wake for a signal in its set, or its deadline.
+                if (!sigAwaited(cast(int)i) && !due) continue;
+            } else if (ep >= 0) {
                 // `ep` is task i's fd number: evaluate it in task i's fd/cap tables, not in whichever
                 // process made the last syscall (g_fdTable is only switched at syscall entry) —
                 // otherwise a parked epoll waiter (Cloud Hypervisor's vmm thread) can sleep forever.
@@ -462,6 +471,54 @@ private void wakePollers() @nogc nothrow {
             g_tasks[i].waiting = false;
         }
     }
+}
+// A9.4: binder proc + 1 that a task is parked in BINDER_WRITE_READ on (0 = not a binder wait).
+__gshared int[MAX_TASKS]   g_binderWaitProc;
+// A9.4: rt_sigtimedwait -- the signal set a task waits in (0 = not waiting), its pitMs deadline
+// (0 = none), and "park this call" for the dispatcher.
+__gshared ulong[MAX_TASKS] g_sigWaitMask;
+__gshared ulong[MAX_TASKS] g_sigWaitDeadline;
+__gshared bool[MAX_TASKS]  g_sigWaitPark;
+
+private bool sigAwaited(int tid) @nogc nothrow {
+    const int ps = g_taskPendingSig[tid];
+    return ps > 0 && ps < 64 && (g_sigWaitMask[tid] & (1UL << (ps - 1))) != 0;
+}
+
+// rt_sigtimedwait(set, info, timeout, sigsetsize): take a pending signal from `set`, or wait for one.
+// ART's Signal Catcher thread sigwait()s for SIGQUIT/SIGUSR1 in every process the zygote forks; ENOSYS
+// was fatal ("sigwait failed") to system_server.  This kernel keeps one pending signal per task; a
+// task waiting here for it is skipped by the run loop's delivery (sigAwaited) so the wait consumes it.
+private long sigtimedwaitTask(int tid, ulong set, ulong info, ulong timeout) {
+    if (tid < 0 || tid >= MAX_TASKS) return -22;
+    if (set == 0) return -14;                                      // EFAULT
+    const ulong mask = *cast(ulong*)set;
+    const int psig = g_taskPendingSig[tid];
+    if (psig > 0 && psig < 64 && (mask & (1UL << (psig - 1))) != 0) {
+        g_taskPendingSig[tid] = 0;
+        g_sigWaitMask[tid] = 0; g_sigWaitDeadline[tid] = 0;
+        if (info != 0) {                                           // siginfo_t: si_signo first
+            foreach (i; 0 .. 128) (cast(ubyte*)info)[i] = 0;
+            *cast(int*)info = psig;
+        }
+        return psig;
+    }
+    if (timeout != 0) {
+        const long sec = *cast(long*)timeout, nsec = *cast(long*)(timeout + 8);
+        if (sec < 0 || nsec < 0 || nsec >= 1_000_000_000) return -22;
+        if (sec == 0 && nsec == 0) { g_sigWaitMask[tid] = 0; return -11; }   // a poll: EAGAIN
+        const ulong now = pitMs();
+        if (g_sigWaitDeadline[tid] == 0) {
+            g_sigWaitDeadline[tid] = now + cast(ulong)sec * 1000 + cast(ulong)nsec / 1_000_000;
+            if (g_sigWaitDeadline[tid] == 0) g_sigWaitDeadline[tid] = 1;
+        } else if (now >= g_sigWaitDeadline[tid]) {                // timed out
+            g_sigWaitDeadline[tid] = 0; g_sigWaitMask[tid] = 0;
+            return -11;
+        }
+    }
+    g_sigWaitMask[tid] = mask;
+    g_sigWaitPark[tid] = true;
+    return -11;
 }
 __gshared int[MAX_TASKS]   g_futexWaitVal;
 __gshared uint[MAX_TASKS]  g_futexWaitBitset;
@@ -838,6 +895,8 @@ private void exitTask(int tid, int code) {
         if (_enm !is null) { console_framebuffer_write(" "); console_framebuffer_write(_enm); }
     }
     g_pollBlocked[tid] = false;   // PERF: drop any parked poll/epoll state
+    g_binderWaitProc[tid] = 0;
+    g_sigWaitMask[tid] = 0; g_sigWaitDeadline[tid] = 0; g_sigWaitPark[tid] = false;
     if (tid >= 0 && tid < MAX_TASKS) {
         g_taskExecModPhys[tid] = 0;                 // A4: clear exe info
         g_taskPgid[tid] = 0; g_taskSigCustom[tid] = 0; g_taskPendingSig[tid] = 0;
@@ -879,11 +938,17 @@ private void exitTask(int tid, int code) {
     // CLONE_CHILD_CLEARTID: zero the thread's tid word so a joining thread's
     // futex wait observes termination.  Runs in the exiting thread's context, so
     // the (shared) address space is active and the user pointer is valid.
+    // Only into memory the task can still write: a detached bionic thread unmaps its own stack
+    // (which holds this word) just before it exits, after clearing the pointer with
+    // set_tid_address(NULL) -- and a stale pointer must never fault the kernel or scribble on a page
+    // that has been reused.  handlePageFault makes a present/CoW/demand page writable, else refuses.
     if (tid >= 0 && tid < MAX_TASKS && g_threadCleartidVirt[tid] != 0) {
         ulong clearTid = g_threadCleartidVirt[tid];
-        *cast(int*)clearTid = 0;
-        futexWakeAddress(clearTid, 1, FUTEX_BITSET_MATCH_ANY, tid);
         g_threadCleartidVirt[tid] = 0;
+        if (clearTid < 0x0000_8000_0000_0000UL && handlePageFault(tid, clearTid, true)) {
+            *cast(int*)clearTid = 0;
+            futexWakeAddress(clearTid, 1, FUTEX_BITSET_MATCH_ANY, tid);
+        }
     }
 
     // Notify parent
@@ -1078,6 +1143,7 @@ private int forkTask(int parentTid) {
         // helpers the shell spawns stay native; a Linux fork stays Linux).
         g_taskNativeAbi[childTid]   = g_taskNativeAbi[parentTid];
         g_taskAndroid[childTid]     = g_taskAndroid[parentTid];      // A9.3n: a zygote fork is Android too
+        g_androidUidP1[childTid] = g_androidUidP1[parentTid]; g_androidGidP1[childTid] = g_androidGidP1[parentTid];
         g_taskNativeLaunch[childTid] = g_taskNativeLaunch[parentTid];   // L5.2: inherit the native-launch authorization
         // A4: a child inherits its parent's process group + signal dispositions.
         g_taskPgid[childTid]      = g_taskPgid[parentTid];
@@ -1194,6 +1260,7 @@ private int cloneThread(int parentTid, ulong flags, ulong childStack,
     child.execMode    = parent.execMode;      // DM13: the ratchet is inherited, never reset
     g_taskNativeAbi[childTid] = g_taskNativeAbi[parentTid]; // NATIVE_OBJECT_ABI §3: same personality
     g_taskAndroid[childTid]   = g_taskAndroid[parentTid];   // A9.3n: threads share the image
+    g_androidUidP1[childTid] = g_androidUidP1[parentTid]; g_androidGidP1[childTid] = g_androidGidP1[parentTid];
     g_taskNativeLaunch[childTid] = g_taskNativeLaunch[parentTid];   // L5.2: inherit the native-launch authorization
     g_taskExecName[childTid]  = g_taskExecName[parentTid];
     { import core.syscalls.posix : taskExecPathCopy; taskExecPathCopy(childTid, parentTid); }
@@ -4906,8 +4973,12 @@ private void dispatchSyscall(int tid) {
             // overflowed the 4096-entry per-task table.  That needs one shared, growable region table
             // per address space first.)
             enum MAP_NORESERVE = 0x4000;
+            // A9.4: for an Android task EVERY private anonymous map is demand-zero, as on Linux.  ART
+            // maps its heap spaces (region space for -Xmx512m, card table, mark bitmaps, ...) read-write
+            // and touches a fraction; backing them eagerly exhausted the 4 GiB VM once system_server
+            // forked -- and starved the compositor.  The desktop keeps the eager path (see above).
             const bool reserveOnly = !useObjectBacking && !useFile && (mflags & MAP_ANONYMOUS) != 0
-                              && (rdx == 0 || (mflags & MAP_NORESERVE) != 0);
+                              && (rdx == 0 || (mflags & MAP_NORESERVE) != 0 || g_taskAndroid[tid]);
 
             // MAP_FIXED REPLACES whatever it covers (Linux unmaps it first).  Mapping over the old
             // pages leaked them and stacked a second region entry on the range -- musl's loader maps
@@ -5029,7 +5100,9 @@ private void dispatchSyscall(int tid) {
             enum MREMAP_FIXED = 2;
             ulong mrNewAddr = r8;
             auto mrR = findRegion(*task, mrOld);
-            if (mrR is null || mrR.type != RegionType.Mapped) { ret = -38; break; }  // ENOSYS
+            // A9.4: a demand-zero region moves too (an Android task's anonymous maps all are; the
+            // linker's CFI shadow update mremaps one): present pages move, absent ones stay absent.
+            if (mrR is null || (mrR.type != RegionType.Mapped && mrR.type != RegionType.AllocateOnDemand)) { ret = -38; break; }  // ENOSYS
             // A9.3f: a general move/resize for private mappings -- Android's linker CFI shadow
             // (bionic linker_cfi.cpp ShadowWrite) mremaps an anonymous writable region to a FIXED
             // shadow address, and the memfd fast-path below does not cover it.  Handle any non-memfd
@@ -5038,6 +5111,7 @@ private void dispatchSyscall(int tid) {
             if (mrR.vmoObjId == 0 || memfdPhysByVmo(mrR.vmoObjId, null) == 0) {
                 const ulong gStart = mrR.start, gEnd = mrR.end;
                 const bool gAnon = mrR.anon;
+                const bool gDemand = mrR.type == RegionType.AllocateOnDemand;
                 ulong gDst;
                 if (mrFlags & MREMAP_FIXED) {
                     if (mrNewAddr == 0 || (mrNewAddr & 0xFFF) != 0) { ret = -22; break; }
@@ -5051,18 +5125,20 @@ private void dispatchSyscall(int tid) {
                 } else { ret = -12; break; }                         // ENOMEM: cannot grow in place
                 if (x64ReadCR3() != task.pml4Phys) x64WriteCR3(task.pml4Phys);
                 auto gNew = addRegion(*task, gDst, gDst + mrNewAligned,
-                                      RegionType.Mapped, RegionPerms.ReadWrite, 0, true);
+                                      gDemand ? RegionType.AllocateOnDemand : RegionType.Mapped,
+                                      RegionPerms.ReadWrite, 0, true);
                 if (gNew is null) { ret = -12; break; }
                 gNew.anon = gAnon;
                 const ulong moveBytes = (mrOldAligned < mrNewAligned) ? mrOldAligned : mrNewAligned;
                 for (ulong pg = 0; pg < (moveBytes >> 12); pg++) {
                     const ulong ph = unmap_page_hhdm(mrOld + pg * 4096);     // steal the old page
+                    if (ph == 0 && gDemand) continue;                        // absent: stays demand-zero
                     const ulong ph2 = (ph != 0) ? ph : alloc_phys_page();
                     if (ph2 == 0) { ret = -12; break; }
                     map_page_hhdm(ph2, gDst + pg * 4096, PTE_PRESENT | PTE_RW | PTE_USER, &alloc_phys_page);
                     physPageSetOwner(ph2, gNew.objId, gNew.vmoObjId);
                 }
-                for (ulong pg = (moveBytes >> 12); pg < (mrNewAligned >> 12); pg++) {
+                for (ulong pg = (moveBytes >> 12); pg < (mrNewAligned >> 12) && !gDemand; pg++) {
                     const ulong ph = alloc_phys_page();
                     if (ph == 0) { ret = -12; break; }
                     map_page_hhdm(ph, gDst + pg * 4096, PTE_PRESENT | PTE_RW | PTE_USER, &alloc_phys_page);
@@ -5560,6 +5636,39 @@ private void dispatchSyscall(int tid) {
         g_pollBlocked[tid]  = true;
         g_pollDeadline[tid] = 0;
         g_pollEpfd[tid]     = -1;   // not an epoll wait: take the tick backstop, never a stale epfd
+        task.waiting        = true;
+        task.regs[REG_RIP] -= 2;
+        bootProgressEventHex("park", rax, g_parkScreenTrace);
+        scheduleNext();
+        return;
+    }
+
+    // A9.4: BINDER_WRITE_READ with nothing to deliver on a blocking binder fd -- a libbinder thread
+    // waiting for a reply or for work.  Park it and re-run the ioctl once its proc has mail (the write
+    // half was consumed already, so the re-run only reads).  wakePollers wakes it by binder readiness
+    // (g_binderWaitProc), not on the poll backstop's 8-tick cadence.
+    if (rax == 16 && ret == -11) {
+        import core.syscalls.posix : binderParkable, binderProcOfFd;
+        if (binderParkable(rdi, rsi)) {
+            g_pollBlocked[tid]     = true;
+            g_pollDeadline[tid]    = 0;
+            g_pollEpfd[tid]        = -1;
+            g_binderWaitProc[tid]  = binderProcOfFd(rdi) + 1;
+            task.waiting           = true;
+            task.regs[REG_RIP]    -= 2;
+            bootProgressEventHex("park", rax, g_parkScreenTrace);
+            scheduleNext();
+            return;
+        }
+    }
+
+    // A9.4: rt_sigtimedwait with nothing pending yet: park until a signal in its set is pending or
+    // its deadline passes (wakePollers checks both), then re-run it.
+    if (rax == 128 && ret == -11 && g_sigWaitPark[tid]) {
+        g_sigWaitPark[tid]  = false;
+        g_pollBlocked[tid]  = true;
+        g_pollDeadline[tid] = g_sigWaitDeadline[tid];
+        g_pollEpfd[tid]     = -1;
         task.waiting        = true;
         task.regs[REG_RIP] -= 2;
         bootProgressEventHex("park", rax, g_parkScreenTrace);
@@ -6225,7 +6334,13 @@ private long dispatchLinuxSyscallCall(ulong n, ulong a, ulong b, ulong c,
         }
         case 78:  return linux_sys_getdents(a, b, c);
         case 217: return linux_sys_getdents64(a, b, c);
-        case 218: return linux_sys_set_tid_address(a);
+        case 218:   // set_tid_address: (re)point -- or with NULL cancel -- the exit-time tid clear
+            {   const int ct = cast(int)g_current_task_id;
+                if (ct >= 0 && ct < MAX_TASKS) g_threadCleartidVirt[ct] = a; }
+            return linux_sys_set_tid_address(a);
+        case 128: return sigtimedwaitTask(cast(int)g_current_task_id, a, b, c);   // A9.4: was ENOSYS
+        case 125: return linux_sys_capget(a, b);    // A9.4: was unrouted (ENOSYS) -- forkSystemServer needs it
+        case 126: return linux_sys_capset(a, b);
         case 228: return linux_sys_clock_gettime(a, b);
         case 229: return linux_sys_clock_getres(a, b);
         case 230: return linux_sys_clock_nanosleep(a, b, c, d);
@@ -6795,7 +6910,7 @@ private void kernelLoop() {
             bklRelease(&g_bkl);
             continue;
         }
-        if (g_taskPendingSig[tid] != 0) {
+        if (g_taskPendingSig[tid] != 0 && !sigAwaited(tid)) {   // an awaited one is the wait's (A9.4)
             int psig = g_taskPendingSig[tid];
             if (psig > 0 && psig < 64 && sigHasHandler(tid, psig)) {
                 // Z3: the task has a real handler (e.g. zsh's SIGINT for ^C).  Leave the

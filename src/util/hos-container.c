@@ -213,7 +213,7 @@ static int container_init(const char *root, int argc, char **argv) {
              * there too, so startVm()'s pre-CreateJavaVM failures (which AndroidRuntime::start returns
              * on WITHOUT logging) are captured. */
             dup2(1, 2);
-            { const char *pb = "[exec-bionic] stderr->serial OK; invoking app_process64 --zygote\n";
+            { const char *pb = "[exec-bionic] stderr->serial OK; invoking servicemanager + app_process64 --zygote --start-system-server\n";
               (void)!write(2, pb, strlen(pb)); }
             /* A9.3n: the control sockets init creates for the zygote (init.zygote64.rc: `socket zygote
              * stream 660 root system`, `socket usap_pool_primary stream 660 root system`), handed over
@@ -247,8 +247,11 @@ static int container_init(const char *root, int argc, char **argv) {
                            strerror(errno));
                 if (lc >= 0) close(lc);
             }
+            /* A9.4: as init.zygote64.rc starts it -- the zygote forks system_server right after it
+             * preloads (Zygote.forkSystemServer), before it enters its select loop. */
             char *av[] = { (char *)"/system/bin/app_process64", (char *)"-Xzygote",
-                           (char *)"/system/bin", (char *)"--zygote", NULL };
+                           (char *)"/system/bin", (char *)"--zygote", (char *)"--start-system-server",
+                           (char *)"--socket-name=zygote", NULL };
             char *ev[] = { (char *)"PATH=/system/bin", (char *)"ANDROID_ROOT=/system",
                            (char *)"ANDROID_DATA=/data",
                            /* A9.3i: recent ART derives the boot-image location and the ICU / time-zone
@@ -328,6 +331,20 @@ static int container_init(const char *root, int argc, char **argv) {
                            (char *)"LD_LIBRARY_PATH=" ANDROID_LIB_DIRS,
                            zenv, uenv,
                            NULL };
+            /* A9.4: servicemanager first, as init starts it before the zygote: it becomes binder's
+             * context manager (handle 0), where system_server registers and finds every service.
+             * Same root, environment and linker config. */
+            {
+                pid_t sm = fork();
+                if (sm == 0) {
+                    char *smav[] = { (char *)"/system/bin/servicemanager", NULL };
+                    execve("/system/bin/servicemanager", smav, ev);
+                    printf("[hos-container] servicemanager: execve failed: %s\n", strerror(errno));
+                    _exit(1);
+                }
+                printf("[hos-container] servicemanager started (pid %d)\n", (int)sm);
+                sleep(2);   /* let it claim the context manager before system_server looks it up */
+            }
             execve("/system/bin/app_process64", av, ev);
             printf("[hos-container] exec-bionic: execve app_process64 failed: %s\n", strerror(errno));
             _exit(1);

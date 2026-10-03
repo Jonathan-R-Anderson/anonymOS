@@ -302,6 +302,11 @@ __gshared bool[MAX_TASKS] g_taskNativeAbi;
 // Android-only kernel behaviour keys on it -- synchronous SIGSEGV delivery to ART's fault handler --
 // so every other process keeps exactly the behaviour it has always had.
 __gshared bool[MAX_TASKS] g_taskAndroid;
+// A9.4: an Android task's uid/gid inside the container, + 1 (0 = never set: report the real user).
+// The zygote specializes system_server (1000) and apps (10000+) by switching to Android ids that the
+// host's user registry does not have and that host access checks must not see.  Inherited by
+// fork/clone and kept across exec, like Linux credentials.
+__gshared uint[MAX_TASKS] g_androidUidP1, g_androidGidP1;
 
 // L5.2 — native-launch authorization.  Entering the native personality on exec requires this OR
 // an already-native caller.  Held by the trusted desktop/terminal chain (default true, inherited

@@ -399,6 +399,7 @@ private __gshared ulong g_wakeTick = 0;
 private void wakePollers() @nogc nothrow {
     import core.syscalls.posix : fdIsReadable;
     ++g_wakeTick;
+    androidTaskDump();
     // ITIMER_REAL expiry -> pending SIGALRM.  Driven here because wakePollers() already runs on
     // every PIT tick and is the natural place to un-park time-based waiters.
     itimerTick();
@@ -472,6 +473,61 @@ private void wakePollers() @nogc nothrow {
         }
     }
 }
+// DIAGNOSTIC (A9.5): every 10 s (at most 30 times) one line per live Android task -- whether it is
+// parked (poll / futex / binder / sigwait) and its last syscall from the ring -- so a stalled Android
+// boot shows WHERE each process and thread is waiting.
+private __gshared ulong g_adumpNextMs = 0;
+private __gshared uint  g_adumpN = 0;
+private void androidTaskDump() {
+    const ulong now = pitMs();
+    if (g_adumpN >= 30 || now < g_adumpNextMs) return;
+    bool any = false;
+    foreach (i; 1 .. MAX_TASKS) if (g_tasks[i].active && !g_tasks[i].exited && g_taskAndroid[i]) { any = true; break; }
+    if (!any) return;
+    g_adumpNextMs = now + 10_000;
+    ++g_adumpN;
+    foreach (i; 1 .. MAX_TASKS) {
+        if (!g_tasks[i].active || g_tasks[i].exited || !g_taskAndroid[i]) continue;
+        klog("[adump] t="); klog_dec(cast(ulong)i);
+        const(char)* nm = g_taskExecName[i];
+        klog(" "); klog(nm !is null ? nm : "?".ptr);
+        klog(g_tasks[i].waiting ? " WAIT" : " run");
+        if (g_pollBlocked[i]) klog(" poll");
+        if (g_futexWaitActive[i]) { klog(" futex@"); klog_hex(g_futexWaitUaddr[i]); }
+        if (g_binderWaitProc[i] != 0) klog(" binder");
+        if (g_sigWaitMask[i] != 0) klog(" sigwait");
+        if (g_tasks[i].processLeaderTid == cast(int)i || g_tasks[i].processLeaderTid < 0) {
+            import core.syscalls.posix : g_activeFdTabId, epollDebugDumpAll;
+            import core.cap : g_activeCapTabId;
+            const int svFd = g_activeFdTabId, svCap = g_activeCapTabId;
+            fdtabSetActive(g_tasks[i].fdTabId);
+            capTableSetActive(g_tasks[i].capTabId);
+            epollDebugDumpAll();
+            fdtabSetActive(svFd);
+            capTableSetActive(svCap);
+        } else if (g_pollBlocked[i] && g_pollEpfd[i] >= 0) {
+            import core.syscalls.posix : g_activeFdTabId, epollDebugDump;
+            import core.cap : g_activeCapTabId;
+            const int svFd = g_activeFdTabId, svCap = g_activeCapTabId;
+            fdtabSetActive(g_tasks[i].fdTabId);
+            capTableSetActive(g_tasks[i].capTabId);
+            klog(" epfd="); klog_dec(cast(ulong)g_pollEpfd[i]);
+            epollDebugDump(g_pollEpfd[i]);
+            fdtabSetActive(svFd);
+            capTableSetActive(svCap);
+        }
+        const uint pos = g_sysRingPos[i];
+        if (pos != 0) {
+            const uint sl = (pos - 1) & (SYSRING - 1);
+            klog(" last="); klog_dec(g_sysRing[i][sl]); klog("("); klog_hex(g_sysRingArg[i][sl]); klog(")");
+        }
+        klog("\n");
+    }
+}
+
+// A9.5: per-task storage for an Android-image exec's name (see execveTask); zero-init -> .bss.
+private __gshared char[32][MAX_TASKS] g_taskExecNameBuf = 0;
+
 // A9.4: binder proc + 1 that a task is parked in BINDER_WRITE_READ on (0 = not a binder wait).
 __gshared int[MAX_TASKS]   g_binderWaitProc;
 // A9.4: rt_sigtimedwait -- the signal set a task waits in (0 = not waiting), its pitMs deadline
@@ -875,13 +931,16 @@ private void exitTask(int tid, int code) {
         // A9.3n: the last few syscalls this task made, oldest -> newest, so an opaque exit_group(127)
         // shows the sequence that led to it (e.g. clone/wait4 around a failed helper exec).
         if (tid >= 0 && tid < MAX_TASKS) {
-            klog("[freeze] last syscalls t="); klog_dec(cast(ulong)tid); klog(":");
+            klog("[freeze] last syscalls t="); klog_dec(cast(ulong)tid); klog(" (nr(arg0)=ret):");
             const uint pos = g_sysRingPos[tid];
             const uint n = pos < SYSRING ? pos : SYSRING;
             foreach (i; 0 .. n) {
-                klog(" "); klog_dec(g_sysRing[tid][(pos - n + i) & (SYSRING - 1)]);
+                const uint sl = (pos - n + i) & (SYSRING - 1);
+                klog(" "); klog_dec(g_sysRing[tid][sl]);
+                klog("("); klog_hex(g_sysRingArg[tid][sl]); klog(")="); klog_hex(g_sysRingRet[tid][sl]);
+                if (g_sysRingRep[tid][sl] != 0) { klog("x"); klog_dec(cast(ulong)g_sysRingRep[tid][sl] + 1); }
             }
-            klog(" (a="); klog_hex(g_lastSysA[tid]); klog(" b="); klog_hex(g_lastSysB[tid]); klog(")\n");
+            klog("\n");
         }
         crashBacktrace(tid);
     }
@@ -897,6 +956,7 @@ private void exitTask(int tid, int code) {
     g_pollBlocked[tid] = false;   // PERF: drop any parked poll/epoll state
     g_binderWaitProc[tid] = 0;
     g_sigWaitMask[tid] = 0; g_sigWaitDeadline[tid] = 0; g_sigWaitPark[tid] = false;
+    g_sigchldQueued[tid] = false;
     if (tid >= 0 && tid < MAX_TASKS) {
         g_taskExecModPhys[tid] = 0;                 // A4: clear exe info
         g_taskPgid[tid] = 0; g_taskSigCustom[tid] = 0; g_taskPendingSig[tid] = 0;
@@ -959,6 +1019,7 @@ private void exitTask(int tid, int code) {
         auto p = &g_tasks[parent];
         if (p.active) {
             p.childExited[tid]   = true;
+            g_sigchldQueued[parent] = true;   // A9.5: the parent's SIGCHLD, consumed by a signalfd read
             p.childExitCode[tid] = code;
             // The child's Linux pid snapshotted at entry (processLeaderTid is reset by the
             // cleanup above), so wait4 returns the same pid fork() gave the parent.
@@ -1571,6 +1632,15 @@ private long execveTask(int tid, ulong pathPtr, ulong argvPtr, ulong envpPtr) {
         g_taskExecModPhys[tid] = modPhys;
         g_taskExecModSize[tid] = modSize;
         g_taskExecName[tid]    = execName;
+        // A9.5: an Android-image exec names itself from ONE shared buffer (g_ext4ExecName), so every
+        // Android task read back the latest exec's name -- init and its threads all became
+        // "linkerconfig", breaking the name-keyed checks (the zygote's mmap hint, SELinux contexts).
+        if (execName !is null && execName is g_ext4ExecName.ptr) {
+            size_t k = 0;
+            while (k + 1 < g_taskExecNameBuf[tid].length && execName[k] != 0) { g_taskExecNameBuf[tid][k] = execName[k]; ++k; }
+            g_taskExecNameBuf[tid][k] = 0;
+            g_taskExecName[tid] = g_taskExecNameBuf[tid].ptr;
+        }
         { import core.syscalls.posix : taskExecPathSet; taskExecPathSet(tid, path); }   // /proc/self/exe
         {   import core.task : g_taskStoreApp1, g_taskPkg1;
             g_taskStoreApp1[tid] = (storeIdx >= 0) ? cast(ushort)(storeIdx + 1) : 0;
@@ -3776,6 +3846,51 @@ private void asMmapUndo(int tid, ulong va, ulong len) {
     }
 }
 
+// waitid over the same exited-child tracking wait4 uses (childExited / childExitCode).  P_ALL and
+// P_PID (P_PGID is treated as any child, as wait4 does); WEXITED only -- stops/continues are not
+// tracked; WNOWAIT reports without reaping; WNOHANG returns 0 with si_pid = 0 when nothing has exited.
+private long waitidTask(int tid, int idtype, int id, ulong infop, ulong options) {
+    enum P_ALL = 0, P_PID = 1, P_PGID = 2;
+    enum ulong WNOHANG = 1, WEXITED = 4, WNOWAIT = 0x0100_0000;
+    auto task = &g_tasks[tid];
+    void zeroInfo() { if (infop != 0) foreach (i; 0 .. 128) (cast(ubyte*)infop)[i] = 0; }
+    if ((options & WEXITED) == 0) {               // only exits are tracked
+        if (options & WNOHANG) { zeroInfo(); return 0; }
+        return -10;                                // ECHILD: nothing this could ever report
+    }
+    int targetTid = -1;
+    if (idtype == P_PID) {
+        targetTid = taskIdFromLinuxPid(id);
+        if (targetTid < 0 || targetTid >= MAX_TASKS) return -10;
+    } else if (idtype != P_ALL && idtype != P_PGID) return -22;
+    int found = -1;
+    if (targetTid >= 0) { if (task.childExited[targetTid]) found = targetTid; }
+    else foreach (c; 1 .. MAX_TASKS) if (task.childExited[c]) { found = cast(int)c; break; }
+    if (found >= 0) {
+        const int code = task.childExitCode[found];
+        const int cpid = g_childExitLinuxPid[found] != 0 ? g_childExitLinuxPid[found] : linuxPidForTask(found);
+        zeroInfo();
+        if (infop != 0) {
+            *cast(int*)(infop + 0)  = 17;          // si_signo = SIGCHLD
+            *cast(int*)(infop + 8)  = 1;           // si_code  = CLD_EXITED
+            *cast(int*)(infop + 16) = cpid;        // si_pid
+            *cast(int*)(infop + 24) = code & 0xff; // si_status
+        }
+        if ((options & WNOWAIT) == 0) { task.childExited[found] = false; releaseTask(found); }
+        return 0;
+    }
+    bool living = false;
+    foreach (i; 1 .. MAX_TASKS) {
+        if (!g_tasks[i].active || g_tasks[i].exited || g_tasks[i].parentId != tid) continue;
+        if (targetTid < 0 || cast(int)i == targetTid) { living = true; break; }
+    }
+    if (!living) return -10;                       // ECHILD
+    if (options & WNOHANG) { zeroInfo(); return 0; }
+    task.waiting       = true;
+    task.waitingForPid = targetTid;                // -1 = any child
+    return -4;
+}
+
 private long wait4Task(int tid, int waitPid, ulong statusPtr, ulong options) {
     auto task = &g_tasks[tid];
 
@@ -5352,6 +5467,15 @@ private void dispatchSyscall(int tid) {
             }
             break;
 
+        // waitid(idtype, id, infop, options, rusage) -- A9.5: Android's init reaps its services with it:
+        // waitid(P_ALL, 0, &si, WEXITED|WNOHANG|WNOWAIT) to find a zombie, then waitpid(pid) to reap.
+        // ENOSYS left every exited service unreaped and init spinning on "waitid failed".
+        case 247:
+            ret = waitidTask(tid, cast(int)rdi, cast(int)rsi, rdx, r10);
+            if (ret == -4) { task.regs[REG_RIP] -= 2; scheduleNext(); return; }
+            if (ret == 0 && r8 != 0) { auto ru = cast(ubyte*)r8; foreach (i; 0 .. 144) ru[i] = 0; }
+            break;
+
         // kill — liveness/ESRCH semantics from linux_sys_kill, then ACTUAL delivery:
         // mark the signal pending and wake the target so the run loop applies it
         // (default disposition → exitTask; installed handler → EINTR delivery at the
@@ -6118,8 +6242,11 @@ private __gshared ulong[MAX_TASKS] g_lastSysNr, g_lastSysA, g_lastSysB;
 // DIAGNOSTIC (A9.3n): a short ring of each task's last few syscall numbers, dumped by exitTask on a
 // nonzero exit -- an explicit exit_group(127) is otherwise opaque (which syscall sequence led to it,
 // e.g. a clone()/wait4() around a failed helper exec, vs a direct exit).
-private enum SYSRING = 8;
-private __gshared ulong[SYSRING][MAX_TASKS] g_sysRing;
+// A9.5: recorded for EVERY syscall at the run loop (mmap and the other early-switch calls included),
+// with the first argument and the return value, so the last 32 calls show what failed before a crash.
+private enum SYSRING = 32;
+private __gshared ulong[SYSRING][MAX_TASKS] g_sysRing, g_sysRingArg, g_sysRingRet;
+private __gshared uint[SYSRING][MAX_TASKS]  g_sysRingRep;   // repeats of an identical call collapsed into one slot
 private __gshared uint[MAX_TASKS] g_sysRingPos;
 
 // A9.3w: MADV_DONTNEED on private anonymous memory must leave it reading as zeros, as on Linux.  ART
@@ -6148,8 +6275,7 @@ private long madviseTask(int tid, ulong addr, ulong len, ulong advice) {
 private long dispatchLinuxSyscall(ulong n, ulong a, ulong b, ulong c,
                                    ulong d, ulong e, ulong f) {
     {   const int ct = cast(int)g_current_task_id;
-        if (ct >= 0 && ct < MAX_TASKS) { g_lastSysNr[ct] = n; g_lastSysA[ct] = a; g_lastSysB[ct] = b;
-            g_sysRing[ct][g_sysRingPos[ct] & (SYSRING - 1)] = n; ++g_sysRingPos[ct]; } }
+        if (ct >= 0 && ct < MAX_TASKS) { g_lastSysNr[ct] = n; g_lastSysA[ct] = a; g_lastSysB[ct] = b; } }
     // Calls that move a descriptor's file offset run against the offset its open file description
     // shares with its dups (posix.d ofdLoad: `cmd >log 2>&1` wrote stdout and stderr at two
     // independent offsets of one file, each overwriting the other).
@@ -6321,6 +6447,7 @@ private long dispatchLinuxSyscallCall(ulong n, ulong a, ulong b, ulong c,
         case 306: return linux_sys_sync();
         case 95:  return linux_sys_umask(a);
         case 165: return linux_sys_mount(a, b, c, d, e);
+        case 166: return linux_sys_umount2(a, b);   // A9.5: was unrouted (ENOSYS) -- Android's init unmounts
         case 186: return linux_sys_gettid();
         case 200: return linux_sys_tkill(a, b);
         case 202: return linux_sys_futex(a, b, c, d, e, f);
@@ -6339,6 +6466,17 @@ private long dispatchLinuxSyscallCall(ulong n, ulong a, ulong b, ulong c,
                 if (ct >= 0 && ct < MAX_TASKS) g_threadCleartidVirt[ct] = a; }
             return linux_sys_set_tid_address(a);
         case 128: return sigtimedwaitTask(cast(int)g_current_task_id, a, b, c);   // A9.4: was ENOSYS
+        // A9.5: extended attributes for Android tasks.  SELinux labels files with security.selinux
+        // (init's property area, restorecon); this kernel's capability model is what enforces access,
+        // so labels are accepted and not kept: set -> 0, get -> ENODATA (unlabelled), list -> empty.
+        // The desktop keeps ENOSYS.
+        case 188: case 189: case 190:   // setxattr, lsetxattr, fsetxattr
+        case 197: case 198: case 199:   // removexattr, lremovexattr, fremovexattr
+            return g_taskAndroid[cast(int)g_current_task_id] ? 0 : -38;
+        case 191: case 192: case 193:   // getxattr, lgetxattr, fgetxattr
+            return g_taskAndroid[cast(int)g_current_task_id] ? -61 /*ENODATA*/ : -38;
+        case 194: case 195: case 196:   // listxattr, llistxattr, flistxattr
+            return g_taskAndroid[cast(int)g_current_task_id] ? 0 : -38;
         case 125: return linux_sys_capget(a, b);    // A9.4: was unrouted (ENOSYS) -- forkSystemServer needs it
         case 126: return linux_sys_capset(a, b);
         case 228: return linux_sys_clock_gettime(a, b);
@@ -7017,7 +7155,21 @@ private void kernelLoop() {
             const ulong scNr = x64LastSyscallRax;
             noteSyscallEntry(cast(uint)tid, scNr);
             const ulong scT0 = rdtsc();
+            uint ringSlot;
+            {   // collapse a run of the identical call (same nr + arg0) into one slot with a count
+                const uint pos = g_sysRingPos[tid];
+                const uint prev = (pos - 1) & (SYSRING - 1);
+                if (pos != 0 && g_sysRing[tid][prev] == scNr && g_sysRingArg[tid][prev] == x64LastSyscallRdi) {
+                    ringSlot = prev; ++g_sysRingRep[tid][prev];
+                } else {
+                    ringSlot = pos & (SYSRING - 1);
+                    g_sysRing[tid][ringSlot] = scNr; g_sysRingArg[tid][ringSlot] = x64LastSyscallRdi;
+                    g_sysRingRep[tid][ringSlot] = 0;
+                    ++g_sysRingPos[tid];
+                }
+            }
             dispatchSyscall(tid);
+            g_sysRingRet[tid][ringSlot] = task.regs[REG_RAX];
             // Measures time in the HANDLER, not time blocked: a park (poll/futex) returns from
             // dispatchSyscall immediately with the task marked waiting, so this stays a cost.
             noteSyscallCost(cast(uint)tid, scNr, rdtsc() - scT0);

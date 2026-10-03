@@ -307,6 +307,9 @@ __gshared bool[MAX_TASKS] g_taskAndroid;
 // host's user registry does not have and that host access checks must not see.  Inherited by
 // fork/clone and kept across exec, like Linux credentials.
 __gshared uint[MAX_TASKS] g_androidUidP1, g_androidGidP1;
+// A9.5: a SIGCHLD queued on a task by a child's exit, as Linux queues the signal -- reaping the
+// child does NOT clear it; only a signalfd read consumes it (Android's init reaps first, then reads).
+__gshared bool[MAX_TASKS] g_sigchldQueued;
 
 // L5.2 — native-launch authorization.  Entering the native personality on exec requires this OR
 // an already-native caller.  Held by the trusted desktop/terminal chain (default true, inherited

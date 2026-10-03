@@ -32,6 +32,11 @@
 
 #define CGDIR "/sys/fs/cgroup/hosctr"
 
+/* A9.5: --android-init -- run the image's own Android init (second stage) as the container's first
+ * Android process, which starts servicemanager, the zygote and every service from its rc files,
+ * instead of starting servicemanager + the zygote ourselves. */
+static int g_android_init = 0;
+
 /* The Android runtime's library directories, in search order: /system/lib64, then the APEX lib dirs
  * (activated by the kernel's /apex -> /system/apex redirect).  Used for LD_LIBRARY_PATH and for the
  * linker config's default-namespace search paths. */
@@ -171,7 +176,9 @@ static int container_init(const char *root, int argc, char **argv) {
     /* A9.2/A9.3g: the system-property area under /dev/__properties__ is seeded by the kernel (bionic
      * prop_area + property_info), so just confirm a property reads back -- do NOT write here: this is
      * the area ART reads, and clobbering the context file breaks property resolution. */
-    {
+    /* A9.5: not under --android-init -- the first touch seeds the area, and Android's init must find
+     * it empty: its PropertyInit creates every property file O_EXCL. */
+    if (!g_android_init) {
         int pf = open("/dev/__properties__/property_info", O_RDONLY);
         printf("[hos-container] prop-area: %s\n",
                pf >= 0 ? "present (kernel-seeded bionic property area)" : "absent");
@@ -223,7 +230,7 @@ static int container_init(const char *root, int argc, char **argv) {
              * by libcutils exactly as an unset variable is). */
             char zenv[48] = "ANDROID_SOCKET_zygote=-1";
             char uenv[48] = "ANDROID_SOCKET_usap_pool_primary=-1";
-            {
+            if (!g_android_init) {   /* init creates the zygote's sockets itself (init.zygote64.rc) */
                 static const char *names[2] = { "zygote", "usap_pool_primary" };
                 char *envs[2] = { zenv, uenv };
                 for (int k = 0; k < 2; k++) {
@@ -331,6 +338,14 @@ static int container_init(const char *root, int argc, char **argv) {
                            (char *)"LD_LIBRARY_PATH=" ANDROID_LIB_DIRS,
                            zenv, uenv,
                            NULL };
+            if (g_android_init) {
+                char *iav[] = { (char *)"/system/bin/init", (char *)"second_stage", NULL };
+                { const char *pb = "[exec-bionic] android init: exec /system/bin/init second_stage\n";
+                  (void)!write(2, pb, strlen(pb)); }
+                execve("/system/bin/init", iav, ev);
+                printf("[hos-container] exec-bionic: execve init failed: %s\n", strerror(errno));
+                _exit(1);
+            }
             /* A9.4: servicemanager first, as init starts it before the zygote: it becomes binder's
              * context manager (handle 0), where system_server registers and finds every service.
              * Same root, environment and linker config. */
@@ -362,6 +377,7 @@ static int container_init(const char *root, int argc, char **argv) {
 int main(int argc, char **argv) {
     const char *root = NULL;
     int i = 1;
+    if (i < argc && !strcmp(argv[i], "--android-init")) { g_android_init = 1; i += 1; }
     if (i < argc && !strcmp(argv[i], "--root") && i + 1 < argc) { root = argv[i + 1]; i += 2; }
 
     /* Unshare the namespaces LXC gives Android.  CLONE_NEWPID takes effect for our CHILD (the

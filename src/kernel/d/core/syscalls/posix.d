@@ -18,7 +18,7 @@ import core.task : g_tasks, MAX_TASKS, linuxPidForTask, linuxTidForTask,
                    g_taskPendingSig,                                 // ITIMER_REAL -> SIGALRM
                    g_sigFlags, g_sigAltSp, g_sigAltSize, g_sigAltOn, sigProc, sigIgnored,
                    mainStackRange, USER_STACK_TOP, USER_STACK_RLIMIT,  // A9.3n: /proc/<pid>/stat+maps
-                   g_taskAndroid, g_androidUidP1, g_androidGidP1;
+                   g_taskAndroid, g_androidUidP1, g_androidGidP1, g_sigchldQueued;
 import core.objmgr : ObjType, ObjHeader, objAlloc, objRetain, objRelease, objGet,
                      g_objOps, g_objOpsDispatch; // Phase 2/5 object mgr
 import core.cap : Capability, CAP_INVALID,
@@ -180,6 +180,7 @@ enum FileType {
     FD_BINDER_CTL,       // /dev/binderfs/binder-control -- BINDER_CTL_ADD creates named contexts (A4)
     FD_CGROUP,           // a cgroup v2 control file under /sys/fs/cgroup (A6); backend=(node<<8)|fileId
     FD_EXT4,             // a file/dir in a mounted Android ext4 image (A9.3b); backend=(mountSel<<56)|inode
+    FD_SIGNALFD,         // A9.5: signalfd; fileSize = signal mask, backend = the creating task id
 }
 
 struct File {
@@ -449,7 +450,8 @@ static assert(EpollEvent.sizeof == 12);
 // EPOLLONESHOT watch that fired and waits for EPOLL_CTL_MOD.
 private struct EpollWatch { bool active; int watchFd; uint events; ulong data;
                             uint lastReady; ulong lastGen; bool disarmed; ulong lastWrGen; }
-private struct EpollInst  { bool inUse; ubyte nestDepth; uint refs; EpollWatch[EPOLL_MAX_WATCHES] watches; }
+// ownerTabP1: the fd table (+1) whose fd numbers the watches name -- the creator's (A9.5).
+private struct EpollInst  { bool inUse; ubyte nestDepth; uint refs; int ownerTabP1; EpollWatch[EPOLL_MAX_WATCHES] watches; }
 
 __gshared EpollInst[EPOLL_MAX_INSTANCES] g_epollTable;
 
@@ -2714,6 +2716,21 @@ private long fileObjRead(ObjHeader* oh, void* _buf, ulong _count) {
         return cast(ssize_t)toRead;
     }
 
+    if (f.type == FileType.FD_SIGNALFD) {           // A9.5: one signalfd_siginfo per read
+        if (_count < 128) return negErrno(EINVAL);
+        uint code; int pid;
+        const int sig = signalfdPending(f, code, pid);
+        if (sig == 0) return negErrno(EAGAIN);
+        auto o = cast(ubyte*)_buf;
+        foreach (i; 0 .. 128) o[i] = 0;
+        *cast(uint*)(o + 0)  = cast(uint)sig;       // ssi_signo
+        *cast(int*)(o + 8)   = cast(int)code;       // ssi_code
+        *cast(uint*)(o + 12) = cast(uint)pid;       // ssi_pid
+        const int owner = cast(int)cast(size_t)f.backend;
+        if (sig == SIGCHLD_NO) g_sigchldQueued[owner] = false;   // the queued SIGCHLD is consumed
+        if (sig != SIGCHLD_NO || g_taskPendingSig[owner] == sig) g_taskPendingSig[owner] = 0;
+        return 128;
+    }
     if (f.type == FileType.FD_EVENTFD) {
         int eid = cast(int)cast(size_t)f.backend;
         if (eid < 0 || eid >= EVENTFD_MAX || !g_eventfd_inUse[eid]) return negErrno(EBADF);
@@ -3310,7 +3327,7 @@ private int namespaceCheckOpen(const(char)* path, int flags) {
     {   const int ct = cast(int)g_current_task_id;
         if (ct >= 0 && ct < MAX_TASKS && g_taskAndroid[ct] &&
             (cstrEq(path, "/dev/binder") || cstrEq(path, "/dev/hwbinder") || cstrEq(path, "/dev/vndbinder")
-             || cstrEqPrefix(path, "/dev/binderfs/"))) return 0; }
+             || cstrEqPrefix(path, "/dev/binderfs/") || cstrEq(path, "/dev/kmsg"))) return 0; }
     {   const int v = nsPathVerdict(path, need);
         if (v != 0) return v; }
 
@@ -5248,10 +5265,34 @@ public int sys_open(const(char)* path, int flags) {
          return publishActiveFdReturn(fd);
     }
 
+    // A9.5: an O_PATH open of an Android task's /dev/socket/<name> (bionic's fchmodat(AT_SYMLINK_NOFOLLOW)
+    // emulation opens the path O_PATH and fchmod()s the fd -- init does it to each control socket it
+    // binds).  Sockets have no filesystem node here, so hand back a null-device fd: an O_PATH fd only
+    // names the object, and fchmod/fchown on it have nothing to change.
+    if ((flags & 0x200000 /*O_PATH*/) && androidSocketPath(path)) {
+        g_fdTable[fd].type   = FileType.FD_NULL;
+        g_fdTable[fd].flags  = flags;
+        g_fdTable[fd].offset = 0;
+        return publishActiveFdReturn(fd);
+    }
+
+    // A9.5: /dev/kmsg for Android tasks -- Android's init logs through it (KernelLogger); writes reach
+    // the kernel log exactly as console writes do.  (Reading it as dmesg is not offered.)
+    if (cstrEq(path, "/dev/kmsg") && androidIdTask() >= 0) {
+        g_fdTable[fd].type   = FileType.FD_CONSOLE;
+        g_fdTable[fd].flags  = O_WRONLY;
+        g_fdTable[fd].offset = 0;
+        return publishActiveFdReturn(fd);
+    }
+
     // ORG P9.3 / IR-P3: object-reference-graph exports require the typed
     // ADMIN_INSPECT cap; uid 0 is not consulted.
     if (cstrEq(path, "/proc/cmdline")) {
-        const(char)[] content = displayCmdlineContent();
+        // A9.5: Android's init takes ro.hardware (and the androidboot.* boot properties) from the kernel
+        // command line; Waydroid boots it as hardware "waydroid" (init.${ro.hardware}.rc, HALs), in
+        // permissive SELinux.  The desktop keeps its display parameters.
+        static immutable string ANDROID_CMDLINE = "androidboot.hardware=waydroid androidboot.selinux=permissive\n";
+        const(char)[] content = androidIdTask() >= 0 ? ANDROID_CMDLINE : displayCmdlineContent();
         g_fdTable[fd].type     = FileType.FD_FILE;
         g_fdTable[fd].flags    = flags & ~(O_WRONLY | O_RDWR);
         g_fdTable[fd].offset   = 0;
@@ -5365,9 +5406,13 @@ public int sys_open(const(char)* path, int flags) {
         // create a new file when requested and the parent is a writable overlay dir
         if ((flags & O_CREAT) && rparent >= 0 && rleaf !is null &&
             g_rt[rparent].kind == RT_DIR) {
+            // A9.5: a property-area file (Android's init creates them, O_EXCL, mode 0444) is root's and
+            // read-only -- bionic's map_prop_area refuses one that is not root-owned or is group/other
+            // writable, which the 0666/current-user default would be.
+            const bool propFile = androidPropIsPath(path);
             const int created = rtCreate(rparent, rleaf, rleafLen, RT_REG,
-                                         cast(ushort)0x1B6 /*0666*/,
-                                         userCurrentUid(), userCurrentGid());
+                                         propFile ? cast(ushort)0x124 /*0444*/ : cast(ushort)0x1B6 /*0666*/,
+                                         propFile ? 0 : userCurrentUid(), propFile ? 0 : userCurrentGid());
             if (created < 0) return negErrno(ENOSPC);
             g_fdTable[fd].type     = FileType.FD_RTFILE;
             g_fdTable[fd].flags    = flags;
@@ -5540,6 +5585,12 @@ public int sys_close(int fd) {
 // NUMBER, so without this a closed fd kept its watch: Cloud Hypervisor's serial thread (which
 // never EPOLL_CTL_DELs a disconnected console client) kept waking on it, and the next file to
 // get that number could not be added (EEXIST) or inherited the stale registration.
+//
+// A9.5: only in epoll sets this fd table owns.  A forked child shares its parent's epoll instances
+// (refcounted), and its execve's close-on-exec closed those fd NUMBERS -- which then stripped the
+// PARENT's watches: Android's init lost its property-service listener the moment it forked its first
+// child, and its main thread hung waiting on a reply.  The child's numbers name its own copies; the
+// parent's watches go only when the parent closes.
 private void epollForgetFd(int fd) {
     if (fd < 0 || fd >= 1024 || g_fdTable is null) return;
     foreach (e; 0 .. 1024) {
@@ -5547,6 +5598,7 @@ private void epollForgetFd(int fd) {
         const int eid = cast(int)cast(size_t)g_fdTable[e].backend;
         if (eid < 0 || eid >= EPOLL_MAX_INSTANCES) continue;
         auto inst = &g_epollTable[eid];
+        if (inst.ownerTabP1 != 0 && inst.ownerTabP1 != g_activeFdTabId + 1) continue;
         foreach (ref w; inst.watches)
             if (w.active && w.watchFd == fd) w.active = false;
     }
@@ -13934,7 +13986,10 @@ public int sys_connect(int sockfd, const(sockaddr)* addr, uint addrlen) {
     // A9.3h: Android's log writer -- answer as an in-kernel sink.  There is no logd to listen, so
     // mark the socket connected with no peer; every datagram then routes into logSinkDrain.  Done
     // before findUnixListener so it never trips the ECONNREFUSED path.
-    if (sockPathIsPropService(un, pathLen)) {
+    // A9.5: the in-kernel property service stands in only while nothing else serves the socket --
+    // once Android's own init binds /dev/socket/property_service, connects go to init (whose
+    // property triggers drive the boot).
+    if (sockPathIsPropService(un, pathLen) && findUnixListenerExact(un, pathLen) is null) {
         client.state = LocalSocketState.connected;
         client.isPropService = true;
         client.peerId = -1;
@@ -16760,16 +16815,41 @@ private long rtMkdirSyscall(int dirfd, const(char)* path, ushort mode) {
     return 0;
 }
 
+// A9.5: /apex/<name> for an Android task already resolves onto the flattened /system/apex/<name>
+// (aVfsResolve).  apexd's flattened activation expects /apex to be a fresh tmpfs -- mkdir(mount point)
+// then a bind mount, and it treats EEXIST as a failure -- so the mkdir reports success: the mount
+// point it asked for exists with exactly the content its bind mount would put there.
+private bool androidApexMountPoint(const(char)* p) @nogc nothrow {
+    if (p is null || androidIdTask() < 0) return false;
+    const(char)* q = androidStripAroot(p);
+    static immutable string ap = "/apex/";
+    foreach (k; 0 .. ap.length) if (q[k] != ap[k]) return false;
+    size_t e = ap.length;
+    if (q[e] == 0) return false;
+    while (q[e] != 0) { if (q[e] == '/') return q[e + 1] == 0; ++e; }   // one component (trailing / ok)
+    return true;
+}
 public long linux_sys_mkdir(ulong p, ulong m) {
+    if (androidApexMountPoint(cast(const(char)*)p)) return 0;
     return rtMkdirSyscall(-100 /*AT_FDCWD*/, cast(const(char)*)p, cast(ushort)(m & 0xFFF));
 }
 public long linux_sys_mkdirat(ulong d, ulong p, ulong m) {
+    if (androidApexMountPoint(cast(const(char)*)p)) return 0;
     return rtMkdirSyscall(cast(int)d, cast(const(char)*)p, cast(ushort)(m & 0xFFF));
+}
+
+// A9.5: an Android task's /dev/socket/<name> paths.  AF_UNIX binds create no filesystem node in this
+// kernel (sockets are found by their address), yet Android's init unlinks the path before binding each
+// control socket, then lchown/fchmodat's it -- all fatal on failure.  So: unlink finds nothing (ENOENT,
+// which init expects) and chown/chmod have nothing to change (0); the domain write gate never applies.
+private bool androidSocketPath(const(char)* p) @nogc nothrow {
+    return p !is null && androidIdTask() >= 0 && cstrEqPrefix(p, "/dev/socket/");
 }
 
 private long rtUnlinkSyscall(const(char)* path, bool dirOnly) {
     initFdTable();
     if (path is null) return negErrno(EFAULT);
+    if (androidSocketPath(path)) return negErrno(ENOENT);
     if (cgIsPath(path)) return dirOnly ? cgRmdir(path) : negErrno(EPERM);   // A6: rmdir a cgroup
     char[1024] _apu = void;                      // A9.2: /dev/__properties__ -> rtfs backing
     { const(char)* ap = androidPropRewrite(path, _apu.ptr, _apu.length); if (ap !is null) path = ap; }
@@ -17293,6 +17373,7 @@ public void binderNoteMmapFd(ulong fd, ulong uvaddr, ulong mappedLen) {
 // elogind startup that chmods pseudo-paths doesn't fail.
 private long rtChmodPath(const(char)* p, ushort mode) {
     if (p is null) return negErrno(EFAULT);
+    if (androidSocketPath(p)) return 0;
     char[1024] _adm2 = void;   // A9.4: a container's overlays (/data, /mnt, ...) keep their modes too
     { const(char)* ad = androidDataRewrite(p, _adm2.ptr, _adm2.length); if (ad !is null) p = ad; }
     { const int g = nsWriteGate(p); if (g != 0) return g; }   // appgate: the domain's view
@@ -17326,6 +17407,7 @@ private bool chownIsNoop(ulong u, ulong g) {
 }
 
 private long rtChownPath(const(char)* p, ulong u, ulong g) {
+    if (androidSocketPath(p)) return 0;
     // A9.3f: a chown under the container's /data lands on the rtfs overlay (/.adata), where it
     // persists like any rtfs node -- the Android runtime chowns its dalvik-cache.
     char[1024] _adc = void;
@@ -17562,6 +17644,9 @@ public long linux_sys_getsockopt(ulong fd, ulong lvl, ulong opt, ulong val, ulon
             return copySockoptInt(val, len, 0);
         case SO_DOMAIN:
             return copySockoptInt(val, len, sock.domain);
+        case 7: case 8:   // SO_SNDBUF / SO_RCVBUF -- A9.5: libcutils' uevent_open_socket reads it back
+            if (androidIdTask() >= 0) return copySockoptInt(val, len, 425_984);
+            return negErrno(ENOPROTOOPT);
         default:
             return negErrno(ENOPROTOOPT);
     }
@@ -17751,6 +17836,7 @@ private bool fdReadableImpl(int fd) @nogc nothrow {
         // Readable when a page-flip completion event is queued for this fd.
         return drmEventPending(fd);
     }
+    if (f.type == FileType.FD_SIGNALFD) { uint c; int p; return signalfdPending(f, c, p) != 0; }   // A9.5
     if (f.type == FileType.FD_BINDER) {   // A9.4: servicemanager's Looper polls its binder fd
         import core.android.binder : binderPollReadable;
         return binderPollReadable(cast(int)cast(size_t)f.backend);
@@ -17931,6 +18017,7 @@ public long linux_sys_epoll_create1(ulong flags) {
     if (fd < 0) return negErrno(EMFILE);
     g_epollTable[eid] = EpollInst.init;
     g_epollTable[eid].inUse = true;
+    g_epollTable[eid].ownerTabP1 = g_activeFdTabId + 1;
     g_epollTable[eid].refs  = 1;
     g_epollTable[eid].nestDepth = 1; // ORG 3.3: a fresh epoll is a depth-1 leaf
     g_fdTable[fd].type    = FileType.FD_EPOLL;
@@ -17994,6 +18081,50 @@ public long linux_sys_epoll_ctl(ulong epfd, ulong op, ulong fd, ulong ev_ptr) {
         return 0;
     }
     return negErrno(EINVAL);
+}
+
+// DIAGNOSTIC (A9.5): an epoll instance's watches, as the CURRENT fd table resolves them -- fd, type,
+// events wanted, readable now, and for a listening socket its pending-connection count.
+public void epollDebugDump(int epfd) {
+    if (epfd < 0 || epfd >= 1024 || g_fdTable is null || g_fdTable[epfd].type != FileType.FD_EPOLL) {
+        klog(" (not an epoll fd)"); return;
+    }
+    const int eid = cast(int)cast(size_t)g_fdTable[epfd].backend;
+    if (eid < 0 || eid >= EPOLL_MAX_INSTANCES) return;
+    auto inst = &g_epollTable[eid];
+    foreach (i; 0 .. EPOLL_MAX_WATCHES) {
+        if (!inst.watches[i].active) continue;
+        const int wfd = inst.watches[i].watchFd;
+        klog(" [fd"); klog_dec(cast(ulong)wfd);
+        if (wfd >= 0 && wfd < 1024) {
+            klog(" t"); klog_dec(cast(ulong)g_fdTable[wfd].type);
+            klog(" ev="); klog_hex(inst.watches[i].events);
+            klog(fdReadable(wfd) ? " R" : " -");
+            if (g_fdTable[wfd].type == FileType.FD_SOCKET) {
+                auto sk = fileSocket(&g_fdTable[wfd]);
+                if (sk !is null) {
+                    klog(" st="); klog_dec(cast(ulong)sk.state);
+                    klog(" pend="); klog_dec(cast(ulong)(sk.pendingTail - sk.pendingHead));
+                }
+            }
+        }
+        klog("]");
+    }
+}
+
+// DIAGNOSTIC (A9.5): every epoll instance and signalfd in the CURRENT fd table.
+public void epollDebugDumpAll() {
+    if (g_fdTable is null) return;
+    foreach (e; 0 .. 1024) {
+        if (g_fdTable[e].type == FileType.FD_EPOLL) {
+            klog(" ep"); klog_dec(cast(ulong)e); klog(":"); epollDebugDump(cast(int)e);
+        } else if (g_fdTable[e].type == FileType.FD_SIGNALFD) {
+            uint c; int p;
+            const int sig = signalfdPending(&g_fdTable[e], c, p);
+            klog(" sfd"); klog_dec(cast(ulong)e); klog("(mask="); klog_hex(g_fdTable[e].fileSize);
+            klog(" pend="); klog_dec(cast(ulong)sig); klog(" pid="); klog_dec(cast(ulong)p); klog(")");
+        }
+    }
 }
 
 public long linux_sys_epoll_pwait(ulong epfd, ulong evs, ulong maxev, ulong timeout_ms, ulong sigmask, ulong ss) {
@@ -18261,9 +18392,46 @@ public long linux_sys_timerfd_gettime(ulong fd, ulong curVal) {
 // SFD_NONBLOCK (0x800) / SFD_CLOEXEC (0x80000) share their bit values with the
 // EFD_* flags, so `flags` passes straight through. fd >= 0 means "update an
 // existing signalfd's mask" — a no-op for us, return it unchanged.
+// ── A9.5: signalfd ────────────────────────────────────────────────────────────────────────────────
+// Android's init blocks SIGCHLD and waits for it on a signalfd in its epoll loop, then reaps its
+// services with waitpid(WNOHANG); the old stub (an eventfd that never fired) also mistook the int
+// fd -1 for 0xFFFFFFFF and returned it as a descriptor.  Readable when a signal in the mask is
+// pending for the creating task, or -- SIGCHLD in the mask -- when that task has an exited child not
+// yet reaped (level-triggered: waitpid clears it).  A read returns one signalfd_siginfo (128 bytes)
+// and consumes the pending signal it reports; SIGCHLD from exited children is left to waitpid.
+private enum int SIGCHLD_NO = 17;
+private int signalfdPending(const(File)* f, out uint code, out int pid) @nogc nothrow {
+    code = 0; pid = 0;
+    const int owner = cast(int)cast(size_t)f.backend;
+    if (owner < 0 || owner >= MAX_TASKS || !g_tasks[owner].active) return 0;
+    const ulong mask = f.fileSize;
+    const int ps = g_taskPendingSig[owner];
+    if (ps > 0 && ps < 64 && (mask & (1UL << (ps - 1))) != 0) return ps;
+    if ((mask & (1UL << (SIGCHLD_NO - 1))) != 0) {
+        if (g_sigchldQueued[owner]) { code = 1 /*CLD_EXITED*/; return SIGCHLD_NO; }
+        foreach (c; 1 .. MAX_TASKS)
+            if (g_tasks[owner].childExited[c]) { code = 1 /*CLD_EXITED*/; pid = linuxPidForTask(cast(int)c); return SIGCHLD_NO; }
+    }
+    return 0;
+}
 public long linux_sys_signalfd4(ulong fd, ulong m, ulong sz, ulong f) {
-    if (cast(long)fd >= 0) return cast(long)fd;
-    return linux_sys_eventfd2(0, f);
+    initFdTable();
+    if (m == 0) return negErrno(EFAULT);
+    smapBegin(); const ulong mask = *cast(ulong*)m; smapEnd();
+    const int ifd = cast(int)cast(uint)fd;          // an int: -1 arrives as 0xFFFFFFFF
+    if (ifd >= 0) {                                 // update an existing signalfd's mask
+        if (ifd >= 1024 || g_fdTable[ifd].type != FileType.FD_SIGNALFD) return negErrno(EINVAL);
+        g_fdTable[ifd].fileSize = mask;
+        return ifd;
+    }
+    const int nfd = allocFd();
+    if (nfd < 0) return negErrno(EMFILE);
+    g_fdTable[nfd].type     = FileType.FD_SIGNALFD;
+    g_fdTable[nfd].flags    = O_RDONLY | (cast(int)f & 0x800 /*SFD_NONBLOCK*/);
+    g_fdTable[nfd].offset   = 0;
+    g_fdTable[nfd].backend  = cast(void*)cast(size_t)cast(int)g_current_task_id;
+    g_fdTable[nfd].fileSize = mask;
+    return publishActiveFdReturn(nfd);
 }
 // ROADMAP 2.2: inotify is not implemented.  dbus-daemon logs "Cannot initialize inotify: Function
 // not implemented" and degrades to not watching its config, which is the graceful path; other
@@ -19658,7 +19826,11 @@ private void androidPropEnsureRoot() {
     const int idx = rtResolve("/.__properties__\0".ptr, parent, leaf, ll);
     if (idx < 0 && parent >= 0 && leaf !is null)
         rtCreate(parent, leaf, ll, RT_DIR, 0x1FF, userCurrentUid(), userCurrentGid());
-    androidPropsSeed();            // A9.3g: lay down the bionic property files
+    // A9.5: when Android's own init is the first to touch the area, it builds it (its PropertyInit
+    // creates every file O_EXCL), so lay nothing down; otherwise seed it (A9.3g).
+    const int ct = cast(int)g_current_task_id;
+    const(char)* en = (ct >= 0 && ct < MAX_TASKS) ? g_taskExecName[ct] : null;
+    if (en is null || !cstrEq(en, "init")) androidPropsSeed();
     g_apropsReady = true;
 }
 // Rewrite "/dev/__properties__[/...]" (or the chroot form "/aroot/dev/__properties__[/...]") to its
@@ -19732,6 +19904,7 @@ private void androidDataEnsureRoot() {
                  "/.amnt/asec\0", "/.amnt/secure\0", "/.amnt/vendor\0", "/.amnt/product\0", "/.amnt/data_mirror\0"])
         androidEnsureDir(d.ptr);
     androidEnsureDir("/.astorage\0".ptr);
+    androidEnsureDir("/.aapex\0".ptr);
     androidEnsureDir("/.adata_mirror\0".ptr);
 }
 // The writable per-container overlays over the read-only image: /data (A9.3f), and /linkerconfig
@@ -19770,9 +19943,32 @@ private size_t androidPrefixLen(const(char)* q, string pre) @nogc nothrow {
     return (q[k] == '/' || q[k] == '\0') ? k : 0;
 }
 // Rewrite an overlay path (plain or the /aroot chroot form) to its writable rtfs tree; null = not one.
+// A9.5: a file directly in /apex (apexd writes /apex/apex-info-list.xml, which linkerconfig and others
+// read) -- the APEX directories themselves resolve onto the flattened /system/apex/<name>, so only these
+// loose files need a writable home: /.aapex/<leaf>.  Android tasks / container paths only.
+private bool androidApexLooseFile(const(char)* q, out size_t leafAt) @nogc nothrow {
+    leafAt = 0;
+    static immutable string ap = "/apex/";
+    foreach (k; 0 .. ap.length) if (q[k] != ap[k]) return false;
+    size_t e = ap.length;
+    while (q[e] != 0) { if (q[e] == '/') return false; ++e; }
+    if (e - ap.length < 5) return false;
+    if (q[e - 4] != '.' || q[e - 3] != 'x' || q[e - 2] != 'm' || q[e - 1] != 'l') return false;
+    leafAt = ap.length;
+    return true;
+}
 private const(char)* androidDataRewrite(const(char)* path, char* buf, size_t cap) {
     const(char)* q = androidStripAroot(path);
     const bool actx = androidOverlayContext(path, q);
+    {   size_t leafAt;
+        if (actx && androidApexLooseFile(q, leafAt)) {
+            androidDataEnsureRoot();
+            size_t p = 0;
+            foreach (c; "/.aapex/") if (p + 1 < cap) buf[p++] = c;
+            for (size_t r = leafAt; q[r] != 0 && p + 1 < cap; ++r) buf[p++] = q[r];
+            buf[p] = 0;
+            return buf;
+        } }
     foreach (ref ov; g_aOverlays) {
         if (ov.androidOnly && !actx) continue;
         const size_t k = androidPrefixLen(q, ov.src);
@@ -19793,6 +19989,8 @@ private bool androidDataIsPath(const(char)* path) @nogc nothrow {
         if (ov.androidOnly && !actx) continue;
         if (androidPrefixLen(q, ov.src) != 0 || androidPrefixLen(q, ov.dst) != 0) return true;
     }
+    { size_t la; if (actx && androidApexLooseFile(q, la)) return true; }
+    if (androidPrefixLen(q, "/.aapex") != 0) return true;   // A9.5: apexd's loose /apex files
     return androidPrefixLen(q, "/.aattr") != 0;   // A9.4: per-process SELinux attr files
 }
 
@@ -19885,7 +20083,18 @@ private uint aVfsResolve(const(char)* path, out int mountSel, out bool isDir) {
             size_t p = 0;
             static immutable string sysap = "/system/apex";
             foreach (c; sysap) if (p + 1 < apx.length) apx[p++] = c;
-            size_t r = k; while (sub[r] != '\0' && p + 1 < apx.length) apx[p++] = sub[r++];
+            size_t r = k;
+            // A9.5: apexd mounts the VNDK APEX under its manifest name (com.android.vndk.v33); the image
+            // ships the directory as com.android.vndk.current.
+            static immutable string vndk = "/com.android.vndk.v";
+            bool isVndk = true;
+            foreach (j, c; vndk) if (sub[r + j] != c) { isVndk = false; break; }
+            if (isVndk) {
+                foreach (c; "/com.android.vndk.current") if (p + 1 < apx.length) apx[p++] = c;
+                r += vndk.length;
+                while (sub[r] >= '0' && sub[r] <= '9') ++r;
+            }
+            while (sub[r] != '\0' && p + 1 < apx.length) apx[p++] = sub[r++];
             apx[p] = '\0';
             sub = apx.ptr;
         }
@@ -20044,8 +20253,10 @@ public long linux_sys_mount(ulong src, ulong tgt, ulong fstype, ulong fl, ulong 
     return 0;
 }
 public long linux_sys_umount2(ulong tgt, ulong fl) {
-    if (!adminRequire(CAP_RIGHT_ADMIN_MOUNT)) return negErrno(EPERM);
     const int t = g_activeFdTabId;
+    // As with mount: inside a task's own mount namespace no host privilege is needed (A9.5).
+    const bool inMntNs = (t >= 0 && t < FDTAB_COUNT && g_nsIds[t][0] != 0);
+    if (!inMntNs && !adminRequire(CAP_RIGHT_ADMIN_MOUNT)) return negErrno(EPERM);
     if (t >= 0 && t < FDTAB_COUNT && g_nsIds[t][0] != 0 && tgt != 0) {
         auto p = cast(const(char)*)tgt;
         size_t len = 0; while (p[len] != 0 && len < MNT_PATH_MAX) ++len;

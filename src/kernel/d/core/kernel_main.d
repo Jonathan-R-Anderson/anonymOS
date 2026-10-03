@@ -3923,12 +3923,30 @@ private ulong mmapLow2G(int tid, ulong len) {
 // Reserve `len` bytes of fresh address space in task `tid`'s address space for a non-fixed mmap: the
 // cursor is the highest any live thread of the space holds, and every one of them moves past the
 // reservation, so the cursor survives any single thread exiting.
+private __gshared uint g_mmapSkipLogN = 0;
+private __gshared uint g_smmLogN = 0;
+private __gshared uint g_mmapClampLogN = 0;
+private __gshared uint g_mmapObjLogN = 0;
 private ulong asMmapReserve(int tid, ulong len) {
     const ulong pml4 = g_tasks[tid].pml4Phys;
     ulong hi = g_tasks[tid].mmapNext;
     foreach (i; 0 .. MAX_TASKS) {
         auto t = &g_tasks[i];
         if (t.active && !t.exited && t.pml4Phys == pml4 && t.mmapNext > hi) hi = t.mmapNext;
+    }
+    // A9.5: never hand out a range something already occupies.  Hinted maps (LLVM's JIT in lavapipe),
+    // MAP_FIXED maps and mremap moves can land above the cursor without moving it; the next NULL-hint
+    // map then got the same address (SurfaceFlinger: two mmaps returned one address, the first
+    // buffer's pages were replaced, and lavapipe faulted on "no region").  Skip past any overlap.
+    for (int guard = 0; guard < 4096; ++guard) {
+        const ulong ov = overlapEndShared(tid, hi, hi + len);
+        if (ov == 0) break;
+        if (g_mmapSkipLogN < 16) {
+            ++g_mmapSkipLogN;
+            klog("[mmap] cursor "); klog_hex(hi); klog(" overlaps a live region up to "); klog_hex(ov);
+            klog(" -- skipping (t="); klog_dec(cast(ulong)tid); klog(")\n");
+        }
+        hi = (ov + 0xFFF) & ~0xFFFUL;
     }
     foreach (i; 0 .. MAX_TASKS) {
         auto t = &g_tasks[i];
@@ -5216,6 +5234,22 @@ private void dispatchSyscall(int tid) {
             // pages past the end of the GEM buffer / memfd.
             if (useObjectBacking && backingSize > 0) {
                 ulong maxPgs = backingSize >> 12;
+                if (g_taskAndroid[tid] && g_mmapObjLogN < 0 && g_taskExecName[tid] !is null
+                    && (cstrEqK(g_taskExecName[tid], "surfaceflinger") || cstrEqK(g_taskExecName[tid], "bootanimation"))) {
+                    ++g_mmapObjLogN;      // DIAGNOSTIC (A9.5): every object-backed (memfd) map of the graphics clients
+                    klog("[mmap] obj t="); klog_dec(cast(ulong)tid); klog(" fd="); klog_dec(mfd);
+                    klog(" off="); klog_hex(moffset); klog(" req="); klog_hex(numPgs << 12);
+                    klog(" backing="); klog_hex(backingSize); klog(" vmo="); klog_dec(vmoObjId);
+                    klog(" prot="); klog_hex(rdx); klog(" fl="); klog_hex(mflags); klog(" hint="); klog_hex(rdi);
+                    klog(" at="); klog_hex(vaddr); klog("\n");
+                }
+                if (maxPgs < numPgs && g_taskAndroid[tid] && g_mmapClampLogN < 40) {   // DIAGNOSTIC (A9.5)
+                    ++g_mmapClampLogN;
+                    klog("[mmap] CLAMP t="); klog_dec(cast(ulong)tid); klog(" fd="); klog_dec(mfd);
+                    klog(" off="); klog_hex(moffset); klog(" req="); klog_hex(numPgs << 12);
+                    klog(" backing="); klog_hex(backingSize); klog(" vmo="); klog_dec(vmoObjId);
+                    klog(" "); klog(g_taskExecName[tid] !is null ? g_taskExecName[tid] : "?".ptr); klog("\n");
+                }
                 if (maxPgs < numPgs) {
                     numPgs = maxPgs;
                     alignedLen = numPgs << 12;
@@ -7346,8 +7380,21 @@ private void kernelLoop() {
                     ++g_sysRingPos[tid];
                 }
             }
+            // DIAGNOSTIC (A9.5): SurfaceFlinger's address-space calls, to find the mapping lavapipe
+            // reads past (its fault always lands 0x1400 into a mapping).
+            const ulong scA1 = task.regs[REG_RSI], scA2 = task.regs[REG_RDX], scA3 = task.regs[REG_R10],
+                        scA4 = task.regs[REG_R8], scA5 = task.regs[REG_R9];
+            const ulong scA0 = x64LastSyscallRdi;
             dispatchSyscall(tid);
             g_sysRingRet[tid][ringSlot] = task.regs[REG_RAX];
+            if ((scNr == 11 || scNr == 25) && g_smmLogN < 0 && tid > 0 && tid < MAX_TASKS
+                && g_taskAndroid[tid] && g_taskExecName[tid] !is null && cstrEqK(g_taskExecName[tid], "surfaceflinger")) {
+                ++g_smmLogN;
+                klog("[smm] t="); klog_dec(cast(ulong)tid); klog(" nr="); klog_dec(scNr);
+                klog(" "); klog_hex(scA0); klog(" "); klog_hex(scA1); klog(" "); klog_hex(scA2);
+                klog(" "); klog_hex(scA3); klog(" "); klog_hex(scA4); klog(" "); klog_hex(scA5);
+                klog(" = "); klog_hex(task.regs[REG_RAX]); klog("\n");
+            }
             // Measures time in the HANDLER, not time blocked: a park (poll/futex) returns from
             // dispatchSyscall immediately with the task marked waiting, so this stays a cost.
             noteSyscallCost(cast(uint)tid, scNr, rdtsc() - scT0);
@@ -7454,6 +7501,13 @@ private void kernelLoop() {
                     ++g_syncSegvLogN;
                     klog("[sig] sync SIGSEGV t="); klog_dec(cast(ulong)tid);
                     klog(" cr2="); klog_hex(cr2); klog(" rip="); klog_hex(faultRip);
+                    if (cr2 >= 0x1000) {   // DIAGNOSTIC (A9.5): the interrupted registers (saved in the ucontext)
+                        const ulong gb = task.regs[REG_RSP] + 8 + 40;   // uc_mcontext.gregs
+                        static immutable string[16] GN = ["r8","r9","r10","r11","r12","r13","r14","r15",
+                                                          "rdi","rsi","rbp","rbx","rdx","rax","rcx","rsp"];
+                        if (userPageMapped(tid, gb) && userPageMapped(tid, gb + 16 * 8))
+                            foreach (k; 0 .. 16) { klog(" "); klog(GN[k].ptr); klog("="); klog_hex(*cast(ulong*)(gb + k * 8)); }
+                    }
                     // A9.5: likely return addresses on the faulting stack (code-range words in the
                     // first 512 bytes; the frame was already pushed below, so read the ucontext's RSP).
                     if (cr2 < 0x1000) {

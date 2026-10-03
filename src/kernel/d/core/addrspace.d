@@ -308,7 +308,24 @@ bool handlePageFault(int taskId, ulong virtAddr, bool isWrite) {
 
     if (region is null) {
         klog("[pf] no region tid="); klog_hex(taskId);
-        klog(" va="); klog_hex(virtAddr); klog("\n");
+        klog(" va="); klog_hex(virtAddr);
+        // DIAGNOSTIC (A9.5): the neighbouring regions -- does a mapping end just short of the fault?
+        if (taskId >= 0 && taskId < MAX_TASKS && g_tasks[taskId].rtab !is null) {
+            const(AddrRegion)* below = null, above = null;
+            foreach (i; 0 .. regionCountOf(g_tasks[taskId])) {
+                const auto r = &regionAt(g_tasks[taskId], i);
+                if (r.end <= virtAddr && (below is null || r.end > below.end)) below = r;
+                if (r.start > virtAddr && (above is null || r.start < above.start)) above = r;
+            }
+            foreach (k, rr; [below, above]) {
+                if (rr is null) continue;
+                klog(k == 0 ? " below=[" : " above=["); klog_hex(rr.start); klog(","); klog_hex(rr.end);
+                klog(") t="); klog_dec(cast(ulong)rr.type); klog(rr.owned ? " own" : " shr");
+                if (rr.anon) klog(" anon"); if (rr.sharedMap) klog(" smap");
+                klog(" vmo="); klog_dec(rr.vmoObjId); klog(" pb="); klog_hex(rr.physBase);
+            }
+        }
+        klog("\n");
         return false;
     }
 

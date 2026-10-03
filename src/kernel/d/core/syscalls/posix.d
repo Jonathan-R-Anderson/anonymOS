@@ -18991,6 +18991,7 @@ public void itimerClear(int tid) {
     g_itimerNextMs[tid] = 0;
     g_itimerIvalMs[tid] = 0;
 }
+private __gshared uint g_memfdLogN = 0;
 public long linux_sys_memfd_create(ulong name, ulong flags) {
     initFdTable();
     if ((flags & ~MFD_SUPPORTED_MASK) != 0) return negErrno(EINVAL);
@@ -19002,6 +19003,14 @@ public long linux_sys_memfd_create(ulong name, ulong flags) {
     memfdAt(mid).refs     = 1;
     memfdAt(mid).physBase = 0;
     memfdAt(mid).size     = 0;
+    {   const int ct = cast(int)g_current_task_id;   // DIAGNOSTIC (A9.5): who makes Android's memfds
+        if (ct >= 0 && ct < MAX_TASKS && g_taskAndroid[ct] && g_memfdLogN < 120 && name != 0) {
+            ++g_memfdLogN;
+            klog("[memfd] create mid="); klog_dec(cast(ulong)mid); klog(" t="); klog_dec(cast(ulong)ct);
+            klog(" name="); auto nm = cast(const(char)*)name;
+            foreach (k; 0 .. 40) { if (nm[k] == 0) break; char[2] c = [nm[k], 0]; klog(c.ptr); }
+            klog("\n");
+        } }
     memfdAt(mid).seals    = (flags & MFD_ALLOW_SEALING) != 0 ? 0 : F_SEAL_SEAL;
     memfdAt(mid).vmoObjId = 0;
     g_fdTable[fd].type     = FileType.FD_MEMFD;

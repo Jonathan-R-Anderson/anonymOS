@@ -63,6 +63,38 @@ public bool userPageMapped(int taskId, ulong va) {
     return pte !is null && (*pte & PTE_PRESENT) != 0;
 }
 
+// A9.3w: MADV_DONTNEED on a private anonymous page -- afterwards it must read back as zeros (Linux).
+// A frame still shared copy-on-write with another address space is swapped for a fresh zero frame (the
+// other holders keep theirs); an exclusive frame is cleared in place.  Permissions follow the region.
+// A non-present page already reads as zero.  Walks task `taskId`'s tables; the caller runs in that
+// task's syscall, so its address space is the loaded one (the invlpg applies).
+public bool zeroAnonPage(int taskId, AddrRegion* region, ulong va) {
+    if (taskId < 0 || taskId >= MAX_TASKS || region is null) return false;
+    const ulong page = va & ~0xFFFUL;
+    ulong* pte = leafPTEPtr(g_tasks[taskId].pml4Phys, page);
+    if (pte is null || !(*pte & PTE_PRESENT)) return true;
+    const ulong phys = *pte & PTE_ADDR_MASK;
+    if (*pte & PTE_COW) {
+        ulong flags = *pte & ~PTE_ADDR_MASK & ~PTE_COW;
+        if (region.perms == RegionPerms.ReadWrite) flags |= PTE_RW;
+        if (physPageRefGet(phys) > 1) {
+            const ulong fresh = alloc_phys_page();          // zero-filled
+            if (fresh == 0) return false;
+            physPageRefDec(phys);
+            *pte = fresh | flags;
+            physPageSetOwner(fresh, region.objId, region.vmoObjId);
+            x64Invlpg(page);
+            return true;
+        }
+        physPageRefDec(phys);                              // the last holder: exclusive again
+        *pte = phys | flags;
+    }
+    auto words = cast(ulong*)(phys + hhdm_offset);
+    foreach (i; 0 .. 512) words[i] = 0;
+    x64Invlpg(page);
+    return true;
+}
+
 // Is the page containing `va` present AND writable in task `taskId`'s address
 // space?  Used by the KVM compat layer's userspace-write guard: a copy-out to
 // a read-only mapping must fail with -EFAULT, not silently corrupt or fault.

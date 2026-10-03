@@ -1720,17 +1720,21 @@ private long execveTask(int tid, ulong pathPtr, ulong argvPtr, ulong envpPtr) {
 
     auto stackRegion = addRegion(*task, stackBase, stackTop, RegionType.Mapped,
                                  RegionPerms.ReadWrite, stackPhys, true);
-    if (stackRegion !is null)
+    if (stackRegion !is null) {
         physPagesSetOwner(stackPhys, stackPages, stackRegion.objId, stackRegion.vmoObjId);
+        stackRegion.anon = true;
+    }
 
     // A9.3n: an Android binary's main thread gets the full RLIMIT_STACK.  bionic's
     // pthread_getattr_np(main) reports [top - RLIMIT_STACK, top) and ART sizes the main thread's
     // stack-overflow checks from it, so a recursion past the eager 1 MiB must find memory there
     // rather than fault the process dead.  Demand-zero: costs a region entry, not memory, until touched.
     // Native binaries keep the exact layout they have always had.
-    if (androidImage)
-        addRegion(*task, stackTop - USER_STACK_RLIMIT, stackBase, RegionType.AllocateOnDemand,
-                  RegionPerms.ReadWrite, 0, true);
+    if (androidImage) {
+        auto demandStack = addRegion(*task, stackTop - USER_STACK_RLIMIT, stackBase,
+                                     RegionType.AllocateOnDemand, RegionPerms.ReadWrite, 0, true);
+        if (demandStack !is null) demandStack.anon = true;
+    }
     g_taskAndroid[tid]  = androidImage;
     g_inSyncFault[tid]  = false;
 
@@ -4922,6 +4926,7 @@ private void dispatchSyscall(int tid) {
                 ret = -12;
                 break;
             }
+            mappedRegion.anon = !useObjectBacking && !useFile;   // A9.3w: MADV_DONTNEED zeroes these
             if (reserveOnly) { ret = cast(long)vaddr; break; }
 
             ulong mappedPgs = 0;
@@ -5032,6 +5037,7 @@ private void dispatchSyscall(int tid) {
             // MAYMOVE, or the given address for MREMAP_FIXED, replacing whatever is there).
             if (mrR.vmoObjId == 0 || memfdPhysByVmo(mrR.vmoObjId, null) == 0) {
                 const ulong gStart = mrR.start, gEnd = mrR.end;
+                const bool gAnon = mrR.anon;
                 ulong gDst;
                 if (mrFlags & MREMAP_FIXED) {
                     if (mrNewAddr == 0 || (mrNewAddr & 0xFFF) != 0) { ret = -22; break; }
@@ -5047,6 +5053,7 @@ private void dispatchSyscall(int tid) {
                 auto gNew = addRegion(*task, gDst, gDst + mrNewAligned,
                                       RegionType.Mapped, RegionPerms.ReadWrite, 0, true);
                 if (gNew is null) { ret = -12; break; }
+                gNew.anon = gAnon;
                 const ulong moveBytes = (mrOldAligned < mrNewAligned) ? mrOldAligned : mrNewAligned;
                 for (ulong pg = 0; pg < (moveBytes >> 12); pg++) {
                     const ulong ph = unmap_page_hhdm(mrOld + pg * 4096);     // steal the old page
@@ -6006,6 +6013,28 @@ private enum SYSRING = 8;
 private __gshared ulong[SYSRING][MAX_TASKS] g_sysRing;
 private __gshared uint[MAX_TASKS] g_sysRingPos;
 
+// A9.3w: MADV_DONTNEED on private anonymous memory must leave it reading as zeros, as on Linux.  ART
+// depends on that: its GC "zeroes and releases" freed regions with madvise (ZeroMemory,
+// kMadviseZeroes) and then hands them out as allocation space without clearing them, so with a no-op
+// madvise new objects inherited stale lock words -- "monitor.cc: Invalid monitor state
+// ForwardingAddress" aborted the zygote mid-preload.  Android tasks only for now: the desktop keeps
+// the old no-op until this is proven there (jemalloc/mallocng also assume the Linux behaviour).
+private long madviseTask(int tid, ulong addr, ulong len, ulong advice) {
+    enum MADV_DONTNEED = 4;
+    if (advice != MADV_DONTNEED || tid < 0 || tid >= MAX_TASKS || !g_taskAndroid[tid])
+        return linux_sys_madvise(addr, len, advice);
+    if ((addr & 0xFFF) != 0) return -22;                          // EINVAL
+    import core.addrspace : zeroAnonPage;
+    const ulong end = addr + ((len + 0xFFF) & ~0xFFFUL);
+    AddrRegion* r = null;
+    for (ulong va = addr; va < end; va += 4096) {
+        if (r is null || va < r.start || va >= r.end) r = findRegionShared(tid, va);
+        if (r is null || !r.anon) continue;
+        if (!zeroAnonPage(tid, r, va)) return -12;                // ENOMEM (a CoW frame to replace)
+    }
+    return 0;
+}
+
 // Every descriptor a call creates takes that call's close-on-exec flag (posix.d fdNoteCreated).
 private long dispatchLinuxSyscall(ulong n, ulong a, ulong b, ulong c,
                                    ulong d, ulong e, ulong f) {
@@ -6092,7 +6121,7 @@ private long dispatchLinuxSyscallCall(ulong n, ulong a, ulong b, ulong c,
         case 22:  return linux_sys_pipe(a);
         case 23:  return linux_sys_select(a, b, c, d, e);
         case 24:  return linux_sys_sched_yield();
-        case 28:  return linux_sys_madvise(a, b, c);
+        case 28:  return madviseTask(cast(int)g_current_task_id, a, b, c);
         case 32:  return linux_sys_dup(a);
         case 33:  return linux_sys_dup2(a, b);
         case 34:  return linux_sys_pause();

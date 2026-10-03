@@ -96,6 +96,10 @@ struct AddrRegion {
     // munmap / task exit.  False for device (g_fb / DRM) and shared (memfd) maps
     // whose pages must never be reclaimed.
     bool        owned;
+    // A9.3w: private ANONYMOUS memory (anonymous mmap, a stack) -- not a file's private copy, not a
+    // device/shared map.  MADV_DONTNEED must make such pages read back as zeros; a file-backed private
+    // page would instead revert to the file, which this kernel cannot do, so it is left alone.
+    bool        anon;
     // Phase 3 (roadmap/OBJECT_OS_ROADMAP.md): id of the core.objmgr MemRegion
     // object mirroring this region (0 = none/not yet registered).
     uint        objId;
@@ -811,8 +815,21 @@ bool regionOwnedAt(ref Task task, ulong vaddr) {
 // the head and tail, so their mappings are only ever unmapped in PIECES.  Dropping just the
 // wholly-contained entries leaked one per such allocation until "addRegion: full" failed the
 // next mmap (ratty died "memory allocation of 118272 bytes failed" a minute after start).
+// DIAGNOSTIC (A9.3n): an Android task's main-thread demand stack (exec) vanishes mid-run; name the
+// removal, whichever path makes it (bounded).
+private __gshared uint g_astackRmN = 0;
 void removeRegion(ref Task task, ulong start, ulong end) {
     if (end <= start || task.rtab is null) return;
+    {
+        const long ti = &task - &g_tasks[0];
+        if (ti >= 0 && ti < MAX_TASKS && g_taskAndroid[ti] && g_astackRmN < 8
+            && end > USER_STACK_TOP - USER_STACK_RLIMIT && start < USER_STACK_TOP) {
+            ++g_astackRmN;
+            klog("[astack] removeRegion t="); klog_dec(cast(ulong)ti);
+            klog(" "); klog_hex(start); klog("-"); klog_hex(end);
+            klog(" rip="); klog_hex(g_tasks[ti].regs[REG_RIP]); klog("\n");
+        }
+    }
     auto tab = task.rtab;
     int n = tab.count;
     int i = 0;

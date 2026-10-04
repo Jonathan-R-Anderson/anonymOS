@@ -3,7 +3,7 @@
 ## Architecture
 
 The storage client keeps one persistent libp2p Ed25519 identity. Kademlia and
-shard exchange remain I2P-only. Gateway verification is the deliberate
+shard exchange remain AXON-only. Gateway verification is the deliberate
 exception: candidates contact admitted probes over direct HTTPS so probes see
 the candidate's real source address and can connect back to that exact address
 on public TCP 443.
@@ -104,7 +104,8 @@ registration is refused by the DHT validator.
 `-gateway-only` is a distinct runtime role, resolved from the command line
 before any configuration is read. The process does not open the shard/object
 store, accept or replicate shards, start S3 on 9000, start the dashboard on
-9090, open I2P, or join the storage DHT.
+9090, or join the storage DHT. It joins the AXON overlay only to relay, and
+only if `axon.relay` is set.
 
 It does send the five-minute presence heartbeat, signed by the same identity
 and carrying `capacity_bytes: 0`. Presence is a property of the node, not of
@@ -115,7 +116,7 @@ capacity.
 
 Because the role is decided first, a gateway-only config is validated against
 gateway settings only. It needs no S3 credentials, capacity, erasure layout,
-dashboard address, or I2P endpoints, and `config.json` on such a host should
+dashboard address, or AXON settings (unless it relays), and `config.json` on such a host should
 contain none of them. It keeps a persistent Ed25519 identity under `-data-dir`
 and posts its signed registration straight to the controller over HTTPS.
 Public TCP 443 is required; public TCP 80 is required as well when
@@ -275,5 +276,5 @@ go vet ./...
 
 Tests cover restricted IP ranges, CGNAT, signature binding, self-verification,
 network diversity, replay rejection, health transitions, DHT record selection,
-signed registration requests, I2P-only peer addresses, signed heartbeats,
+signed registration requests, AXON-only peer addresses, signed heartbeats,
 encrypted transfer leases, S3 compatibility, storage quotas, and UI controls.

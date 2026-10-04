@@ -15,9 +15,11 @@
   the ambiguity and T11.5 required it resolved rather than left to the reader.
 - Volunteer peers are untrusted and receive only independently authenticated,
   content-addressed encrypted shards.
-- `rabbiit.io` is the discovery and allocation coordinator. Its HTTPS
-  requests are forced through the configured local I2P HTTP proxy; TLS
-  authenticates bootstrap documents and its Ed25519 key authenticates leases.
+- `rabbiit.io` is the discovery and allocation coordinator. When the signed
+  bootstrap document names the origin's AXON address, coordinator requests go
+  to it through the overlay, authenticated by the address itself; otherwise, or
+  when that fails, they go directly over HTTPS. The coordinator's Ed25519 key
+  authenticates bootstrap documents and leases either way.
 - Kademlia records and peer responses are untrusted hints. Every returned shard
   must match its SHA-256 ID before Reed-Solomon reconstruction.
 
@@ -110,19 +112,27 @@ are refused outright. A non-loopback dashboard with no password configured
 serves 503 rather than opening. The S3 API defaults to loopback; public binding
 requires TLS.
 
-The libp2p host registers only the custom I2P transport and advertises only
-`/garlic32` multiaddresses. Bootstrap and provider records containing IP, DNS,
-TCP, QUIC, WebSocket, or relay components are discarded. The SAM bridge and
-I2P HTTP proxy are required to be local because SAM is ordinarily unencrypted
-and unauthenticated. There is no direct-network fallback.
+The libp2p host registers only the AXON transport and advertises only `/axon`
+multiaddresses: its own hidden service. Bootstrap and provider records
+containing IP, DNS, TCP, QUIC, WebSocket, or relay components are discarded.
+Peer traffic has no direct-network fallback. There is no I2P router, SAM bridge
+or Tor anywhere in the node.
 
-I2P conceals peer IP addresses from one another, but does not conceal traffic
-timing, shard sizes, the fact that a user is running I2P from their ISP, or the
-fact that two peers advertise the same encrypted shard ID. The coordinator's
-HTTPS outproxy can observe the coordinator hostname, while the coordinator sees
-the outproxy rather than the node's IP.
+AXON conceals peer IP addresses from one another: peers meet at a rendezvous
+point through three-hop circuits on each side, and a service's descriptor is
+stored under a blinded key. It does not conceal traffic timing, shard sizes, the
+fact that two peers advertise the same encrypted shard ID, or -- to an observer
+of your connection -- that you are running a node, since links to relays are
+ordinary libp2p TCP/QUIC connections. The loopback AXON proxy reaches only
+`.key.axon` addresses; there is no exit to clearnet.
 
-The five-minute frontend heartbeat is intentionally direct rather than I2P,
+**AXON is young, and that matters.** It replaced I2P, which had two decades of
+operational hardening and a large anonymity set. AXON's anonymity set is only as
+large as its relay population, which is small, and its code has had no external
+review. Its sybil resistance relies on diversity heuristics until relay bonding
+is deployed. Treat its anonymity as weaker than I2P's was until those change.
+
+The five-minute frontend heartbeat is intentionally direct rather than AXON,
 per product requirements. It therefore exposes the node's public egress IP to
 `rabbiit.io`, although the heartbeat table itself does not persist that IP.
 The heartbeat is signed by the libp2p identity, freshness-checked, and

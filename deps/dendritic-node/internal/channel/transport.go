@@ -56,7 +56,7 @@ var (
 const DefaultExchangeTimeout = 30 * time.Second
 
 // Dialer opens a connection to one peer. Whatever it is underneath — TCP, a
-// unix socket, an I2P stream — is not this file's business.
+// unix socket, an AXON stream — is not this file's business.
 type Dialer func(ctx context.Context) (net.Conn, error)
 
 // StreamPeer is a Peer over a stream-oriented connection.

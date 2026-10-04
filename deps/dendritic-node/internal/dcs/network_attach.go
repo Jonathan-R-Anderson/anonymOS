@@ -5,10 +5,11 @@ import (
 	"fmt"
 )
 
-// ContainerSessionFactory opens a NEW I2P destination for a container. In
-// production this is a closure over internal/i2p.Open bound to the container's
-// own key file (one destination per container, address.go). It is an interface
-// so the attacher is testable without a SAM bridge.
+// ContainerSessionFactory supplies the service a container's inbound proxy
+// accepts on. In production it hands back the service the address allocator
+// started from the container's own key file (one address per container,
+// address.go). It is an interface so the attacher is testable without an
+// overlay.
 type ContainerSessionFactory interface {
 	// OpenForContainer returns a session listening on the container's own
 	// destination.

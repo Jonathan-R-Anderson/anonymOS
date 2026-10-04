@@ -32,7 +32,7 @@ import (
 const ChallengersPerAssignment = 3
 
 // ChunksPerChallenge is how many chunks a single challenge demands. Small
-// enough to stay cheap over I2P, large enough that guessing is hopeless: a node
+// enough to stay cheap over AXON, large enough that guessing is hopeless: a node
 // holding half the shard passes a 4-chunk challenge only 1 time in 16.
 const ChunksPerChallenge = 4
 

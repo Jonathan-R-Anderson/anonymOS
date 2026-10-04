@@ -11,7 +11,7 @@ import (
 	"github.com/libp2p/go-libp2p/core/peer"
 	"github.com/multiformats/go-multihash"
 
-	syndii2p "github.com/rabbiit/maniwani/storage-client/internal/i2p"
+	axontransport "github.com/rabbiit/maniwani/storage-client/internal/axon/transport"
 	"github.com/rabbiit/maniwani/storage-client/internal/place"
 )
 
@@ -67,7 +67,7 @@ func (n *Node) PublishStorageCapacity(ctx context.Context, freeBytes, capacity i
 	record := place.Record{
 		RecordType:  "storage_capacity",
 		NodeID:      n.host.ID().String(),
-		Destination: n.I2PDestination(),
+		Destination: n.AxonAddress(),
 		FreeBytes:   freeBytes,
 		Capacity:    capacity,
 		// A DRAINING node keeps publishing, and keeps publishing HONEST figures.
@@ -136,13 +136,13 @@ func (n *Node) FindStoragePeers(ctx context.Context, limit int) ([]place.Record,
 }
 
 // DialStoragePeer teaches the host how to reach a candidate and returns its id.
-// Passed to place.NewPlacer so that package needs no I2P knowledge of its own.
+// Passed to place.NewPlacer so that package needs no overlay knowledge of its own.
 func (n *Node) DialStoragePeer(_ context.Context, record place.Record) (peer.ID, error) {
 	target, err := peer.Decode(record.NodeID)
 	if err != nil {
 		return "", fmt.Errorf("storage peer id %q: %w", record.NodeID, err)
 	}
-	addr, err := syndii2p.Multiaddr(record.Destination)
+	addr, err := axontransport.Multiaddr(record.Destination)
 	if err != nil {
 		return "", fmt.Errorf("storage peer destination %q: %w", record.Destination, err)
 	}

@@ -187,7 +187,7 @@ func score(c Candidate, seed [32]byte) float64 {
 	s := c.SuccessRate * 100
 	if c.LatencyMS > 0 {
 		// Diminishing penalty: the difference between 50ms and 100ms matters,
-		// between 2s and 3s barely does once I2P dominates the total anyway.
+		// between 2s and 3s barely does once the overlay dominates the total anyway.
 		s -= float64(c.LatencyMS) / 100.0
 	}
 	// A small deterministic jitter from the seed, so the same handful of

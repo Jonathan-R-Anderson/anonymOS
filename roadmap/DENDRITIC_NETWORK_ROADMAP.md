@@ -1,6 +1,6 @@
 # DENDRITIC_NETWORK_ROADMAP — phasing the dendritic anonymous overlay into anonymOS
 
-**Goal.** Run the dendritic anonymous-overlay node (`syndichan-node`) natively inside anonymOS as the
+**Goal.** Run the dendritic anonymous-overlay node (`rabbiit-node`) natively inside anonymOS as the
 system's anonymizing network layer — the **I2P replacement**. This roadmap covers the *OS-side*
 integration and phasing; the overlay protocol itself (AXON) is built in the node and tracked
 upstream in `../dendritic/roadmap/` (`axon-overlay-network.md`, `OUTSTANDING.md`).
@@ -10,7 +10,7 @@ and unfinished/uncertain work is labelled rather than hidden.
 
 ## What this is
 
-`dendritic/dendritic-node` (`syndichan-node`) is a large **Go** program — a storage + HTTPS-gateway
+`dendritic/dendritic-node` (`rabbiit-node`) is a large **Go** program — a storage + HTTPS-gateway
 node (libp2p/Kademlia, erasure-coded content store, an Ethereum light client, payment channels). It
 anonymises peer traffic; **today it outsources anonymity to I2P** (dials a SAM bridge at
 `127.0.0.1:7656` and exits if absent — `dendritic/dendritic-node/internal/config/config.go:582`).
@@ -39,20 +39,20 @@ chords bowed through the centre, each node a role-coloured glowing dot on the pa
   Hyprland paints only a solid colour and this image ships no wallpaper daemon (quickshell/hyprpaper/swww
   are all absent).
 
-This is a **visual** integration only: it does not run, replace, or depend on the node — `syndichan-node`
+This is a **visual** integration only: it does not run, replace, or depend on the node — `rabbiit-node`
 is retained and unchanged. A later step can point the generator at the node's own live peer view instead
 of the synthetic fleet, turning the wallpaper into a real network readout.
 
 ## Phases
 
 ### P0 — Node builds for anonymOS · ✅ DONE
-- Cross-compile `syndichan-node` to a **static x86-64 Linux ELF** (`CGO_ENABLED=0`, ~32 MB — no C
+- Cross-compile `rabbiit-node` to a **static x86-64 Linux ELF** (`CGO_ENABLED=0`, ~32 MB — no C
   runtime needed at run time on anonymOS).
-- Wire it into the anonymOS build **opt-in**: `make syndichan-node`; `stage-iso-tree` stages it as a
-  limine boot module (`/syndichan-node`) *only if built*, so a Go-less build host still makes a
+- Wire it into the anonymOS build **opt-in**: `make rabbiit-node`; `stage-iso-tree` stages it as a
+  limine boot module (`/rabbiit-node`) *only if built*, so a Go-less build host still makes a
   normal ISO.
-- **Exit (met):** `make syndichan-node` emits a static ELF64; a normal ISO build lists
-  `Included syndichan-node`; the binary runs on real Linux and reaches `starting I2P transport`.
+- **Exit (met):** `make rabbiit-node` emits a static ELF64; a normal ISO build lists
+  `Included rabbiit-node`; the binary runs on real Linux and reaches `starting I2P transport`.
 
 ### P1 — Go runtime survives anonymOS · [IN PROGRESS]
 
@@ -76,10 +76,10 @@ duration).
   returns 0 (Go falls back to 1 CPU — fine). **Prime suspect: `sigaltstack` is a stub** (`return 0`
   without installing an alt signal stack), and Go delivers async-preemption `SIGURG` on it — if the
   boot crashes in signal handling, wire `sigaltstack` first.
-- Then launch `syndichan-node` and confirm it reaches `starting I2P transport` with no runtime
+- Then launch `rabbiit-node` and confirm it reaches `starting I2P transport` with no runtime
   panic/hang.
 - **Exit:** the trivial Go binary prints `GO-RUNTIME-OK` and exits cleanly on booted anonymOS; then
-  `syndichan-node` reaches its transport init.
+  `rabbiit-node` reaches its transport init.
 
 ### P2 — Transport bring-up (direct, non-anonymous, clearly labelled) · [BUILD NOW]
 Give the node networking (anonymOS LKL) and remove the hard I2P/SAM exit so it runs end to end.
@@ -89,7 +89,7 @@ Give the node networking (anonymOS LKL) and remove the hard I2P/SAM exit so it r
 
 ### P3 — Auto-launch as an OS service · [BUILD NOW]
 - Kernel launch hook next to the dbus/sshd launchers
-  (`spawnWaylandProgram("syndichan-node", "[axon]")` in `kernel_main.d`), a config, and lifecycle
+  (`spawnWaylandProgram("rabbiit-node", "[axon]")` in `kernel_main.d`), a config, and lifecycle
   (restart, logging to `/run`).
 - **Exit:** the node comes up at boot without manual steps and survives a compositor stall.
 
@@ -110,9 +110,9 @@ boot. Coordinate with `INSTALLER` (§H) and `DECOY_SECURITY_REVIEW`.
 ## Build
 
 ```sh
-make syndichan-node        # static build/syndichan-node (needs a Go toolchain, 1.21+)
+make rabbiit-node        # static build/rabbiit-node (needs a Go toolchain, 1.21+)
 make WESTON=0 all          # stages the node if it was built
-make hos-install.iso       # ISO carries /syndichan-node as a boot module
+make hos-install.iso       # ISO carries /rabbiit-node as a boot module
 ```
 
 ## Blockers

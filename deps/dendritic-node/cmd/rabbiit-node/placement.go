@@ -16,7 +16,7 @@ import (
 // from peers, and let the local blob store fall back to a peer when full.
 //
 // Deliberately in main rather than in the packages it connects: internal/place
-// knows nothing about I2P or the store, internal/p2p knows nothing about blobs,
+// knows nothing about the overlay or the store, internal/p2p knows nothing about blobs,
 // and keeping the seam here is what let both be tested without a network.
 //
 // The lesson being applied: a capability nothing CALLS does not exist. The

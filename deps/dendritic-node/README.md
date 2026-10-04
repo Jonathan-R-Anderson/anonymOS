@@ -7,8 +7,9 @@ It does two jobs, and you choose one or both:
 
 - **Storage node.** It stores encrypted pieces of other people's files and
   keeps a copy of your own. Everything is encrypted and split up before it
-  leaves your machine, and all peer traffic goes over I2P, so other volunteers
-  never see your IP address or what any file is. It also gives you a local S3
+  leaves your machine, and all peer traffic goes over AXON — the network's own
+  anonymous overlay, built into the program — so other volunteers never see
+  your IP address or what any file is. It also gives you a local S3
   endpoint your own applications can use.
 - **HTTPS gateway.** Your machine acts as one of the public front doors for
   `rabbiit.io`. This one needs a public port and is off by default.
@@ -48,23 +49,19 @@ That leaves a `rabbiit-node` binary in the current directory. Run it with
 `~/.config/Rabbiit/storage-node/config.json` on Linux, and prints the path it
 chose on the first line of its output.
 
-**A freshly built node needs an I2P router already running**, because it dials a
-SAM bridge at `127.0.0.1:7656` during startup and exits if nothing answers:
+**Nothing else needs to be running.** Peer traffic goes over AXON, the
+network's own anonymous overlay, and the node carries all of it: there is no
+router, bridge or proxy to install beside it. On startup it fetches the signed
+bootstrap document, joins the overlay through the relays the document names,
+and publishes its own AXON address. Until it can reach a relay it logs
 
 ```
-connect to local I2P SAM bridge at 127.0.0.1:7656: dial tcp ... connection refused
+AXON: could not join (...); retrying in 15s
 ```
 
-That message means the router is not up *yet*, not that the build is broken.
-SAM often lags the router by up to two minutes — the console on `:7657` comes up
-almost immediately while `:7656` stays closed — so check the port rather than
-the service:
-
-```sh
-ss -lnt | grep 7656        # nothing yet? wait, then look again
-```
-
-See *Install it* for getting a router running in the first place.
+and keeps retrying with backoff. That means the network is unreachable *yet*,
+not that the build is broken. `joined the AXON overlay as a client through N
+seed relay(s)` is the line that says it is in.
 
 If startup instead fails with a bare `timeout`, another `rabbiit-node` is
 already running against the same data directory and holding its database lock.
@@ -143,9 +140,8 @@ curl -fsSL https://rabbiit.io/install.sh | sh
 ```
 
 That fetches a prebuilt binary for this machine's architecture, verifies its
-published SHA-256 before running anything, installs an I2P router if SAM is not
-already answering, and leaves the node running as a non-root systemd service
-that comes back after a reboot. It prints the plan and asks before it changes
+published SHA-256 before running anything, and leaves the node running as a
+non-root systemd service that comes back after a reboot. It prints the plan and asks before it changes
 anything; `| sh -s -- --check` prints the plan and stops. The script is served
 as plain text — open <https://rabbiit.io/install.sh> and read it first.
 
@@ -182,17 +178,11 @@ sudo ./scripts/install.sh --no-service         # no boot service; you run it you
 
 What it does, and does not do:
 
-- **Installs an I2P router only if one is not already there.** It decides that
-  by completing a real SAM handshake on `127.0.0.1:7656`, not by checking a
-  console port — the console answers immediately while SAM can be two minutes
-  behind it. If something already answers, it installs no router and edits no
-  router config: two routers fighting over `7656` is worse than none.
-- **Waits for SAM properly**, up to five minutes, and installs that same wait
-  as the service's `ExecStartPre`. The node has no startup retry, so a service
-  that starts before the bridge exists just dies.
+- **Installs nothing for networking.** The overlay is part of the node, and the
+  node itself retries joining it until the network answers, so the service
+  needs no router beside it and no readiness wait before it.
 - **Runs the node as a dedicated `rabbiit` user**, never root, and the only
   path it takes ownership of is the node's own data directory.
-- **Enables the router on boot too**, otherwise the node reboots into nothing.
 - **Never downloads a guest kernel**, never installs a GPU driver, and never
   claims `/dev/kvm` can be installed. Those it reports.
 - **Is safe to re-run.** If the unit file has been edited since the installer
@@ -206,26 +196,13 @@ Run `./scripts/install.sh --help` for the full option list.
 
 ## Run it as a storage node
 
-**First install I2P**, because the storage node refuses to start without it —
-it will never fall back to sending your traffic over the open Internet.
+**There is nothing to install first.** Peer traffic runs over AXON, the
+network's own anonymous overlay, which is built into the node: it reaches other
+peers as hidden services through volunteer relays, so no peer learns your IP
+and the node needs no open port. It will never fall back to sending peer
+traffic over the open Internet.
 
-- **Windows / macOS:** the
-  [I2P Easy Install Bundle](https://i2p.net/en/downloads/) includes everything.
-- **Linux (Ubuntu):**
-  ```sh
-  sudo apt-add-repository ppa:i2p-maintainers/i2p
-  sudo apt-get update && sudo apt-get install i2p
-  ```
-
-Then open the router console at `http://127.0.0.1:7657`, go to
-**Configure I2P Internals > Clients**, start the **SAM application bridge**, and
-tick **Run at Startup**. Java I2P does not turn SAM on by default. Give a fresh
-router a few minutes to join the network before worrying about errors.
-
-The node expects I2P's SAM bridge on `127.0.0.1:7656` and its HTTP proxy on
-`127.0.0.1:4444`. Both stay on loopback — never expose them.
-
-Now start the node as your normal user (not root):
+Start the node as your normal user (not root):
 
 ```sh
 chmod 755 rabbiit-node-linux-amd64
@@ -415,8 +392,9 @@ The node id in that log is the same one the reputation page lists. If you see
 ## Running from home: ports and forwarding
 
 **As a plain storage node you do not need to open anything.** All peer traffic
-goes out through I2P, which handles its own connections. If that's all you want
-to do, you're finished — skip this section.
+goes out through AXON relays and comes back the same way, so other peers reach
+you through rendezvous rather than at a port. If that's all you want to do,
+you're finished — skip this section.
 
 **A gateway is different.** It is a public web server, so the Internet has to be
 able to reach your machine, and a home router blocks that by default. To run a
@@ -468,6 +446,29 @@ Before a gateway is trusted with real traffic, independent probe nodes on other
 networks connect back to your public address and verify it. A gateway that only
 answers on your LAN is never admitted.
 
+### Relaying for the overlay
+
+AXON exists because volunteers relay for each other: every circuit is a few
+relays chained together, and the more independent relays there are, the less
+any one of them sees. A relay never learns what it carries or who is talking to
+whom, and it stores nothing. It needs one port the Internet can reach — the
+same forwarding and firewall steps as above, for TCP **and** UDP on the port you
+choose — and these lines in `config.json`:
+
+```json
+"axon": {
+  "relay": true,
+  "listen": ["/ip4/0.0.0.0/tcp/4001", "/ip4/0.0.0.0/udp/4001/quic-v1"],
+  "announce": ["203.0.113.7:4001"]
+}
+```
+
+`announce` is the public address and port to publish, needed when `listen`
+binds a wildcard or the machine sits behind a forward. A gateway-only or
+probe-only box can relay too; it stores nothing either way. Leave relaying off
+on a connection you cannot forward a port through: a relay nobody can reach is
+a hole in every path built through it.
+
 ## Run a dedicated gateway (no storage)
 
 For a VPS or spare box that should only forward HTTPS and store nothing, set the
@@ -478,7 +479,8 @@ run mode to **gateway-only** on the management page (or `"run_mode":
 ./rabbiit-node -config gateway.json
 ```
 
-Gateway-only runs the gateway and nothing else: no shard store, no S3, no I2P.
+Gateway-only runs the gateway and nothing else: no shard store, no S3, no
+storage DHT (it can still relay for the overlay; see *Relaying for the overlay*).
 The management page still comes up (on loopback) so you can edit the gateway
 settings there. Copy [`gateway.example.json`](gateway.example.json) as a starting
 point and set at minimum `run_mode: "gateway-only"`, `gateway.enabled`, your
@@ -647,8 +649,8 @@ PrivateDevices=true
 ProtectSystem=strict
 ProtectHome=read-only
 # This must be the "data_dir" from the config file above, and the DATA DIRECTORY
-# ITSELF -- not <data_dir>/storage. The node writes i2p.destination, p2p.key and
-# content.key beside storage/, so a unit that lists only the subdirectory starts,
+# ITSELF -- not <data_dir>/storage. The node writes p2p.key, axon.service.key,
+# axon/ and content.key beside storage/, so a unit that lists only the subdirectory starts,
 # opens the shard store, and then dies on the next file. If data_dir lives on
 # another disk, list that path here (several paths are allowed, space separated,
 # quoted if they contain spaces) or the node fails with
@@ -732,18 +734,18 @@ systemd units, and automatic updates — is in [`GATEWAY.md`](GATEWAY.md).
 ## Run a container worker (Distributed Container Service)
 
 Optional, **off by default**, and a real donation of compute: a container
-worker runs Docker containers for other people over I2P — a decentralized,
+worker runs Docker containers for other people over AXON — a decentralized,
 registry-free, coordinator-free container service. Only enable it if you mean to
 lend your machine's CPU and memory to strangers.
 
-A worker runs **alongside** a storage node — it reuses the same I2P bridge, the
+A worker runs **alongside** a storage node — it reuses the same overlay, the
 same peer identity, the same DHT, and the same shard store — so you start it by
 adding a `dcs` block to a normal storage node's `config.json`, not by running a
 separate program.
 
 ### What you need
 
-- A working storage node (the section above): I2P running, SAM enabled.
+- A working storage node (the section above), joined to the overlay.
 - **Docker**, reachable at the endpoint in the config (default
   `unix:///var/run/docker.sock`). Your user must be able to talk to it (be in the
   `docker` group). If Docker is not reachable the node logs it and keeps running
@@ -786,7 +788,7 @@ That is the whole thing. The worker now:
 
 - **publishes a capability record** to the DHT so others can find it (expires
   and refreshes on its own, like the gateway record — a crashed worker vanishes);
-- **accepts signed deployment requests** over I2P on `/rabbiit/dcs/1.0.0`;
+- **accepts signed deployment requests** over AXON on `/rabbiit/dcs/1.0.0`;
 - **caps concurrent containers** at `max_containers`. Beyond that, further
   requests are **queued** and the requester is told their place in line and an
   estimated wait — nobody is bogged down past what you set;
@@ -795,7 +797,7 @@ That is the whole thing. The worker now:
   fine);
 - **auto-spins-down every instance after 24 hours** (`max_runtime_seconds`, or
   the default), so a forgotten container is always reclaimed;
-- **gives each container its own I2P destination** and nothing else — no clearnet
+- **gives each container its own AXON address** and nothing else — no clearnet
   egress, no host network, dropped capabilities, read-only root filesystem.
 
 ### The limits are yours
@@ -828,8 +830,8 @@ pulled from a registry, and a tampered build context fails its digest check.
 
 `role.lab` is a **separate** opt-in from `role.worker`. Set it only if you are
 willing to host deliberately-vulnerable containers (e.g. Splunk Attack Range)
-for security researchers. A lab container is reachable **only** at an I2P
-destination that is never published anywhere — the researcher who deployed it is
+for security researchers. A lab container is reachable **only** at an AXON
+address that is never published anywhere — the researcher who deployed it is
 the sole party told the address — and it is denied clearnet egress and gateway
 exposure unconditionally, and destroyed after its (short) TTL no matter what. A
 plain `worker` never receives lab workloads. Do not enable `lab` casually; see
@@ -845,15 +847,22 @@ containers are reclaimed as they hit their TTL, or immediately with a normal
 
 Deploys happen through a **bridged website**, not a command-line flag. A person
 picks a challenge on the site (its Lab page); the site's bridge node — a normal
-node running the loopback deploy API described below — finds a worker over I2P,
+node running the loopback deploy API described below — finds a worker over AXON,
 hands it the build context (a Dockerfile, or a `docker-compose` project, stored
-on the DHT), and returns the container's **private `.b32.i2p` address** to that
-one user. The images themselves are pulled from a registry; only the small build
+on the DHT), and returns the container's **private `.key.axon` address** to that
+one user. The user reaches it through a node's AXON proxy, which listens on
+`127.0.0.1:4480` by default (`axon.proxy_listen`) and reaches `.key.axon`
+addresses and nothing else:
+
+```sh
+curl -x http://127.0.0.1:4480 http://<56 characters>.key.axon:8080/
+```
+ The images themselves are pulled from a registry; only the small build
 context rides on the DHT.
 
 Everything the operator promised still holds:
 
-- a container gets its own I2P destination and nothing else — one address carries
+- a container gets its own AXON address and nothing else — one address carries
   every port, so the deployer can port-scan the box across all of them;
 - a lab box's address is disclosed to its deployer alone;
 - each user may run **one instance at a time**; different users may run the same
@@ -876,7 +885,7 @@ This is exactly how Rabbiit's own Attack Range page works
 
 Turn it on by adding `api_listen` to the `dcs` block. The bridge needs no
 `role.worker` — a node can bridge without running containers itself — but it does
-need the full storage substrate (I2P, DHT, shard store):
+need the full storage substrate (overlay, DHT, shard store):
 
 ```json
 "dcs": {
@@ -902,7 +911,7 @@ The API is four endpoints, all JSON, all meant for a co-located caller only:
 | Endpoint | Purpose |
 | --- | --- |
 | `PUT /dcs/blob` | Store a packed build context on the DHT; returns its `sha256:` digest. |
-| `POST /dcs/deploy` | Deploy for a user (`on_behalf_of`); returns which worker took it, the container id, and the private `.b32.i2p` — or a queue position + ticket. |
+| `POST /dcs/deploy` | Deploy for a user (`on_behalf_of`); returns which worker took it, the container id, and the private `.key.axon` address — or a queue position + ticket. |
 | `POST /dcs/status` | Report a queued deploy's place in line. |
 | `POST /dcs/destroy` | Spin a container down before its TTL. |
 
@@ -936,10 +945,15 @@ failure recovery, the security model, and the roadmap — is in [`DCS.md`](DCS.m
 
 ## When something goes wrong
 
-- **`connect to local I2P SAM bridge ... connection refused`** — I2P isn't
-  running, or the SAM bridge isn't enabled. See the run section above.
-- **Bootstrap or coordinator requests fail** — I2P's HTTP proxy on port 4444
-  needs a working outproxy. There is intentionally no direct fallback.
+- **`AXON: could not join ...; retrying`** — the node cannot reach any relay
+  yet. Check the machine has a working Internet connection and can fetch
+  `https://node.rabbiit.io/.well-known/rabbiit/storage-node.json`; the node keeps
+  retrying on its own. `axon.seeds` in `config.json` names relays explicitly if
+  the bootstrap document is unreachable from where you are.
+- **Coordinator requests fail** — leases, revocations and the bootstrap document
+  go through the overlay to the origin when the document names its AXON address,
+  and fall back to direct HTTPS to `rabbiit.io` if that fails. If both fail, the
+  site is down or unreachable from this machine.
 - **Port 9000 or 9090 already in use** — stop whatever else is using it, or
   change the address in `config.json`.
 - **The dashboard won't let you lower your donated space** — you're storing
@@ -969,7 +983,7 @@ failure recovery, the security model, and the roadmap — is in [`DCS.md`](DCS.m
   running and your user can reach `docker_endpoint` (`docker ps` should work).
 - **`dcs: worker role requires full storage mode; not started`** — a container
   worker can't run in gateway-only/probe-only run mode; it needs the storage
-  node's I2P, DHT and shard store. Set the run mode back to storage and enable the
+  node's overlay, DHT and shard store. Set the run mode back to storage and enable the
   `dcs` panel.
 
 ## More detail
@@ -983,8 +997,8 @@ failure recovery, the security model, and the roadmap — is in [`DCS.md`](DCS.m
 Two things worth knowing up front. The node sends a signed heartbeat directly
 over HTTPS to `rabbiit.io` every five minutes, so the site operator sees your
 IP address — exactly as they would if you simply visited the site. The privacy
-guarantee is between *volunteers*: other peers only ever see an I2P destination,
-never your address. And the local S3 credentials are yours alone; they are never
+guarantee is between *volunteers*: other peers only ever see an AXON address,
+never your IP. And the local S3 credentials are yours alone; they are never
 sent anywhere and the server neither holds nor needs them.
 
 Supported S3 operations cover ordinary AWS SDK use including multipart upload.

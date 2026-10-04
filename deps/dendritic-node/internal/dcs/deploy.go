@@ -25,7 +25,7 @@ type DeployRequest struct {
 
 	MemoryLimitBytes int64 `json:"memory_limit_bytes,omitempty"`
 	NanoCPUs         int64 `json:"nano_cpus,omitempty"`
-	// PrimaryPort is where a portless inbound I2P stream is routed -- the
+	// PrimaryPort is where a portless inbound AXON stream is routed -- the
 	// container's main service. Defaults to DefaultLabPort when unset.
 	PrimaryPort int `json:"primary_port,omitempty"`
 	// Ticket carries a queue position across Launch retries. Empty on the first
@@ -48,7 +48,7 @@ type DeployRequest struct {
 	GrantedContentKey string `json:"granted_content_key,omitempty"`
 	// BuildContext, when set, is the (encrypted) build-context blob inlined by the
 	// bridge, so the worker need not fetch it from the DHT. A worker's DHT
-	// connectivity over I2P is not guaranteed, and the context is small; the
+	// connectivity over AXON is not guaranteed, and the context is small; the
 	// bridge already holds it. It is verified against BuildContextDigest and
 	// decrypted with GrantedContentKey exactly like a fetched blob.
 	BuildContext []byte `json:"build_context,omitempty"`
@@ -68,13 +68,13 @@ type DeployRequest struct {
 }
 
 // DeployReply is what the owner gets back. For a lab deployment the Destination
-// is the whole point: it is the private I2P address of the container, disclosed
+// is the whole point: it is the private AXON address of the container, disclosed
 // to the owner alone, which the owner then uses to reach the box (port scan,
 // exploit, whatever the research is).
 type DeployReply struct {
 	DeploymentID string `json:"deployment_id"`
 	ContainerID  string `json:"container_id"`
-	Destination  string `json:"destination"` // <b32>.i2p — reach the container here
+	Destination  string `json:"destination"` // <56 chars>.key.axon — reach the container here
 	Private      bool   `json:"private"`     // true: never published anywhere else
 	ExpiresAt    int64  `json:"expires_at"`  // agent destroys it at this time
 	Note         string `json:"note,omitempty"`
@@ -96,16 +96,16 @@ type Runtime interface {
 	Remove(ctx context.Context, id string, force bool) error
 }
 
-// Allocator gives a container its own I2P destination. *AddressAllocator
+// Allocator gives a container its own AXON address. *AddressAllocator
 // satisfies it.
 type Allocator interface {
 	Allocate(ctx context.Context, containerID string, private bool) (*ContainerAddress, error)
 	Release(containerID string, purge bool) error
 }
 
-// NetworkAttacher bridges a started container's I2P destination to its network
+// NetworkAttacher bridges a started container's AXON address to its network
 // namespace, so the returned address actually reaches the container. It is
-// injected so the agent stays testable without root, docker or a SAM bridge;
+// injected so the agent stays testable without root, docker or an overlay;
 // the production wiring is BuildContainerNetwork (network_attach.go).
 //
 // primaryPort is the container's main service port -- where a portless inbound
@@ -178,7 +178,7 @@ func (c AgentConfig) ownerAllowed(owner string) bool {
 }
 
 // Agent is the worker side. It admits a deploy request, creates the container
-// with a hardened profile, gives it a private I2P destination, attaches that
+// with a hardened profile, gives it a private AXON address, attaches that
 // destination to the container's network namespace, and returns the address to
 // the owner alone.
 type Agent struct {
@@ -209,11 +209,11 @@ type Agent struct {
 // the single-container path, the images are PULLED FROM THE REGISTRY at
 // `compose up`; only the small project text came off the DHT. It returns the id
 // of the PRIMARY service's container so the agent can give that container a
-// private I2P destination and attach it exactly like any other container.
+// private AXON address and attach it exactly like any other container.
 //
 // An implementation MUST run the project WITHOUT publishing ports to the host
 // (a lab must never be reachable on the worker's clearnet) -- the only path in
-// is the I2P destination the agent attaches to the primary container.
+// is the AXON address the agent attaches to the primary container.
 type ComposeRunner interface {
 	Up(ctx context.Context, project string, files []BuildFile, primaryPort int, env []string) (primaryContainerID string, err error)
 	Down(ctx context.Context, project string) error
@@ -236,7 +236,7 @@ func (a *Agent) fetchContext(ctx context.Context, req DeployRequest) ([]byte, er
 	var blob []byte
 	if len(req.BuildContext) > 0 {
 		// Inlined by the bridge -- no DHT fetch, so it works even if this worker's
-		// DHT connectivity over I2P is momentarily down.
+		// DHT connectivity over AXON is momentarily down.
 		blob = req.BuildContext
 	} else {
 		if a.blobs == nil {
@@ -662,7 +662,7 @@ func (a *Agent) refuse(owner, deployment, phase, reason string) {
 }
 
 // Destroy tears a container down completely: detach its network (so it is
-// reachable by nothing), release its I2P destination and purge its key (so its
+// reachable by nothing), release its AXON address and purge its key (so its
 // address can never be reused), then remove the container. Order matters -- the
 // network comes down first so no new connection can land mid-teardown.
 func (a *Agent) Destroy(ctx context.Context, containerID string) error {
@@ -804,7 +804,7 @@ func composeProjectName(deploymentID string) string {
 
 // Transport sends a signed envelope to a worker and returns its reply envelope.
 // A libp2p-stream implementation opens /rabbiit/dcs/1.0.0 to the worker's
-// destination; the interface keeps the deploy flow testable without I2P.
+// destination; the interface keeps the deploy flow testable without AXON.
 type Transport interface {
 	RoundTrip(ctx context.Context, worker WorkerRecord, env Envelope) ([]byte, error)
 }
@@ -824,7 +824,7 @@ func NewManager(signer EnvelopeSigner, transport Transport) *Manager {
 
 // DeployToRandom picks a random worker from the supplied records (already read
 // from the DHT by the caller), sends it a signed Launch, and returns the
-// container's I2P destination.
+// container's AXON address.
 //
 // The records are passed in rather than fetched here so the DHT dependency
 // stays at the edges and this core is pure. For a lab deployment the returned
@@ -849,7 +849,7 @@ func (m *Manager) DeployToRandom(ctx context.Context, records []WorkerRecord, re
 		return DeployReply{}, WorkerRecord{}, ErrNoWorkerMatched
 	}
 	// Stable order, then shuffle with the caller's source. Try a few in turn: a
-	// single unreachable/flaky worker (e.g. an I2P dial timeout) must not fail the
+	// single unreachable/flaky worker (e.g. an overlay dial timeout) must not fail the
 	// whole launch when another worker could run it.
 	sort.Slice(candidates, func(i, j int) bool { return candidates[i].NodeID < candidates[j].NodeID })
 	for i := len(candidates) - 1; i > 0; i-- {

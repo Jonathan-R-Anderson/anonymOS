@@ -46,7 +46,7 @@ func TestMessageMatchesPython(t *testing.T) {
 			if err != nil {
 				t.Fatal(err)
 			}
-			got := string(Message(doc.Peers, doc.CoordinatorPublicKey, rawExpires))
+			got := string(Message(doc.Peers, doc.Relays, doc.Origin, doc.CoordinatorPublicKey, rawExpires))
 			if got != f.Message {
 				t.Fatalf("message mismatch\n go: %q\n py: %q", got, f.Message)
 			}
@@ -78,7 +78,7 @@ func TestTamperingBreaksVerification(t *testing.T) {
 
 	t.Run("swapped peer", func(t *testing.T) {
 		altered := *doc
-		altered.Peers = []string{"/garlic32/evil/p2p/12D3KooWEvil",
+		altered.Peers = []string{"/axon/evilevilevilevilevilevilevilevilevilevilevilevilevilevil/p2p/12D3KooWEvil",
 			doc.Peers[1], doc.Peers[2]}
 		if Verify(&altered, rawExpires, pinned) == nil {
 			t.Fatal("a swapped peer verified")
@@ -91,6 +91,22 @@ func TestTamperingBreaksVerification(t *testing.T) {
 		altered.Peers = doc.Peers[:1]
 		if Verify(&altered, rawExpires, pinned) == nil {
 			t.Fatal("a truncated peer list verified")
+		}
+	})
+	t.Run("swapped relay", func(t *testing.T) {
+		// Every peer is reached through the relays, so a forged relay list is a
+		// joining node handed an overlay somebody else runs.
+		altered := *doc
+		altered.Relays = append([]string{"/ip4/198.51.100.66/tcp/4001/p2p/12D3KooWEvil"}, doc.Relays[1:]...)
+		if Verify(&altered, rawExpires, pinned) == nil {
+			t.Fatal("a swapped relay verified")
+		}
+	})
+	t.Run("stripped origin", func(t *testing.T) {
+		altered := *doc
+		altered.Origin = ""
+		if Verify(&altered, rawExpires, pinned) == nil {
+			t.Fatal("a document with its origin removed verified")
 		}
 	})
 	t.Run("extended expiry", func(t *testing.T) {

@@ -26,7 +26,7 @@ import (
 // is the only caller.
 //
 // Why a bridge and not one-node-per-user: the site has thousands of users and one
-// I2P node. The node deploys on each user's behalf, sub-accounting them by an
+// node. The node deploys on each user's behalf, sub-accounting them by an
 // opaque "on_behalf_of" tag so the worker's one-container-per-user rule keys on
 // the real user, not on the shared bridge identity. The worker trusts this node
 // to name its sub-owners honestly because the operator put the bridge node's ID
@@ -48,7 +48,7 @@ type bridgeAPI struct {
 	// production. An interface because the compute relay is almost entirely
 	// about what it does with the two possible outcomes — the peer answered, the
 	// peer could not be reached — and proving it keeps those apart should not
-	// require an I2P router and two garlic tunnels.
+	// require an overlay and two circuits.
 	peers computePeer
 }
 
@@ -114,7 +114,7 @@ func startDCSBridge(ctx context.Context, cfg config.Config, node *p2p.Node, stor
 			cfg.Compute.OfferCPU, cfg.Compute.OfferGPU)
 	}
 	// The compute RELAY: the same three verbs, aimed at a named peer and carried
-	// over libp2p/I2P. This is how the site dispatches to volunteers, which it
+	// over libp2p/AXON. This is how the site dispatches to volunteers, which it
 	// cannot do itself — it speaks no libp2p, and a volunteer behind home NAT
 	// has no address it could dial if it did.
 	//
@@ -334,7 +334,7 @@ func (api *bridgeAPI) handleDeploy(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// Inline the (encrypted) build context so the worker need not fetch it from
-	// the DHT -- a remote worker's DHT connectivity over I2P is not guaranteed,
+	// the DHT -- a remote worker's DHT connectivity over AXON is not guaranteed,
 	// and the context is small. The bridge already holds it (the site published
 	// it here first). The worker verifies its digest and decrypts it as usual.
 	if req.BuildContextDigest != "" {

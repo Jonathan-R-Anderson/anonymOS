@@ -24,7 +24,7 @@ import (
 //     lease signature) and holding every object one holder short of durable.
 //     Refusals carries the peer AND the reason.
 //   - lease requests dying before leaving the box: "placed 0, failed 9".
-//   - the i2pd router core-dumping: Peers drops to zero, and a pass with no peers
+//   - the node losing the overlay: Peers drops to zero, and a pass with no peers
 //     is recorded rather than skipped so that reads as isolation, not silence.
 //
 // See roadmap/dht-storage-roadmap.md phase 4.3.

@@ -7,19 +7,19 @@ package p2p
 // The site is Python and cannot speak libp2p. Volunteer nodes are behind home
 // NAT and cannot be dialled directly. The compute API those volunteers already
 // serve (/compute/admit|submit|result) is plain TCP on a loopback/LAN listener,
-// and the address a node advertises to the network is a garlic destination
+// and the address a node advertises to the network is an overlay address
 // carrying LIBP2P STREAMS — not HTTP. So the site had a dispatcher pointing at
-// an HTTP-over-I2P listener that does not exist, and every unit failed with
+// an HTTP listener on that address that does not exist, and every unit failed with
 // "none took this job" while the nodes themselves were answering "admitted".
 //
 // The shape that works is the one storage already uses:
 //
-//	site --plain HTTP--> its own node --libp2p/I2P--> volunteer node
+//	site --plain HTTP--> its own node --libp2p/AXON--> volunteer node
 //
 // This file is the second hop. It carries compute as three more OPERATIONS on
 // the existing storage protocol, exactly as pof-challenge does, rather than a
-// second protocol ID — a second listener would mean a second I2P tunnel to
-// build and keep alive, reaching strictly fewer peers.
+// second protocol ID — a second listener would mean a second overlay service
+// to publish and keep alive, reaching strictly fewer peers.
 //
 // WHAT TRAVELS
 // ------------
@@ -86,7 +86,7 @@ import (
 	"github.com/libp2p/go-libp2p/core/peer"
 	"github.com/multiformats/go-multiaddr"
 
-	syndii2p "github.com/rabbiit/maniwani/storage-client/internal/i2p"
+	axontransport "github.com/rabbiit/maniwani/storage-client/internal/axon/transport"
 )
 
 // The three compute operations, named on the wire. Prefixed rather than bare
@@ -111,7 +111,7 @@ const (
 const MaxComputePayload = maxNetworkShard
 
 // computeTransferTimeout bounds one leg of a compute exchange. Generous because
-// 32 MB over I2P is not a loopback write, bounded because a peer that stops
+// 32 MB over AXON is not a loopback write, bounded because a peer that stops
 // mid-payload must not hold a stream open for ever.
 const computeTransferTimeout = 3 * time.Minute
 
@@ -271,7 +271,7 @@ func (n *Node) SendCompute(ctx context.Context, target peer.ID, operation string
 	}
 	if limit := MaxComputeRequest(operation); int64(len(payload)) > limit {
 		// Refused here rather than sent and refused there: an oversized job burns
-		// an I2P round trip to learn something already known locally.
+		// an overlay round trip to learn something already known locally.
 		return 0, nil, fmt.Errorf("p2p: %s payload is %d bytes, over the %d byte limit",
 			operation, len(payload), limit)
 	}
@@ -322,8 +322,8 @@ func (n *Node) SendCompute(ctx context.Context, target peer.ID, operation string
 	return response.Status, body, nil
 }
 
-// AddPeerDestination teaches this node how to dial a peer at the garlic
-// destination that peer reported in ITS OWN heartbeat.
+// AddPeerDestination teaches this node how to dial a peer at the AXON address
+// that peer reported in ITS OWN heartbeat.
 //
 // The destination is a dialling hint, not an identity: the peer id is what the
 // Noise handshake proves, and a wrong destination produces a failed dial rather
@@ -331,7 +331,7 @@ func (n *Node) SendCompute(ctx context.Context, target peer.ID, operation string
 // from the coordinator's listing — the same listing that decided this peer was
 // eligible in the first place.
 func (n *Node) AddPeerDestination(id peer.ID, destination string) error {
-	address, err := syndii2p.Multiaddr(destination)
+	address, err := axontransport.Multiaddr(destination)
 	if err != nil {
 		return err
 	}

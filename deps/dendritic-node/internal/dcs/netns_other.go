@@ -8,7 +8,7 @@ import "errors"
 // has no portable equivalent, and a DCS worker hosting Docker containers is a
 // Linux host in practice. On other platforms the node still builds (so the
 // cross-compiled release targets compile), but a worker cannot attach a
-// container to its I2P destination.
+// container to its AXON address.
 var errNamespaceUnsupported = errors.New("dcs: container network namespaces are only supported on Linux")
 
 //nolint:unused // referenced by callers on Linux; a stub on other targets.

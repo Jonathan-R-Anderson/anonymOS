@@ -4,7 +4,7 @@ import core.io : inb;
 import core.console : console_putchar, console_serial_putchar, console_backspace, g_fbConsoleEnabled, console_framebuffer_write, g_desktopClaimedFb;
 import core.syscalls.socket : sockaddr, sockaddr_un, msghdr, iovec, cmsghdr,
                               AF_UNIX, AF_INET, AF_NETLINK, SOCK_STREAM, SOCK_DGRAM, SOCK_RAW,
-                              SOL_SOCKET, SCM_RIGHTS;
+                              SOL_SOCKET, SCM_RIGHTS, MSG_PEEK, MSG_TRUNC, MSG_CMSG_CLOEXEC;
 import core.exports : g_module_count, g_mboot_modules, phys_to_virt,
                       g_current_task_id, d_store_task_fsbase,
                       d_store_task_gsbase, d_apply_task_gsbase, g_task_gsbase;
@@ -819,6 +819,17 @@ public bool inetTcpBlockingFd(ulong fd) @nogc nothrow {
     return inetIsInet(s) && s.inetTcp >= 0;
 }
 
+// A BLOCKING pipe write end (no O_NONBLOCK): a write into a full pipe waits for the reader rather
+// than failing EAGAIN (busybox `tar -xz` died on its gunzip child's pipe: "tar: write: Resource
+// temporarily unavailable").  kernel_main.d bounds the wait (see g_pipeWrParkMs).
+public bool pipeBlockingWriteFd(ulong fd) @nogc nothrow {
+    initFdTable();
+    const int ifd = cast(int)fd;
+    if (ifd < 0 || ifd >= 1024) return false;
+    auto f = &g_fdTable[ifd];
+    return f.type == FileType.FD_PIPE_WRITE && (f.flags & 0x800 /*O_NONBLOCK*/) == 0;
+}
+
 // A BLOCKING connected AF_UNIX socket with nothing queued and a live peer: park, don't EAGAIN.
 // signal-hook's iterator (Cloud Hypervisor's vmm_signal_handler thread) does a blocking recv() on
 // a socketpair and panics on EAGAIN.  Woken by the tick backstop like a parked pipe read.
@@ -833,7 +844,7 @@ public bool localBlockingRecvFd(ulong fd) @nogc nothrow {
     if (s is null || inetIsInet(s)) return false;
     const bool dgramBound = (s.type & 0xF) == SOCK_DGRAM && s.state == LocalSocketState.bound;   // A9.5
     if (s.state != LocalSocketState.connected && !dgramBound && !s.nlAndroid) return false;
-    return socketBufferReadable(s.rx) == 0 && !s.peerClosed;
+    return socketBufferReadable(s.rx) == 0 && s.udgHead < 0 && !s.peerClosed;
 }
 
 // ── DRM / KMS infrastructure ─────────────────────────────────────────────────
@@ -1485,6 +1496,13 @@ private struct LocalSocket
     // nlProto is its netlink family (NETLINK_ROUTE 0, NETLINK_NETFILTER 12, ...).
     bool nlAndroid;
     int  nlProto;
+    // D3 (Darling): addressed AF_UNIX datagrams (unixDgramSend/Recv) -- a queue of whole messages,
+    // each with its sender's address, credentials and fds, separate from the byte ring above.
+    int  udgHead = -1;
+    int  udgTail = -1;
+    int  udgCount;
+    uint udgSeq;        // bumped per queued datagram: the epoll edge (fdEventGen)
+    bool passCred;      // SO_PASSCRED: recvmsg attaches SCM_CREDENTIALS
 }
 
 __gshared LocalSocket[localSocketMax] g_localSockets;
@@ -2034,6 +2052,8 @@ private void closeLocalSocket(File* f)
     if (sock.refCount > 0) --sock.refCount;
     if (sock.refCount > 0)
         return;
+
+    udgDrain(sock);   // D3: undelivered addressed datagrams and the fds they hold
 
     // Drain any SCM_RIGHTS-passed fds still queued: each holds a queue-time pin
     // on its native object (see sendmsg); release them so a socket closed
@@ -5570,7 +5590,7 @@ private long fileObjClose(ObjHeader* oh) {
         int eid = cast(int)cast(size_t)f.backend;
         if (eid >= 0 && eid < EVENTFD_MAX && g_eventfd_inUse[eid]) {
             if (g_eventfd_refs[eid] > 1) --g_eventfd_refs[eid];
-            else g_eventfd_inUse[eid] = false;
+            else { g_eventfd_inUse[eid] = false; g_pidfdPid[eid] = 0; }
         }
     } else if (f.type == FileType.FD_TIMERFD) {
         // Free the timer slot when the last fd copy closes (timerfds previously never
@@ -13983,8 +14003,9 @@ public int sys_socket(int domain, int type, int protocol) {
     // implemented on it.
     // A9.4: an Android task also gets SOCK_SEQPACKET (lmkd's control socket and others; socketpair
     // already makes them) and SOCK_NONBLOCK honoured -- the desktop's sockets keep their old behaviour.
+    // D3: and every task gets SOCK_SEQPACKET -- darlingserver's kqueue channels are SEQPACKET pairs.
     const bool android = androidIdTask() >= 0;
-    if (baseType != SOCK_STREAM && baseType != 2 /*SOCK_DGRAM*/ && !(android && baseType == SOCK_SEQPACKET))
+    if (baseType != SOCK_STREAM && baseType != 2 /*SOCK_DGRAM*/ && baseType != SOCK_SEQPACKET)
         return negErrno(EPROTONOSUPPORT);
     if (protocol != 0) return negErrno(EPROTONOSUPPORT);
 
@@ -14016,6 +14037,19 @@ public int sys_bind(int sockfd, sockaddr* addr, uint addrlen) {
     if (sock.state != LocalSocketState.created && sock.state != LocalSocketState.bound) return negErrno(EINVAL);
 
     auto un = cast(sockaddr_un*)addr;
+    // D3: bind(fd, {AF_UNIX}, sizeof(sa_family_t)) is Linux autobind -- a unique abstract name
+    // ("\0" + 5 hex digits).  Darling's mldr binds every RPC socket this way so darlingserver can
+    // address its replies; an abstract name (sun_path[0] == 0) is the bytes up to addrlen.
+    if (addrlen == ushort.sizeof) return unixAutobind(sock) ? 0 : negErrno(EADDRINUSE);
+    if (addrlen > ushort.sizeof && un.sun_path[0] == 0) {
+        size_t alen = addrlen - ushort.sizeof;
+        if (alen > sock.path.length) alen = sock.path.length;
+        if (alen < 2) return negErrno(EINVAL);
+        if (unixPathInUse(un, alen)) return negErrno(EADDRINUSE);
+        copyUnixPath(*sock, un, alen);
+        sock.state = LocalSocketState.bound;
+        return 0;
+    }
     const size_t pathLen = unixPathLength(un, addrlen);
     if (pathLen == 0) return negErrno(EINVAL);
     if (pathLen >= sock.path.length) return negErrno(ENAMETOOLONG);
@@ -14288,6 +14322,261 @@ public int sys_accept(int sockfd, sockaddr* addr, uint* addrlen) {
     return publishActiveFdReturn(fd);
 }
 
+// ── D3 (Darling): addressed AF_UNIX datagrams ──────────────────────────────────────────────────
+// darlingserver listens on a bound SOCK_DGRAM socket with SO_PASSCRED; every guest thread (mldr)
+// autobinds its own RPC socket and sendmsg()s to the server's path; the server recvmsg()s ONE
+// message at a time -- with the sender's address, its SCM_CREDENTIALS (which process is calling)
+// and any SCM_RIGHTS fds -- and replies by sendmsg() to that address.  The byte ring the stream
+// sockets use keeps no message boundaries, sender or per-message fds, so addressed datagrams get
+// their own queue of whole messages: payload in pages, fds referenced while queued.
+private enum int UDG_MAX = 1024;        // datagrams queued, system-wide
+private enum int UDG_QCAP = 128;        // per receiving socket
+private enum int UDG_FDS = 8;           // SCM_RIGHTS per datagram
+private enum size_t UDG_MAXLEN = 256 * 1024;
+private enum int SCM_CREDS = 2;         // SCM_CREDENTIALS
+private enum int SO_PASSCRED_OPT = 16;
+private struct UnixDgram {
+    bool used;
+    int  next = -1;
+    ulong phys;  size_t pages;  size_t len;     // payload
+    char[108] from;  ubyte fromLen;             // sender's bound name (0 = unnamed)
+    LinuxUcred cred;
+    int nfds;
+    File[UDG_FDS] files;
+    IpcCapDesc[UDG_FDS] caps;
+}
+private __gshared UnixDgram[UDG_MAX] g_udg;
+
+private bool unixAutobind(LocalSocket* sock) {
+    static __gshared uint counter = 0x1000;
+    foreach (attempt; 0 .. 0x100000) {
+        const uint v = (++counter) & 0xFFFFF;
+        sockaddr_un cand;
+        cand.sun_path[0] = 0;
+        foreach (k; 0 .. 5) {
+            const uint nib = (v >> (4 * (4 - k))) & 0xF;
+            cand.sun_path[1 + k] = cast(char)(nib < 10 ? '0' + nib : 'a' + nib - 10);
+        }
+        if (unixPathInUse(&cand, 6)) continue;
+        copyUnixPath(*sock, &cand, 6);
+        sock.state = LocalSocketState.bound;
+        return true;
+    }
+    return false;
+}
+
+// The bound AF_UNIX datagram socket named by `un` (path or abstract), or -1.
+private int unixDgramTarget(const(sockaddr_un)* un, uint namelen) {
+    if (un is null || namelen <= ushort.sizeof) return -1;
+    size_t len = namelen - ushort.sizeof;
+    if (len > 108) len = 108;
+    if (un.sun_path[0] != 0) { size_t l = 0; while (l < len && un.sun_path[l] != 0) ++l; len = l; }
+    if (len == 0) return -1;
+    foreach (i; 0 .. localSocketMax) {
+        auto t = &g_localSockets[i];
+        if (!t.inUse || t.domain != AF_UNIX || (t.type & 0xF) != SOCK_DGRAM) continue;
+        if (t.state != LocalSocketState.bound || t.pathLength != len) continue;
+        bool eq = true;
+        foreach (k; 0 .. len) if (t.path[k] != un.sun_path[k]) { eq = false; break; }
+        if (eq) return cast(int)i;
+    }
+    return -1;
+}
+
+// A passed descriptor queued in a datagram holds its own reference (as an fd would), so the sender
+// closing its copy -- darlingserver hands a client one end of a socketpair and closes it -- leaves
+// the object alive; recvmsg transfers that reference to the new fd.
+private void udgFileRef(File* f) {
+    if (f.type == FileType.FD_SOCKET) { auto so = fileSocket(f); if (so !is null) ++so.refCount; }
+    else if (f.type == FileType.FD_PIPE_READ)  { auto pp = getPipe(cast(size_t)pipeIdFromFd(f)); if (pp !is null) ++pp.readers; }
+    else if (f.type == FileType.FD_PIPE_WRITE) { auto pp = getPipe(cast(size_t)pipeIdFromFd(f)); if (pp !is null) ++pp.writers; }
+    else if (f.type == FileType.FD_KVM_VM || f.type == FileType.FD_KVM_VCPU) kvmFdDuped(f);
+    else fdInstanceRef(f);
+}
+private void udgFileUnref(File* f) {
+    if (f.type == FileType.FD_SOCKET) closeLocalSocket(f);
+    else if (f.type == FileType.FD_PIPE_READ || f.type == FileType.FD_PIPE_WRITE) {
+        auto pp = getPipe(cast(size_t)pipeIdFromFd(f));
+        if (pp !is null) {
+            if (f.type == FileType.FD_PIPE_READ) --pp.readers; else --pp.writers;
+            if (pp.readers <= 0 && pp.writers <= 0) pp.inUse = false;
+        }
+    } else if (f.type == FileType.FD_KVM_VM || f.type == FileType.FD_KVM_VCPU) kvmFdClosed(f);
+    else if (f.type == FileType.FD_MEMFD) memfdStableUnref(cast(int)cast(size_t)f.backend);
+}
+private void udgFree(int i, bool dropFds) {
+    import memory.mm : free_phys_pages;
+    auto d = &g_udg[i];
+    if (dropFds) foreach (k; 0 .. d.nfds) udgFileUnref(&d.files[k]);
+    if (d.phys != 0) free_phys_pages(d.phys, d.pages);
+    *d = UnixDgram.init;
+}
+// The socket is going away: its undelivered datagrams (and the fds they hold) go with it.
+private void udgDrain(LocalSocket* sock) {
+    int i = sock.udgHead;
+    while (i >= 0) { const int nx = g_udg[i].next; udgFree(i, true); i = nx; }
+    sock.udgHead = -1; sock.udgTail = -1; sock.udgCount = 0;
+}
+
+private ssize_t unixDgramSend(LocalSocket* sock, msghdr* msg) {
+    import memory.mm : alloc_phys_pages;
+    const int ti = unixDgramTarget(cast(const(sockaddr_un)*)msg.msg_name, msg.msg_namelen);
+    if (ti < 0) return negErrno(ECONNREFUSED);
+    auto target = &g_localSockets[ti];
+    if (target.udgCount >= UDG_QCAP) return negErrno(EAGAIN);
+    size_t len = 0;
+    foreach (k; 0 .. msg.msg_iovlen) len += msg.msg_iov[k].iov_len;
+    if (len > UDG_MAXLEN) return negErrno(EMSGSIZE);
+    int slot = -1;
+    foreach (i; 0 .. UDG_MAX) if (!g_udg[i].used) { slot = cast(int)i; break; }
+    if (slot < 0) return negErrno(ENOBUFS);
+    auto d = &g_udg[slot];
+    *d = UnixDgram.init;
+    d.used = true;
+    d.len = len;
+    if (len > 0) {
+        d.pages = (len + 4095) / 4096;
+        d.phys = alloc_phys_pages(d.pages);
+        if (d.phys == 0) { *d = UnixDgram.init; return negErrno(ENOBUFS); }
+        auto dst = cast(ubyte*)phys_to_virt(d.phys);
+        size_t off = 0;
+        foreach (k; 0 .. msg.msg_iovlen) {
+            auto iov = &msg.msg_iov[k];
+            if (iov.iov_len == 0) continue;
+            smapBegin(); memcpy(dst + off, iov.iov_base, iov.iov_len); smapEnd();
+            off += iov.iov_len;
+        }
+    }
+    // Every control message, not just the first: Darling sends SCM_CREDENTIALS, then SCM_RIGHTS.
+    // The credentials are always the sender's real ones (Linux checks claimed ones; here they are
+    // simply not believed).
+    if (msg.msg_control !is null && msg.msg_controllen >= cmsghdr.sizeof) {
+        size_t off = 0;
+        while (off + cmsghdr.sizeof <= msg.msg_controllen) {
+            auto cm = cast(cmsghdr*)(cast(ubyte*)msg.msg_control + off);
+            if (cm.cmsg_len < cmsghdr.sizeof || off + cm.cmsg_len > msg.msg_controllen) break;
+            if (cm.cmsg_level == SOL_SOCKET && cm.cmsg_type == SCM_RIGHTS) {
+                const size_t n = (cm.cmsg_len - cmsghdr.sizeof) / int.sizeof;
+                auto fds = cast(int*)(cast(ubyte*)cm + cmsghdr.sizeof);
+                foreach (k; 0 .. n) {
+                    const int pf = fds[k];
+                    if (pf < 0 || pf >= 1024 || g_fdTable[pf].type == FileType.FD_NONE
+                        || !fdRequireCap(cast(ulong)pf, CAP_RIGHT_PASS) || d.nfds >= UDG_FDS) {
+                        foreach (j; 0 .. d.nfds) udgFileUnref(&d.files[j]);
+                        d.nfds = 0;
+                        udgFree(slot, false);
+                        return negErrno(EBADF);
+                    }
+                    d.files[d.nfds] = g_fdTable[pf];
+                    udgFileRef(&d.files[d.nfds]);
+                    auto cap = capGet(cast(uint)pf);
+                    d.caps[d.nfds] = (cap !is null && cap.objId != 0 && cap.revoked == 0)
+                                   ? ipcDelegateCap(cap.objId, cap.rights) : IpcCapDesc.init;
+                    publishActiveFd(pf);
+                    ++d.nfds;
+                }
+            }
+            off += (cm.cmsg_len + 7) & ~cast(size_t)7;
+        }
+    }
+    const int ct = cast(int)g_current_task_id;
+    d.cred.pid = linuxPidForTask(ct);
+    d.cred.uid = userCurrentUid();
+    d.cred.gid = userCurrentGid();
+    if (sock.state == LocalSocketState.bound && sock.pathLength > 0) {
+        d.fromLen = cast(ubyte)sock.pathLength;
+        foreach (k; 0 .. sock.pathLength) d.from[k] = sock.path[k];
+    }
+    if (target.udgTail >= 0) g_udg[target.udgTail].next = slot; else target.udgHead = slot;
+    target.udgTail = slot;
+    ++target.udgCount;
+    ++target.udgSeq;
+    return cast(ssize_t)len;
+}
+
+private ssize_t unixDgramRecv(LocalSocket* sock, msghdr* msg, int flags) {
+    const int i = sock.udgHead;
+    auto d = &g_udg[i];
+    const bool peek = (flags & MSG_PEEK) != 0;
+    // payload, truncated to the caller's buffers (MSG_TRUNC reports the full length when asked)
+    size_t copied = 0;
+    if (d.len > 0) {
+        auto src = cast(ubyte*)phys_to_virt(d.phys);
+        foreach (k; 0 .. msg.msg_iovlen) {
+            auto iov = &msg.msg_iov[k];
+            if (copied >= d.len) break;
+            const size_t n = (d.len - copied) < iov.iov_len ? (d.len - copied) : iov.iov_len;
+            if (n == 0) continue;
+            smapBegin(); memcpy(iov.iov_base, src + copied, n); smapEnd();
+            copied += n;
+        }
+    }
+    msg.msg_flags = copied < d.len ? MSG_TRUNC : 0;
+    if (msg.msg_name !is null) {
+        auto nm = cast(sockaddr_un*)msg.msg_name;
+        ubyte[110] tmp = 0;
+        *cast(ushort*)tmp.ptr = cast(ushort)AF_UNIX;
+        foreach (k; 0 .. d.fromLen) tmp[2 + k] = cast(ubyte)d.from[k];
+        const bool abstractName = d.fromLen > 0 && d.from[0] == 0;
+        const size_t want = 2 + d.fromLen + ((d.fromLen > 0 && !abstractName) ? 1 : 0);
+        const size_t n = want < msg.msg_namelen ? want : msg.msg_namelen;
+        foreach (k; 0 .. n) (cast(ubyte*)nm)[k] = tmp[k];
+        msg.msg_namelen = cast(uint)want;
+    }
+    // control: SCM_CREDENTIALS (when SO_PASSCRED), then SCM_RIGHTS
+    size_t coff = 0;
+    const size_t ccap = msg.msg_control !is null ? msg.msg_controllen : 0;
+    if (sock.passCred) {
+        enum size_t need = (cmsghdr.sizeof + LinuxUcred.sizeof + 7) & ~cast(size_t)7;
+        if (coff + need <= ccap) {
+            auto cm = cast(cmsghdr*)(cast(ubyte*)msg.msg_control + coff);
+            cm.cmsg_len = cmsghdr.sizeof + LinuxUcred.sizeof;
+            cm.cmsg_level = SOL_SOCKET;
+            cm.cmsg_type = SCM_CREDS;
+            *cast(LinuxUcred*)(cast(ubyte*)cm + cmsghdr.sizeof) = d.cred;
+            coff += need;
+        } else msg.msg_flags |= 0x8;   // MSG_CTRUNC
+    }
+    if (d.nfds > 0 && !peek) {
+        const size_t need = cmsghdr.sizeof + d.nfds * int.sizeof;
+        if (coff + need <= ccap) {
+            auto cm = cast(cmsghdr*)(cast(ubyte*)msg.msg_control + coff);
+            auto outFds = cast(int*)(cast(ubyte*)cm + cmsghdr.sizeof);
+            int nOut = 0;
+            foreach (k; 0 .. d.nfds) {
+                const int nf = allocFd();
+                if (nf < 0) { udgFileUnref(&d.files[k]); continue; }
+                g_fdTable[nf] = d.files[k];
+                g_fdTable[nf].ofd = 0;
+                g_fdTable[nf].objId = 0;
+                g_fdTable[nf].cloexec = (flags & MSG_CMSG_CLOEXEC) != 0;
+                auto oh = ensureFileObject(&g_fdTable[nf]);
+                if (oh !is null) {
+                    kvmFdAddEdge(&g_fdTable[nf]);
+                    uint rights = capRightsForFile(&g_fdTable[nf]);
+                    if (d.caps[k].objId != 0) rights &= ipcAcceptCap(d.caps[k]);
+                    capInstall(cast(uint)nf, oh.id, rights, CAP_INVALID);
+                }
+                outFds[nOut++] = nf;
+            }
+            d.nfds = 0;
+            cm.cmsg_len = cmsghdr.sizeof + nOut * int.sizeof;
+            cm.cmsg_level = SOL_SOCKET;
+            cm.cmsg_type = SCM_RIGHTS;
+            coff += (cm.cmsg_len + 7) & ~cast(size_t)7;
+        } else msg.msg_flags |= 0x8;   // MSG_CTRUNC: the fds are dropped, as on Linux
+    }
+    if (msg.msg_control !is null) msg.msg_controllen = coff;
+    const size_t full = d.len;
+    if (!peek) {
+        sock.udgHead = d.next;
+        if (sock.udgHead < 0) sock.udgTail = -1;
+        --sock.udgCount;
+        udgFree(i, true);   // fds not delivered (no room) are released
+    }
+    return cast(ssize_t)(((flags & MSG_TRUNC) != 0) ? full : copied);
+}
+
 public ssize_t sys_sendmsg(int sockfd, msghdr* msg, int flags) {
     initFdTable();
     if (sockfd < 0 || sockfd >= 1024) return negErrno(EBADF);
@@ -14297,6 +14586,10 @@ public ssize_t sys_sendmsg(int sockfd, msghdr* msg, int flags) {
     if (f.type != FileType.FD_SOCKET) return negErrno(ENOTSOCK);
     {   auto insock = fileSocket(f);
         if (inetIsInet(insock)) return inetSendMsg(insock, msg);
+        // D3: an addressed AF_UNIX datagram (sendmsg/sendto with a destination name)
+        if (insock !is null && insock.domain == AF_UNIX && (insock.type & 0xF) == SOCK_DGRAM
+            && !insock.isLogSink && msg.msg_name !is null && msg.msg_namelen > ushort.sizeof)
+            return unixDgramSend(insock, msg);
         if (insock !is null && insock.nlAndroid) {             // A9.5: one netlink datagram
             size_t n = 0, req = 0;
             foreach (i; 0 .. msg.msg_iovlen) {
@@ -14434,6 +14727,7 @@ public ssize_t sys_recvmsg(int sockfd, msghdr* msg, int flags) {
     if (f.type != FileType.FD_SOCKET) return negErrno(ENOTSOCK);
     {   auto insock = fileSocket(f);
         if (inetIsInet(insock)) return inetRecvMsg(insock, msg);
+        if (insock !is null && insock.udgHead >= 0) return unixDgramRecv(insock, msg, flags);   // D3
     }
 
     // A9.5: an emulated netlink reply comes from the kernel: sockaddr_nl { AF_NETLINK, pid 0 }.
@@ -14529,7 +14823,16 @@ public ssize_t sys_sendto(int sockfd, const(void)* buf, size_t len, int flags, c
             return cast(ssize_t)len;
         }
     }
-    if (dest_addr !is null) return negErrno(EOPNOTSUPP);
+    if (dest_addr !is null) {
+        // D3: an addressed AF_UNIX datagram
+        auto us = (sockfd >= 0 && sockfd < 1024) ? fileSocket(&g_fdTable[sockfd]) : null;
+        if (us is null || us.domain != AF_UNIX || (us.type & 0xF) != SOCK_DGRAM) return negErrno(EOPNOTSUPP);
+        iovec diov; diov.iov_base = cast(void*)buf; diov.iov_len = len;
+        msghdr dmsg;
+        dmsg.msg_name = cast(void*)dest_addr; dmsg.msg_namelen = addrlen;
+        dmsg.msg_iov = &diov; dmsg.msg_iovlen = 1;
+        return sys_sendmsg(sockfd, &dmsg, flags);
+    }
 
     iovec iov;
     iov.iov_base = cast(void*)buf;
@@ -14564,9 +14867,11 @@ public ssize_t sys_recvfrom(int sockfd, void* buf, size_t len, int flags, sockad
     msg.msg_control = null;
     msg.msg_controllen = 0;
     msg.msg_flags = 0;
+    const bool udg = sockfd >= 0 && sockfd < 1024 && fileSocket(&g_fdTable[sockfd]) !is null
+                     && fileSocket(&g_fdTable[sockfd]).udgHead >= 0;
     const ssize_t ret = sys_recvmsg(sockfd, &msg, flags);
     if (src_addr !is null && addrlen !is null && ret >= 0) {
-        *addrlen = cast(uint)sockaddr_un.sizeof;
+        *addrlen = udg ? msg.msg_namelen : cast(uint)sockaddr_un.sizeof;   // D3: the sender's real name
     }
     return ret;
 }
@@ -17971,7 +18276,16 @@ public long linux_sys_getsockopt(ulong fd, ulong lvl, ulong opt, ulong val, ulon
             return negErrno(ENOPROTOOPT);
     }
 }
-public long linux_sys_setsockopt(ulong fd, ulong lvl, ulong opt, ulong val, ulong len) { return 0; }
+public long linux_sys_setsockopt(ulong fd, ulong lvl, ulong opt, ulong val, ulong len) {
+    // D3: SO_PASSCRED on an AF_UNIX socket is kept -- recvmsg then attaches SCM_CREDENTIALS
+    // (darlingserver identifies each calling process by them).  Everything else stays accepted.
+    if (lvl == SOL_SOCKET && opt == SO_PASSCRED_OPT && fd < 1024 && val != 0 && len >= int.sizeof) {
+        initFdTable();
+        auto s = fileSocket(&g_fdTable[cast(int)fd]);
+        if (s !is null && s.domain == AF_UNIX) s.passCred = *cast(const(int)*)val != 0;
+    }
+    return 0;
+}
 public long linux_sys_getsockname(ulong fd, ulong addr, ulong len)  { return inetSockName(fd, addr, len, false); }
 public long linux_sys_getpeername(ulong fd, ulong addr, ulong len)  { return inetSockName(fd, addr, len, true); }
 
@@ -18128,7 +18442,7 @@ private bool fdReadableImpl(int fd) @nogc nothrow {
         }
         if (sock.state == LocalSocketState.listener)
             return sock.pendingHead != sock.pendingTail;   // a pending accept()
-        return socketBufferReadable(sock.rx) > 0 || sock.peerClosed
+        return socketBufferReadable(sock.rx) > 0 || sock.peerClosed || sock.udgHead >= 0
             || sock.state == LocalSocketState.closed;
     }
     if (f.type == FileType.FD_FILE && cast(size_t)f.backend > 2)
@@ -18534,8 +18848,9 @@ private ulong fdEventGen(int fd) @nogc nothrow {
             import network.tcp : tcpEventGen;
             return tcpEventGen(sock.inetTcp);
         }
-        return (cast(ulong)sock.rx.head << 2) | (sock.peerClosed ? 2 : 0)
-             | (sock.state == LocalSocketState.closed ? 1 : 0) | (cast(ulong)sock.pendingHead << 40);
+        return ((cast(ulong)sock.rx.head << 2) | (sock.peerClosed ? 2 : 0)
+             | (sock.state == LocalSocketState.closed ? 1 : 0) | (cast(ulong)sock.pendingHead << 40))
+             + (cast(ulong)sock.udgSeq << 20);   // D3: a queued datagram is an edge
     }
     if (f.type == FileType.FD_PIPE_READ) {
         auto p = getPipe(cast(size_t)pipeIdFromFd(f));
@@ -18569,6 +18884,37 @@ public void epollRetDump() @nogc nothrow {
 
 
 // --- eventfd ---
+// D3 (Darling): pidfd_open(2) -- an fd that polls readable once the process has exited.  An eventfd
+// underneath (readable at a non-zero count) plus the pid it watches: the last thread's exit
+// (kernel_main exitTask -> pidfdProcessExited) sets the count.  darlingserver watches every guest
+// process with one; the launcher's shutdown signals through pidfd_send_signal.
+private __gshared int[EVENTFD_MAX] g_pidfdPid;     // 0: an ordinary eventfd
+public long linux_sys_pidfd_open(ulong pid, ulong flags) {
+    const int ipid = cast(int)pid;
+    const int tid = taskIdFromLinuxPid(ipid);
+    if (ipid <= 0 || tid < 0 || !g_tasks[tid].active) return negErrno(3 /*ESRCH*/);
+    if ((flags & ~0x800UL) != 0) return negErrno(EINVAL);              // PIDFD_NONBLOCK only
+    const long fd = linux_sys_eventfd2(0, flags & 0x800);
+    if (fd < 0) return fd;
+    const int eid = cast(int)cast(size_t)g_fdTable[cast(int)fd].backend;
+    g_pidfdPid[eid] = ipid;
+    g_fdTable[cast(int)fd].cloexec = true;                             // a pidfd is always O_CLOEXEC
+    if (g_tasks[tid].exited) g_eventfd_counters[eid] = 1;
+    return fd;
+}
+public void pidfdProcessExited(int pid) {
+    foreach (e; 0 .. EVENTFD_MAX) if (g_eventfd_inUse[e] && g_pidfdPid[e] == pid) g_eventfd_counters[e] = 1;
+}
+public long linux_sys_pidfd_send_signal(ulong pidfd, ulong sig, ulong info, ulong flags) {
+    initFdTable();
+    const int ifd = cast(int)pidfd;
+    if (ifd < 0 || ifd >= 1024 || g_fdTable[ifd].type != FileType.FD_EVENTFD) return negErrno(EBADF);
+    const int eid = cast(int)cast(size_t)g_fdTable[ifd].backend;
+    if (eid < 0 || eid >= EVENTFD_MAX || g_pidfdPid[eid] == 0) return negErrno(EBADF);
+    if (g_eventfd_counters[eid] != 0) return negErrno(3 /*ESRCH*/);    // already exited
+    return linux_sys_kill(cast(ulong)g_pidfdPid[eid], sig);
+}
+
 public long linux_sys_eventfd2(ulong initval, ulong flags) {
     initFdTable();
     int eid = -1;
@@ -18579,6 +18925,7 @@ public long linux_sys_eventfd2(ulong initval, ulong flags) {
     if (fd < 0) return negErrno(EMFILE);
     g_eventfd_inUse[eid]    = true;
     g_eventfd_refs[eid]     = 1;
+    g_pidfdPid[eid]         = 0;
     g_eventfd_counters[eid] = initval;
     g_eventfd_flags[eid]    = cast(int)flags;
     g_fdTable[fd].type    = FileType.FD_EVENTFD;

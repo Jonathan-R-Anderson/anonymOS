@@ -54,7 +54,7 @@ func TestUnrefreshedRegistryIsStale(t *testing.T) {
 
 // Refresh REPLACES. Merging would build a list that only grows, so a node that
 // left months ago stays a candidate forever and every dispatch to it wastes a
-// round trip over I2P.
+// round trip through the overlay.
 func TestRefreshReplacesRatherThanAccumulates(t *testing.T) {
 	r := NewComputeRegistry()
 	r.Update(liveDoc(), rgNow)

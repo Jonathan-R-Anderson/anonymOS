@@ -8,7 +8,7 @@ import (
 	"time"
 )
 
-// This file makes a container reachable AT its own I2P destination.
+// This file makes a container reachable AT its own AXON address.
 //
 // THE PROBLEM
 //
@@ -20,37 +20,36 @@ import (
 //
 // THE BRIDGE
 //
-// Each container has its own I2P destination (address.go). The agent runs an
+// Each container has its own AXON address (address.go). The agent runs an
 // inbound proxy that:
 //
-//   1. Accept()s a stream on the container's I2P destination.
+//   1. Accept()s a stream on the container's AXON address.
 //   2. Reads which TCP port the caller aimed at (SAMv3 per-stream port; for a
 //      port scan, each probed port arrives as a separate accept).
 //   3. Joins the CONTAINER'S network namespace and dials 127.0.0.1:<port>
 //      there -- which is the container's own loopback, where its services bind.
-//   4. Splices bytes between the I2P stream and the container socket.
+//   4. Splices bytes between the AXON stream and the container socket.
 //
 // So a researcher who was handed the destination can scan or connect to the
-// vulnerable box's ports over I2P, and nothing else can -- the destination is
+// vulnerable box's ports over AXON, and nothing else can -- the destination is
 // unpublished (lab containers), and the container has no other network path.
 //
 // Steps 1-3 are Linux- and root-specific and live in netns_linux.go behind the
 // NamespaceDialer interface. Step 4, the byte pump, is OS-independent and lives
 // here so it is unit-testable without a container.
 
-// InboundStream is one accepted I2P connection to a container's destination.
-// *i2p stream connections satisfy net.Conn; TargetPort is the port the caller
-// aimed at, or 0 when the SAM session does not report one (then DefaultPort is
-// used).
+// InboundStream is one accepted AXON stream to a container's address.
+// TargetPort is the port the caller aimed at, or 0 when the stream did not name
+// one (then DefaultPort is used).
 type InboundStream struct {
 	Conn       net.Conn
 	TargetPort int
 }
 
-// I2PListener accepts inbound streams on a container's destination. The i2p
-// Session satisfies a thin adapter over this; the interface keeps the proxy
-// testable with an in-memory listener.
-type I2PListener interface {
+// InboundListener accepts inbound streams on a container's address. The
+// container's service satisfies a thin adapter over this; the interface keeps
+// the proxy testable with an in-memory listener.
+type InboundListener interface {
 	Accept() (InboundStream, error)
 	Close() error
 }
@@ -64,12 +63,12 @@ type NamespaceDialer interface {
 	Close() error
 }
 
-// ContainerProxy bridges a container's I2P destination to its loopback ports.
+// ContainerProxy bridges a container's AXON address to its loopback ports.
 type ContainerProxy struct {
 	ContainerID string
 	DefaultPort int // used when an inbound stream reports no target port
 
-	listener I2PListener
+	listener InboundListener
 	dialer   NamespaceDialer
 	logf     func(string, ...any)
 
@@ -80,7 +79,7 @@ type ContainerProxy struct {
 	idleTO time.Duration
 }
 
-func NewContainerProxy(containerID string, listener I2PListener, dialer NamespaceDialer, logf func(string, ...any)) *ContainerProxy {
+func NewContainerProxy(containerID string, listener InboundListener, dialer NamespaceDialer, logf func(string, ...any)) *ContainerProxy {
 	if logf == nil {
 		logf = func(string, ...any) {}
 	}
@@ -98,7 +97,7 @@ func NewContainerProxy(containerID string, listener I2PListener, dialer Namespac
 
 var ErrProxyClosed = errors.New("dcs: container proxy closed")
 
-// Serve accepts inbound I2P streams until ctx is cancelled or the listener
+// Serve accepts inbound AXON streams until ctx is cancelled or the listener
 // closes. Each accepted stream is handled concurrently.
 func (p *ContainerProxy) Serve(ctx context.Context) error {
 	go func() {

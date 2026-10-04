@@ -14,10 +14,10 @@ import (
 // comments survive:
 //
 //  1. REMOVES every host port publish (`ports:`) from every service. A lab must
-//     be reachable ONLY over the I2P destination the agent attaches, never on the
+//     be reachable ONLY over the AXON address the agent attaches, never on the
 //     worker operator's clearnet -- and `docker compose up` would otherwise bind
 //     those ports on the host. Container ports keep working: the app still
-//     listens inside its network namespace, which is exactly where the I2P proxy
+//     listens inside its network namespace, which is exactly where the AXON proxy
 //     dials, so stripping host publishing costs nothing but the leak.
 //
 //  2. Reports the PRIMARY service -- the internet-facing one the inbound stream is

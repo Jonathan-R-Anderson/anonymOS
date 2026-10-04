@@ -50,7 +50,11 @@ import (
 
 // MessagePrefix begins the signed message. Must match
 // backend/services/storage_coordination.bootstrap_message exactly.
-const MessagePrefix = "rabbiit-storage-bootstrap-v1"
+const MessagePrefix = "rabbiit-storage-bootstrap-v2"
+
+// DocumentVersion is the "version" a served document must carry. Version 2
+// added the AXON relays and origin, and signs them.
+const DocumentVersion = 2
 
 // DefaultAgreement is how many independent sources must return the same peer
 // set and coordinator key when no key is pinned.
@@ -73,7 +77,7 @@ var (
 //
 // Carries what the node OFFERS rather than only how to reach it. A joining node
 // that had to dial every peer to ask whether it takes GPU work would spend a
-// round trip per peer over I2P to learn something already published — and on a
+// round trip per peer over AXON to learn something already published — and on a
 // network of any size that is the difference between choosing a provider in a
 // second and in a minute.
 type ComputePeer struct {
@@ -137,10 +141,19 @@ type Document struct {
 	// to keep fresh, and another place for the two to disagree about which
 	// nodes exist. It is also covered by the SAME signature, so a gateway
 	// serving the document cannot add compute peers of its own.
-	Compute              []ComputePeer `json:"compute,omitempty"`
-	CoordinatorPublicKey string        `json:"coordinator_public_key"`
-	ExpiresAt            time.Time     `json:"expires_at"`
-	Signature            string        `json:"signature"`
+	Compute []ComputePeer `json:"compute,omitempty"`
+	// Relays are AXON relays to join the overlay through, as
+	// "/ip4/1.2.3.4/tcp/4001/p2p/12D3Koo...". Every peer in Peers is reached
+	// through them, so they are signed with the peers: a forged relay list is
+	// a joining node handed a network somebody else runs.
+	Relays []string `json:"relays,omitempty"`
+	// Origin is the coordinator's AXON service address, <56 base32>.key.axon,
+	// or empty while it has none. A node that knows it sends leases,
+	// revocations and later bootstrap fetches through the overlay.
+	Origin               string    `json:"origin,omitempty"`
+	CoordinatorPublicKey string    `json:"coordinator_public_key"`
+	ExpiresAt            time.Time `json:"expires_at"`
+	Signature            string    `json:"signature"`
 }
 
 // Config is how a node is told to bootstrap.
@@ -188,8 +201,12 @@ type Result struct {
 //
 // The peer COUNT is signed before the peers, so a truncated list cannot pass as
 // a complete one — dropping peers is how a joining node gets steered toward the
-// few somebody controls.
-func Message(peers []string, coordinatorKey, expiresAt string) []byte {
+// few somebody controls. Relays are counted for the same reason. An absent
+// origin is signed as "-", so it cannot be stripped from a document that had one.
+func Message(peers, relays []string, origin, coordinatorKey, expiresAt string) []byte {
+	if origin == "" {
+		origin = "-"
+	}
 	lines := []string{
 		MessagePrefix,
 		"expires_at: " + expiresAt,
@@ -197,6 +214,9 @@ func Message(peers []string, coordinatorKey, expiresAt string) []byte {
 		"peers: " + strconv.Itoa(len(peers)),
 	}
 	lines = append(lines, peers...)
+	lines = append(lines, "relays: "+strconv.Itoa(len(relays)))
+	lines = append(lines, relays...)
+	lines = append(lines, "origin: "+origin)
 	return []byte(strings.Join(lines, "\n"))
 }
 
@@ -210,6 +230,8 @@ func Parse(body []byte) (*Document, string, error) {
 	var envelope struct {
 		Version              int      `json:"version"`
 		Peers                []string `json:"peers"`
+		Relays               []string `json:"relays"`
+		Origin               string   `json:"origin"`
 		CoordinatorPublicKey string   `json:"coordinator_public_key"`
 		ExpiresAt            string   `json:"expires_at"`
 		Signature            string   `json:"signature"`
@@ -217,7 +239,7 @@ func Parse(body []byte) (*Document, string, error) {
 	if err := json.Unmarshal(body, &envelope); err != nil {
 		return nil, "", fmt.Errorf("%w: %v", ErrMalformed, err)
 	}
-	if envelope.Version != 1 {
+	if envelope.Version != DocumentVersion {
 		return nil, "", fmt.Errorf("%w: version %d", ErrMalformed, envelope.Version)
 	}
 	parsed := time.Time{}
@@ -231,6 +253,8 @@ func Parse(body []byte) (*Document, string, error) {
 	return &Document{
 		Version:              envelope.Version,
 		Peers:                envelope.Peers,
+		Relays:               envelope.Relays,
+		Origin:               envelope.Origin,
 		CoordinatorPublicKey: envelope.CoordinatorPublicKey,
 		ExpiresAt:            parsed,
 		Signature:            envelope.Signature,
@@ -268,8 +292,8 @@ func Verify(doc *Document, rawExpiresAt, pinnedKey string) error {
 	if err != nil || len(signature) != ed25519.SignatureSize {
 		return ErrBadSignature
 	}
-	if !ed25519.Verify(pinned, Message(doc.Peers, doc.CoordinatorPublicKey,
-		rawExpiresAt), signature) {
+	if !ed25519.Verify(pinned, Message(doc.Peers, doc.Relays, doc.Origin,
+		doc.CoordinatorPublicKey, rawExpiresAt), signature) {
 		return ErrBadSignature
 	}
 	return nil
@@ -306,16 +330,19 @@ func short(value string) string {
 // Each origin call stamps a fresh expiry and therefore a fresh signature, so
 // two gateways proxying the same origin seconds apart return different bytes
 // while saying exactly the same thing. Comparing raw bodies would report
-// disagreement constantly and mean nothing. What matters is the coordinator key
-// and the peer SET — sorted, because ordering is a dial-priority hint rather
-// than a claim, and a reorder is not a disagreement worth blocking on.
+// disagreement constantly and mean nothing. What matters is the coordinator key,
+// the origin, and the peer and relay SETS — sorted, because ordering is a
+// dial-priority hint rather than a claim, and a reorder is not a disagreement
+// worth blocking on.
 func Fingerprint(doc *Document) string {
 	if doc == nil {
 		return ""
 	}
 	peers := append([]string(nil), doc.Peers...)
 	sort.Strings(peers)
-	sum := sha256.Sum256([]byte(doc.CoordinatorPublicKey + "\x00" +
-		strings.Join(peers, "\x00")))
+	relays := append([]string(nil), doc.Relays...)
+	sort.Strings(relays)
+	sum := sha256.Sum256([]byte(doc.CoordinatorPublicKey + "\x00" + doc.Origin + "\x00" +
+		strings.Join(peers, "\x00") + "\x01" + strings.Join(relays, "\x00")))
 	return hex.EncodeToString(sum[:8])
 }

@@ -40,7 +40,7 @@ import (
 )
 
 // MaxHops is the route length this packet format carries. Three by default:
-// two gives the middle no cover, and more multiplies I2P latency for a gain
+// two gives the middle no cover, and more multiplies overlay latency for a gain
 // dwarfed by the operator-diversity problem.
 const MaxHops = 3
 

@@ -10,10 +10,17 @@
 // updates, not ship one.
 //
 //	hos-origin keygen -out coordinator.key     # once: the coordinator's Ed25519 seed
-//	hos-origin serve  -data /var/lib/hos-origin -key coordinator.key -listen 127.0.0.1:8470
+//	hos-origin serve  -data /var/lib/hos-origin -key coordinator.key -listen 127.0.0.1:8470 \
+//	                  -axon-seed /ip4/203.0.113.7/tcp/4001/p2p/12D3Koo... \
+//	                  -relay /ip4/203.0.113.7/tcp/4001/p2p/12D3Koo...
+//
+// With -axon-seed the origin joins the overlay and publishes itself as an AXON hidden service
+// (its address is logged, and put in every bootstrap document it signs); -relay names the
+// relays those documents hand to joining nodes.
 package main
 
 import (
+	"context"
 	"crypto/ed25519"
 	"crypto/rand"
 	"encoding/hex"
@@ -27,7 +34,9 @@ import (
 	"strings"
 	"time"
 
+	"github.com/rabbiit/maniwani/storage-client/internal/axon/runtime"
 	"github.com/rabbiit/maniwani/storage-client/internal/axon/swarm"
+	"github.com/rabbiit/maniwani/storage-client/internal/p2p"
 )
 
 func main() {
@@ -106,6 +115,9 @@ func cmdServe(args []string) {
 	var seeds seedList
 	fs.Var(&seeds, "seed", "a bootstrap multiaddr always published (repeatable): the origin's own node")
 	swarmAddr := fs.String("swarm-addr", "", "the origin's own AXON address, handed to swarm members as the first seed")
+	var axonSeeds, relays seedList
+	fs.Var(&axonSeeds, "axon-seed", "an AXON relay to join the overlay through (repeatable); with none, the origin is not published on AXON")
+	fs.Var(&relays, "relay", "an AXON relay multiaddr to publish in bootstrap documents (repeatable)")
 	_ = fs.Parse(args)
 
 	host, _, err := net.SplitHostPort(*listen)
@@ -117,7 +129,7 @@ func cmdServe(args []string) {
 	}
 	for _, s := range seeds {
 		if !reBootstrap.MatchString(s) {
-			log.Fatalf("seed %q is not a /garlic32/<b32>/p2p/<peer-id> multiaddr", s)
+			log.Fatalf("seed %q is not an /axon/<addr>/p2p/<peer-id> multiaddr", s)
 		}
 	}
 	key, err := loadKey(*keyPath)
@@ -129,6 +141,7 @@ func cmdServe(args []string) {
 		log.Fatal(err)
 	}
 	coord := NewCoordinator(key, seeds, store)
+	coord.SetOverlay(relays, "")
 	releases := NewReleases(store)
 	crashes := NewCrashIntake(store)
 
@@ -147,6 +160,25 @@ func cmdServe(args []string) {
 		writeJSON(w, 200, map[string]any{"ok": true, "active_nodes": coord.ActiveCount(),
 			"coordinator_public_key": coord.PublicKeyB64(), "time": time.Now().UTC().Format(time.RFC3339)})
 	})
+
+	if len(axonSeeds) > 0 {
+		rt, err := runtime.Start(context.Background(), runtime.Config{DataDir: store.Path("axon"), Seeds: axonSeeds})
+		if err != nil {
+			log.Fatalf("join the AXON overlay: %v", err)
+		}
+		seed, err := p2p.LoadOrCreateServiceSeed(store.Path("axon.service.key"))
+		if err != nil {
+			log.Fatal(err)
+		}
+		svc, err := rt.Listen(seed)
+		if err != nil {
+			log.Fatalf("publish the origin on AXON: %v", err)
+		}
+		front := NewFront(mux, seeder.Host)
+		go front.ServeListener(svc.Listener())
+		coord.SetOverlay(relays, svc.Addr())
+		log.Printf("hos-origin: published on AXON at %s", svc.Addr())
+	}
 
 	srv := &http.Server{Addr: *listen, Handler: mux, ReadHeaderTimeout: 30 * time.Second,
 		ReadTimeout: 2 * time.Minute, WriteTimeout: 10 * time.Minute, MaxHeaderBytes: 16 << 10}

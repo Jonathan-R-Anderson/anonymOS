@@ -839,7 +839,7 @@ func TestAuditDropsNothingWhenMostHoldersAreSilent(t *testing.T) {
 		t.Fatal(err)
 	}
 	// Three of the five holders go dark at once -- the shape of a netsplit, or
-	// of an I2P tunnel this node lost rather than three machines dying.
+	// of an overlay circuit this node lost rather than three machines dying.
 	silenced := 0
 	for _, shard := range before.Shards {
 		if silenced == 3 {

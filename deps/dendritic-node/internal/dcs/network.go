@@ -6,37 +6,34 @@ import (
 	"sync"
 )
 
-// This file ties the container's I2P destination (a SAM session) to the
+// This file ties the container's AXON address (a hidden service) to the
 // container's network namespace (the ContainerProxy). It is the seam between
 // "the container has an address" and "the address reaches the container".
 
-// SessionAccepter is the subset of internal/i2p.Session the proxy needs: accept
-// inbound streams on the container's destination -- WITH the port the caller
-// dialed -- and close. *i2p.Session satisfies it via AcceptStreamPort. Kept as
-// an interface so this package does not hard-depend on the SAM client.
+// SessionAccepter is what the proxy needs from the container's service: accept
+// inbound streams -- WITH the port the caller dialed -- and close. Kept as an
+// interface so this package does not hard-depend on the overlay runtime.
 type SessionAccepter interface {
-	// AcceptStreamPort returns an inbound stream and the TO_PORT the remote peer
-	// dialed on this destination (0 when the router does not report one).
+	// AcceptStreamPort returns an inbound stream and the port the remote peer
+	// dialed on this address (0 when the stream did not name one).
 	AcceptStreamPort() (net.Conn, int, error)
 	Close() error
 }
 
-// sessionListener adapts a SAM session to I2PListener.
+// sessionListener adapts a container's service to InboundListener.
 //
-// MULTI-PORT: yes, one I2P destination carries many ports. A destination is not
-// "one port"; SAM v3.2+ multiplexes up to 65536 ports over it via TO_PORT, and
-// internal/i2p.AcceptStreamPort surfaces the port each inbound stream targeted.
-// So a port scan of the container's single destination arrives here as separate
-// accepts, each carrying the probed port, and the proxy dials that exact port
-// inside the container's netns. A router that negotiated a pre-3.2 version
-// reports port 0, and those streams fall through to the proxy's DefaultPort --
-// the graceful degradation, not the design.
+// MULTI-PORT: yes, one AXON address carries many ports. Every stream opened to
+// a service names its purpose, and a client dialing "<addr>.key.axon:8080"
+// names port 8080 (runtime.DialContext). So a port scan of the container's
+// single address arrives here as separate accepts, each carrying the probed
+// port, and the proxy dials that exact port inside the container's netns. A
+// stream that names no port falls through to the proxy's DefaultPort.
 type sessionListener struct {
 	session SessionAccepter
 }
 
-// NewSessionListener wraps a SAM session as an I2PListener.
-func NewSessionListener(session SessionAccepter) I2PListener {
+// NewSessionListener wraps a container's service as an InboundListener.
+func NewSessionListener(session SessionAccepter) InboundListener {
 	return &sessionListener{session: session}
 }
 
@@ -61,7 +58,7 @@ type ContainerNetwork struct {
 
 // AttachInbound bridges a container's destination to its loopback ports.
 //
-//	listener    — accepts on the container's I2P destination (NewSessionListener)
+//	listener    — accepts on the container's AXON address (NewSessionListener)
 //	dialer      — enters the container's netns (NewNamespaceDialer, Linux)
 //	primaryPort — where a portless inbound stream is routed (the container's
 //	              main service); 0 means "refuse portless streams"
@@ -70,7 +67,7 @@ type ContainerNetwork struct {
 // stops. Errors from the loop are terminal only for the loop, never for the
 // agent -- a container losing its inbound path is a liveness problem for that
 // one container, logged, not a crash.
-func (n *ContainerNetwork) AttachInbound(containerID string, listener I2PListener, dialer NamespaceDialer, primaryPort int, logf func(string, ...any)) {
+func (n *ContainerNetwork) AttachInbound(containerID string, listener InboundListener, dialer NamespaceDialer, primaryPort int, logf func(string, ...any)) {
 	n.mu.Lock()
 	defer n.mu.Unlock()
 

@@ -119,7 +119,7 @@ func TestContentProxyDeniesPrivilegedPaths(t *testing.T) {
 	defer origin.Close()
 	proxy := newTestProxy(t, origin)
 
-	for _, path := range []string{"/admin", "/admin/scrapers", "/api/v1/bot/post",
+	for _, path := range []string{"/admin", "/admin/users", "/api/v1/bot/post",
 		"/login", "/profile/edit", "/stripe/webhook", "/ADMIN/x"} {
 		recorder := httptest.NewRecorder()
 		proxy.ServeHTTP(recorder, httptest.NewRequest(http.MethodGet, path, nil))

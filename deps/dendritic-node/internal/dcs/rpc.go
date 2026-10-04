@@ -17,7 +17,7 @@ import (
 const ProtocolID = "/rabbiit/dcs/1.0.0"
 
 // Every DCS request is wrapped in a signed envelope. Transport is already
-// Noise-encrypted over I2P; the signature is ADDITIONAL and authenticates the
+// Noise-encrypted over AXON; the signature is ADDITIONAL and authenticates the
 // request itself, so a compromised transport cannot forge an operation and the
 // audit-log entry is independently verifiable against the sender's key. This is
 // the same discipline the gateway protocol already applies to registrations.
@@ -54,7 +54,7 @@ type EnvelopeSigner interface {
 }
 
 // MaxEnvelopeSkew bounds both clock skew and the replay-cache retention. Short,
-// because I2P round trips are slow but not minutes-slow, and a small window
+// because AXON round trips are slow but not minutes-slow, and a small window
 // keeps the nonce table small.
 const MaxEnvelopeSkew = 120 * time.Second
 

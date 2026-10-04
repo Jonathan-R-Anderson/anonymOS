@@ -15,7 +15,7 @@ package bootstrap
 // Each bootstrap document is a snapshot of who was alive when it was signed.
 // Merging documents would build a list that only grows, so a node that left
 // months ago stays a candidate forever and every dispatch to it is a wasted
-// round trip over I2P. So a refresh REPLACES rather than merges, and a peer
+// round trip through the overlay. So a refresh REPLACES rather than merges, and a peer
 // that stops being published stops being a candidate.
 //
 // The cost of that is a peer briefly absent from one document disappears for a

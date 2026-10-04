@@ -1,17 +1,16 @@
 # REFERENCE COPY. scripts/install.sh generates a better unit than this one and
-# writes it to /etc/systemd/system/rabbiit-node.service: it names whichever
-# router this machine actually has, and it adds an ExecStartPre that waits for
-# the SAM bridge. Prefer the installer; this file is for people who want to see
-# the shape, or who are packaging by hand.
+# writes it to /etc/systemd/system/rabbiit-node.service: it follows the
+# data_dir an existing config names in ReadWritePaths= and sets HOME for the
+# service account. Prefer the installer; this file is for people who want to
+# see the shape, or who are packaging by hand.
 [Unit]
 Description=Rabbiit encrypted volunteer storage and edge node
 Documentation=https://github.com/Jonathan-R-Anderson/rabbiit/tree/main/storage-client
-Wants=network-online.target i2pd.service
-After=network-online.target i2pd.service
-# Wants=, not Requires=. Requires=i2pd.service refuses to start the node at all
-# on a machine whose router unit is i2p.service (Java I2P) -- "Unit
-# i2pd.service not found" -- and otherwise takes the node down with the router
-# every time the router restarts.
+# No other unit to order after: the AXON overlay is built into the node, which
+# fetches its seed relays over HTTPS and retries joining with backoff on its
+# own. A relay node also needs its axon.listen port reachable from the internet.
+Wants=network-online.target
+After=network-online.target
 
 [Service]
 Type=simple

@@ -1,7 +1,6 @@
 package p2p
 
 import (
-	"bufio"
 	"bytes"
 	"context"
 	"crypto/ed25519"
@@ -10,12 +9,8 @@ import (
 	"encoding/json"
 	"io"
 	"log"
-	"net"
 	"net/http"
 	"net/http/httptest"
-	"os"
-	"strings"
-	"sync"
 	"testing"
 	"time"
 
@@ -108,129 +103,6 @@ func TestEncryptedShardTransferRequiresValidLease(t *testing.T) {
 	}
 	if !bytes.Equal(stored, value) {
 		t.Fatal("transferred shard differs")
-	}
-}
-
-func TestProductionNodeAdvertisesOnlyI2P(t *testing.T) {
-	heartbeat := make(chan string, 1)
-	heartbeatServer := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		heartbeat <- r.Header.Get("User-Agent")
-		w.Header().Set("Content-Type", "application/json")
-		io.WriteString(w, `{"ok":true,"active_nodes":1}`)
-	}))
-	defer heartbeatServer.Close()
-	previousHeartbeatEndpoint := heartbeatEndpoint
-	heartbeatEndpoint = heartbeatServer.URL
-	defer func() { heartbeatEndpoint = previousHeartbeatEndpoint }()
-
-	listener, stop := startFakeSAM(t)
-	defer stop()
-	dir := t.TempDir()
-	publicBytes := make([]byte, 387)
-	for index := range publicBytes {
-		publicBytes[index] = byte(index)
-	}
-	public := strings.NewReplacer("+", "-", "/", "~").Replace(
-		base64.StdEncoding.EncodeToString(publicBytes),
-	)
-	if err := os.WriteFile(
-		dir+"/i2p.destination",
-		[]byte(public+strings.Repeat("A", 368)+"\n"),
-		0600,
-	); err != nil {
-		t.Fatal(err)
-	}
-	storage, err := store.Open(dir+"/storage", 3, 2, 64<<10, 64<<20)
-	if err != nil {
-		t.Fatal(err)
-	}
-	defer storage.Close()
-	ctx, cancel := context.WithCancel(context.Background())
-	defer cancel()
-	node, err := Open(
-		ctx, dir, listener.Addr().String(), "http://127.0.0.1:1",
-		storage, log.New(io.Discard, "", 0),
-	)
-	if err != nil {
-		t.Fatal(err)
-	}
-	defer node.Close()
-	addresses := node.Addresses()
-	if len(addresses) != 1 || !strings.HasPrefix(addresses[0], "/garlic32/") {
-		t.Fatalf("production node exposed non-I2P addresses: %v", addresses)
-	}
-	if strings.Contains(strings.Join(addresses, " "), "/ip4/") ||
-		strings.Contains(strings.Join(addresses, " "), "/ip6/") {
-		t.Fatalf("production node leaked an IP multiaddress: %v", addresses)
-	}
-	select {
-	case userAgent := <-heartbeat:
-		if userAgent != StorageUserAgent {
-			t.Fatalf("heartbeat User-Agent is %q, want %q", userAgent, StorageUserAgent)
-		}
-	case <-time.After(2 * time.Second):
-		t.Fatal("storage heartbeat was not sent")
-	}
-	if heartbeatRefresh != 5*time.Minute {
-		t.Fatalf("heartbeat interval is %s", heartbeatRefresh)
-	}
-}
-
-func startFakeSAM(t *testing.T) (net.Listener, func()) {
-	t.Helper()
-	listener, err := net.Listen("tcp", "127.0.0.1:0")
-	if err != nil {
-		t.Fatal(err)
-	}
-	publicBytes := make([]byte, 387)
-	for index := range publicBytes {
-		publicBytes[index] = byte(index)
-	}
-	public := strings.NewReplacer("+", "-", "/", "~").Replace(
-		base64.StdEncoding.EncodeToString(publicBytes),
-	)
-	var wg sync.WaitGroup
-	wg.Add(1)
-	go func() {
-		defer wg.Done()
-		for {
-			conn, err := listener.Accept()
-			if err != nil {
-				return
-			}
-			wg.Add(1)
-			go func() {
-				defer wg.Done()
-				defer conn.Close()
-				reader := bufio.NewReader(conn)
-				line, err := reader.ReadString('\n')
-				if err != nil || !strings.HasPrefix(line, "HELLO VERSION") {
-					return
-				}
-				io.WriteString(conn, "HELLO REPLY RESULT=OK VERSION=3.3\n")
-				line, err = reader.ReadString('\n')
-				if err != nil {
-					return
-				}
-				switch {
-				case strings.HasPrefix(line, "SESSION CREATE"):
-					io.WriteString(conn, "SESSION STATUS RESULT=OK\n")
-					line, err = reader.ReadString('\n')
-					if err != nil || line != "NAMING LOOKUP NAME=ME\n" {
-						return
-					}
-					io.WriteString(conn, "NAMING REPLY RESULT=OK NAME=ME VALUE="+public+"\n")
-					io.Copy(io.Discard, reader)
-				case strings.HasPrefix(line, "STREAM ACCEPT"):
-					io.WriteString(conn, "STREAM STATUS RESULT=OK\n")
-					io.Copy(io.Discard, reader)
-				}
-			}()
-		}
-	}()
-	return listener, func() {
-		listener.Close()
-		wg.Wait()
 	}
 }
 

@@ -1,0 +1,45 @@
+diff --git a/darling/src/libsystem_kernel/emulation/src/linux_premigration/signal/sigexc.c b/darling/src/libsystem_kernel/emulation/src/linux_premigration/signal/sigexc.c
+index f201b15..75a65c8 100644
+--- a/darling/src/libsystem_kernel/emulation/src/linux_premigration/signal/sigexc.c
++++ b/darling/src/libsystem_kernel/emulation/src/linux_premigration/signal/sigexc.c
+@@ -374,8 +374,17 @@ void sigexc_handler(int linux_signum, struct linux_siginfo* info, struct linux_u
+ 	// Only for signals that are themselves a fault. A benign re-entry - a SIGWINCH
+ 	// delivered while the handler is already running, which happens during normal
+ 	// startup - must not take the thread down with it.
++#ifdef VARIANT_DYLD
++	// dyld links this file statically (libsystem_kernel_static64.a) and bootstraps before TLV
++	// support, so a __thread here is an unresolved __tlv_bootstrap at dyld's link (see tls.c).
++	// dyld takes signals before it starts any second thread: a plain static is per-thread enough.
++	static bool in_sigexc_handler = false;
++	static int in_sigexc_handler_signal = 0;
++#else
+ 	static __thread bool in_sigexc_handler = false;
+ 	static __thread int in_sigexc_handler_signal = 0;
++#endif
++	bool entered_guard = false;   // this invocation set the guard, so it clears it on the way out
+ 
+ 	if (in_sigexc_handler) {
+ 		bool nested_is_fault =
+@@ -416,6 +425,7 @@ void sigexc_handler(int linux_signum, struct linux_siginfo* info, struct linux_u
+ 	} else {
+ 		in_sigexc_handler = true;
+ 		in_sigexc_handler_signal = linux_signum;
++		entered_guard = true;
+ 	}
+ 
+ 	int status = dserver_rpc_interrupt_enter();
+@@ -600,6 +610,14 @@ out:
+ 	if (status != 0) {
+ 		rpc_failed_in_handler("dserver_rpc_interrupt_exit", status);
+ 	}
++
++	// Leave the handler: a later fault on this thread is a new first entry, not a nested one
++	// (the guard was never cleared, so any handled signal -- SIGWINCH at startup -- made every
++	// later fault on the thread look nested and kill it).
++	if (entered_guard) {
++		in_sigexc_handler = false;
++		in_sigexc_handler_signal = 0;
++	}
+ }
+ 
+ #define DUMPREG(regname) kern_printf("sigexc:   " #regname ": 0x%llx\n", regs->regname);

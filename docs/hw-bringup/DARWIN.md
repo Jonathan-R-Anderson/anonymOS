@@ -27,25 +27,40 @@ The modern VibeDarling effort moves much of Mach/BSD emulation into usermode, wh
 viable target on a non-Linux kernel like this one — but it still relies on the loader and syscall
 surface below.
 
+## The approach: Darling's usermode architecture
+
+Current Darling (the VibeDarling fork, fetched by `scripts/build-darling.sh`) no longer needs a kernel
+module: `mldr` loads Mach-O in userspace, and `darlingserver` implements Mach IPC and the Darwin
+syscalls as an ordinary process. Its **non-root mode** (written for Android-style hosts) needs no
+namespaces or mounts: the prefix is a plain directory that darlingserver fills with a copy of the
+installed system root. So the kernel's part is not a Mach-O loader or Mach traps of its own; it is
+the Linux behaviour `darling`, `darlingserver` and `mldr` rely on.
+
+Those three are the only ELF programs Darling installs (everything else is Mach-O). They are rebuilt
+as static musl executables (`scripts/darling-musl-host.py`: Darling's own compile commands replayed
+with the repo's musl toolchain, plus libucontext and a small glibc-compat shim) and staged with the
+Mach-O tree as one tarball (`scripts/darling-stage.sh`). Local fixes to Darling live in
+`scripts/darling-patches/`.
+
 ## Phases
 
 | Phase | What | Exit criterion |
 |---|---|---|
-| **D1 — Mach-O loader** | Load a Mach-O executable and dylibs: `LC_SEGMENT_64`, `LC_MAIN`/`LC_UNIXTHREAD`, `LC_LOAD_DYLINKER`, map the pages, hand control to dyld. | A trivial statically-linked Mach-O runs to a controlled exit. |
-| **D2 — commpage + thread state** | Map the Darwin commpage; set up Darwin thread/TLS (`%gs`-based) and the x86-64 Darwin stack/argv layout. | A Mach-O reads the commpage timebase without faulting. |
-| **D3 — BSD syscall class** | Route the Darwin BSD class (`0x2000000|n`): file, mmap, signal, process calls, mapped onto the OS's existing VFS/mm. | dyld opens and maps a dylib from the Darling prefix. |
-| **D4 — Mach traps** | The negative-number Mach traps: `mach_msg`, `mach_port_*`, `mach_vm_*`, `task_*`, `thread_*`. A Mach port/message layer (an in-kernel or usermode broker). | `mach_msg` round-trips a message between two Darwin threads. |
+| **D1 — build + stage** | Latest VibeDarling (`COMPONENTS=cli`, x86-64) built on the host; host programs as static musl; one tarball. | done — VibeDarling `81b2bcdd`: 231 MiB tree, 73 MiB tarball, no dynamic ELF. |
+| **D2 — host programs start** | The launcher (non-root), darlingserver and mldr run on the Linux personality. | darlingserver binds its socket and spawns launchd through mldr. |
+| **D3 — darlingserver's kernel surface** | AF_UNIX datagrams addressed by name, with per-message SCM_CREDENTIALS + SCM_RIGHTS and autobind / abstract names; SOCK_SEQPACKET; pidfd_open / pidfd_send_signal; process_vm_readv / writev; blocking pipe writes. | a guest thread's RPC round-trips through darlingserver. |
+| **D4 — launchd + shell** | launchd and shellspawn run; `darling shell <program>` reaches a Mach-O program. | `darling shell /bin/echo hello` prints in the VM. |
 | **D5 — libSystem** | Darling's `libSystem` and friends run on D1–D4. | a Darwin `hello` using `printf` and pthreads runs. |
 | **D6 — Foundation (CLI)** | Darling's Foundation on libSystem. | a Darwin tool using `NSString`/`NSFileManager` runs. |
-| **D7 — AppKit / display** | Cocoa/AppKit drawing routed to the domain's Wayland surface (Darling's display path). | a minimal Cocoa window renders in the domain. |
+| **D7 — AppKit / display** | Cocoa/AppKit drawing routed to the domain's Wayland surface (Darling's Wayland backend). | a minimal Cocoa window renders in the domain. |
 
-`hos-darling` already dispatches `darling shell <program>` into the domain; D1–D4 are the kernel's
-part (loader + syscalls + Mach), D5–D7 are Darling's userland built against them.
+`hos-darling` already dispatches `darling shell <program>` into the domain.
 
 ## Current status
 
-- Not started. The launcher (`hos-darling`) and Domain Manager delegation are in place
-  (docs/COMPAT.md), and `scripts/build-darling.sh` fetches the pinned upstream, but no phase above
-  is implemented, so `hos-darling` reports Darling-not-installed rather than faking a run.
-
-Honest state: the integration shell exists; the Darwin kernel surface does not yet.
+- D1 done. D3's kernel surface is implemented (datagram queue in posix.d, pidfd as an eventfd that
+  process exit makes readable, process_vm_* resolving the target's pages, bounded park for a full
+  blocking pipe) and is being verified in VirtualBox with an AUTORUN probe that unpacks the tarball
+  and runs `darling shell /bin/echo` in non-root mode.
+- The first probe showed a kernel bug outside Darling: a blocking pipe write into a full pipe failed
+  EAGAIN (busybox `tar -xz`), now parked.

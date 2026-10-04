@@ -1,7 +1,7 @@
 // Package heartbeat sends the node's signed presence beacon to the Rabbiit
 // frontend.
 //
-// It is deliberately the one connection that does not go through I2P: the
+// It is deliberately the one connection that does not go through AXON: the
 // frontend has to see a real source address to count unique nodes and to place
 // them on the operator's map. That is the same address the web server already
 // logs when the operator visits the site.
@@ -89,10 +89,10 @@ type State struct {
 	// MicroVM is measured, never configured: an operator cannot declare
 	// hardware isolation they do not have.
 	MicroVM bool
-	// I2PDestination is the node's own base32 garlic destination. Reported so the
-	// coordinator can hand this node out to others as a LIVE bootstrap peer,
-	// instead of the network relying on a single hardcoded one.
-	I2PDestination string
+	// AxonAddress is the node's own AXON service address, <56>.key.axon.
+	// Reported so the coordinator can hand this node out to others as a LIVE
+	// bootstrap peer, instead of the network relying on a single hardcoded one.
+	AxonAddress string
 	// Traffic this node moved since the last beacon. Summed across nodes to
 	// give the public status page a network throughput figure -- which the
 	// frontend cannot measure itself, because it never sees peer-to-peer shard
@@ -111,7 +111,7 @@ type State struct {
 // ----------------------------------------
 // The alternative is the gateway's SigV4 ?placement surface, which already
 // answers all of this per object. But the coordinator would then have to ask
-// nine nodes over I2P to draw one admin page, inside a request handler, on a
+// nine nodes over AXON to draw one admin page, inside a request handler, on a
 // panel that polls every three seconds -- and this site has already taken a 504
 // from exactly that shape (an inline sync in GET /). The heartbeat is a
 // background push that is already signed, already arrives every five minutes
@@ -204,8 +204,8 @@ type request struct {
 	// MicroVM decides whether ARBITRARY submitted code may be placed here. A
 	// container node runs signed catalogue images only, and spare capacity does
 	// not change that — so it is a capability, not a compute detail.
-	MicroVM        bool   `json:"microvm"`
-	I2PDestination string `json:"i2p_destination,omitempty"`
+	MicroVM     bool   `json:"microvm"`
+	AxonAddress string `json:"axon_address,omitempty"`
 	// Omitted entirely when the window is zero: the coordinator distinguishes
 	// "not reporting" from "reported nothing", and sending zeros would claim
 	// the second when the first is true.
@@ -229,13 +229,13 @@ type Client struct {
 	Snapshot func() State
 	// OnPeers, if set, receives the bootstrap peer multiaddrs the coordinator
 	// returns in the heartbeat response. This is the live bootstrap service: the
-	// node reports its own destination and is handed a few reachable peers back,
+	// node reports its own AXON address and is handed a few reachable peers back,
 	// so it can keep heartbeating until it joins the DHT and stay joined after.
 	OnPeers func([]string)
 }
 
 // DirectHTTPClient is the transport a heartbeat must use: no proxy, so neither
-// I2P nor HTTP(S)_PROXY environment variables can redirect the one request
+// the overlay nor HTTP(S)_PROXY environment variables can redirect the one request
 // whose whole purpose is to originate from the node's real address.
 func DirectHTTPClient() *http.Client {
 	return &http.Client{
@@ -295,7 +295,7 @@ func (c *Client) Send(ctx context.Context) {
 		CPUCompute:          state.CPUCompute,
 		MicroVM:             state.MicroVM,
 		Monitor:             state.Monitor,
-		I2PDestination:      state.I2PDestination,
+		AxonAddress:         state.AxonAddress,
 	}
 	// Sent only when there is a window to divide by. A zero window is not a
 	// rate of zero -- it is the absence of a measurement, and the coordinator

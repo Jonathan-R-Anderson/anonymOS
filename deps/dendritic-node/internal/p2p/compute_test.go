@@ -33,8 +33,8 @@ import (
 	"github.com/rabbiit/maniwani/storage-client/internal/store"
 )
 
-// computeTestNode opens a plain TCP node. Not I2P: what is under test is the
-// protocol, and a garlic tunnel would add minutes of setup to prove nothing
+// computeTestNode opens a plain TCP node. Not AXON: what is under test is the
+// protocol, and overlay circuits would add setup to prove nothing
 // about the frames.
 func computeTestNode(t *testing.T, ctx context.Context) (*Node, *store.Store) {
 	t.Helper()

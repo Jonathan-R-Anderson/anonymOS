@@ -5,7 +5,6 @@ import (
 	"encoding/base64"
 	"encoding/json"
 	"errors"
-	"fmt"
 	"math/rand"
 	"net/http"
 	"regexp"
@@ -13,6 +12,8 @@ import (
 	"strings"
 	"sync"
 	"time"
+
+	"github.com/rabbiit/maniwani/storage-client/internal/bootstrap"
 )
 
 // The coordinator: what a dendritic node asks its coordinator for -- the signed bootstrap
@@ -22,7 +23,6 @@ import (
 
 const (
 	storageUserAgent  = "Rabbiit-Storage-Client/1.0"
-	bootstrapPrefix   = "rabbiit-storage-bootstrap-v1"
 	activeWindow      = 15 * time.Minute
 	bootstrapLifetime = 20 * time.Minute
 	maxClockSkew      = 300 // seconds
@@ -31,16 +31,17 @@ const (
 )
 
 var (
-	reDestination = regexp.MustCompile(`^[a-z2-7]{52}$`)
+	reDestination = regexp.MustCompile(`^[a-z2-7]{56}\.key\.axon$`)
 	rePlatform    = regexp.MustCompile(`^[a-z0-9_-]{1,24}/[a-z0-9_-]{1,24}$`)
-	reBootstrap   = regexp.MustCompile(`^/garlic32/[a-z2-7]{52}/p2p/[1-9A-HJ-NP-Za-km-z]+$`)
+	reBootstrap   = regexp.MustCompile(`^/axon/[a-z2-7]{56}/p2p/[1-9A-HJ-NP-Za-km-z]+$`)
+	reRelay       = regexp.MustCompile(`^/(ip4|ip6|dns4|dns6|dns)/[^/\s]+/(tcp/\d+|udp/\d+/quic-v1)/p2p/[1-9A-HJ-NP-Za-km-z]+$`)
 )
 
 // NodeRecord is what the coordinator remembers about a node: its own heartbeat, nothing else.
-// Nodes reach the origin over I2P, so there is no IP address to remember.
+// Nodes reach the origin over AXON, so there is no IP address to remember.
 type NodeRecord struct {
 	NodeID         string    `json:"node_id"`
-	Destination    string    `json:"i2p_destination,omitempty"`
+	Destination    string    `json:"axon_address,omitempty"`
 	CapacityBytes  int64     `json:"capacity_bytes"`
 	UsedBytes      *int64    `json:"used_bytes,omitempty"`
 	Platform       string    `json:"platform"`
@@ -55,6 +56,10 @@ type NodeRecord struct {
 type Coordinator struct {
 	key   ed25519.PrivateKey
 	seeds []string // configured bootstrap multiaddrs (the origin's own node, at least)
+	// relays are the AXON relays nodes join the overlay through, and origin is
+	// this origin's own AXON address; both go into the signed document.
+	relays []string
+	origin string
 
 	mu     sync.Mutex
 	nodes  map[string]*NodeRecord
@@ -94,7 +99,7 @@ type heartbeat struct {
 	CPUCompute     bool   `json:"cpu_compute"`
 	GPUCompute     bool   `json:"gpu_compute"`
 	MicroVM        bool   `json:"microvm"`
-	I2PDestination string `json:"i2p_destination"`
+	AxonAddress    string `json:"axon_address"`
 }
 
 var (
@@ -155,8 +160,8 @@ func (c *Coordinator) ValidateHeartbeat(body []byte, nodeHeader, sigHeader, user
 	if !rePlatform.MatchString(hb.Platform) {
 		return nil, httpError{400, "invalid storage platform"}
 	}
-	if hb.I2PDestination != "" && !reDestination.MatchString(hb.I2PDestination) {
-		return nil, httpError{400, "invalid i2p destination"}
+	if hb.AxonAddress != "" && !reDestination.MatchString(hb.AxonAddress) {
+		return nil, httpError{400, "invalid AXON address"}
 	}
 	c.mu.Lock()
 	defer c.mu.Unlock()
@@ -182,8 +187,8 @@ func (c *Coordinator) Record(hb *heartbeat) {
 		n = &NodeRecord{NodeID: hb.NodeID, FirstSeen: now}
 		c.nodes[hb.NodeID] = n
 	}
-	if hb.I2PDestination != "" {
-		n.Destination = hb.I2PDestination
+	if hb.AxonAddress != "" {
+		n.Destination = hb.AxonAddress
 	}
 	n.CapacityBytes = *hb.CapacityBytes
 	n.UsedBytes = hb.UsedBytes
@@ -219,7 +224,7 @@ func (c *Coordinator) LivePeers(limit int, exclude string) []string {
 		if n.NodeID == exclude || n.Destination == "" || n.LastSeen.Before(cutoff) {
 			continue
 		}
-		peers = append(peers, "/garlic32/"+n.Destination+"/p2p/"+n.NodeID)
+		peers = append(peers, "/axon/"+strings.TrimSuffix(n.Destination, ".key.axon")+"/p2p/"+n.NodeID)
 	}
 	rand.Shuffle(len(peers), func(i, j int) { peers[i], peers[j] = peers[j], peers[i] })
 	if len(peers) > limit {
@@ -242,18 +247,33 @@ func (c *Coordinator) ActiveCount() int {
 	return k
 }
 
-// BootstrapMessage is the exact byte string signed over a bootstrap document (the node rebuilds
-// it from the parsed fields; anything not in it is not covered).
-func BootstrapMessage(peers []string, publicKey, expiresAt string) []byte {
-	lines := []string{bootstrapPrefix, "expires_at: " + expiresAt, "coordinator: " + publicKey,
-		fmt.Sprintf("peers: %d", len(peers))}
-	lines = append(lines, peers...)
-	return []byte(strings.Join(lines, "\n"))
+// BootstrapMessage is the exact byte string signed over a bootstrap document. It is the node's
+// own bootstrap.Message, so the two cannot drift: the node rebuilds it from the parsed fields,
+// and anything not in it is not covered.
+func BootstrapMessage(peers, relays []string, origin, publicKey, expiresAt string) []byte {
+	return bootstrap.Message(peers, relays, origin, publicKey, expiresAt)
+}
+
+// SetOverlay sets the AXON relays and this origin's own AXON address that every bootstrap
+// document publishes (and signs). Relays that are not a link multiaddr ending in a peer ID are
+// dropped rather than published.
+func (c *Coordinator) SetOverlay(relays []string, origin string) {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	c.relays = nil
+	for _, r := range relays {
+		if reRelay.MatchString(r) {
+			c.relays = append(c.relays, r)
+		}
+	}
+	c.origin = origin
 }
 
 type bootstrapDocument struct {
 	Version              int           `json:"version"`
 	Peers                []string      `json:"peers"`
+	Relays               []string      `json:"relays"`
+	Origin               string        `json:"origin,omitempty"`
 	Compute              []computePeer `json:"compute"`
 	CoordinatorPublicKey string        `json:"coordinator_public_key"`
 	ExpiresAt            string        `json:"expires_at"`
@@ -274,12 +294,16 @@ func (c *Coordinator) BootstrapDocument() bootstrapDocument {
 	peers := dedupe(append(c.LivePeers(8, ""), c.seeds...))
 	expires := c.now().UTC().Add(bootstrapLifetime).Format("2006-01-02T15:04:05.000000Z")
 	pub := c.PublicKeyB64()
-	doc := bootstrapDocument{Version: 1, Peers: peers, Compute: c.computePeers(), CoordinatorPublicKey: pub,
-		ExpiresAt: expires}
+	c.mu.Lock()
+	relays := append([]string{}, c.relays...)
+	origin := c.origin
+	c.mu.Unlock()
+	doc := bootstrapDocument{Version: bootstrap.DocumentVersion, Peers: peers, Relays: relays, Origin: origin,
+		Compute: c.computePeers(), CoordinatorPublicKey: pub, ExpiresAt: expires}
 	if doc.Peers == nil {
 		doc.Peers = []string{}
 	}
-	sig := ed25519.Sign(c.key, BootstrapMessage(doc.Peers, pub, expires))
+	sig := ed25519.Sign(c.key, BootstrapMessage(doc.Peers, doc.Relays, doc.Origin, pub, expires))
 	doc.Signature = base64.StdEncoding.EncodeToString(sig)
 	return doc
 }

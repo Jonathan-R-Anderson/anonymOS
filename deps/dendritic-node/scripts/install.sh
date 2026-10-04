@@ -7,11 +7,10 @@
 # check happens.
 #
 # The real installer is install-main.sh, which requires bash and stays that way
-# on purpose. Its most important test is a SAM v3 handshake against
-# 127.0.0.1:7656 using bash's /dev/tcp, which busybox does NOT provide; rewriting
-# it in POSIX sh would mean probing the I2P bridge with nc (not guaranteed to
-# exist) or not at all. So this file does one job: make sure bash exists, then
-# hand over.
+# on purpose. It leans on arrays for its plan table and on bash's /dev/tcp for
+# its port-clash checks, neither of which busybox ash provides; rewriting it in
+# POSIX sh would mean probing ports with nc (not guaranteed to exist) or not at
+# all. So this file does one job: make sure bash exists, then hand over.
 #
 # No arrays, no [[ ]], no /dev/tcp, no local, no $'...' -- nothing that busybox
 # ash cannot parse. Verified with `busybox ash -n` and `dash -n`.

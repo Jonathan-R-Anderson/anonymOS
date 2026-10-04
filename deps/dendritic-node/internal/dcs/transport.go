@@ -15,15 +15,15 @@ import (
 	"github.com/libp2p/go-libp2p/core/peer"
 	"github.com/libp2p/go-libp2p/core/protocol"
 
-	syndii2p "github.com/rabbiit/maniwani/storage-client/internal/i2p"
+	axontransport "github.com/rabbiit/maniwani/storage-client/internal/axon/transport"
 )
 
 // StreamTransport carries DCS envelopes over the node's existing libp2p host,
-// which already runs the I2P transport. It does NOT open a second network: a
-// DCS request to a worker is a new stream on the /rabbiit/dcs/1.0.0 protocol
-// to that worker's garlic destination, over the same host that exchanges
-// shards. Reusing the host means reusing its Noise handshake, its peer
-// authentication and its I2P tunnels for free.
+// which already runs over AXON. It does NOT open a second network: a DCS
+// request to a worker is a new stream on the /rabbiit/dcs/1.0.0 protocol to
+// that worker's AXON address, over the same host that exchanges shards. Reusing
+// the host means reusing its Noise handshake, its peer authentication and its
+// overlay session for free.
 type StreamTransport struct {
 	host    host.Host
 	timeout time.Duration
@@ -41,7 +41,7 @@ func (t *StreamTransport) RoundTrip(ctx context.Context, worker WorkerRecord, en
 	if err != nil {
 		return nil, fmt.Errorf("dcs: worker node id %q: %w", worker.NodeID, err)
 	}
-	addr, err := syndii2p.Multiaddr(worker.Destination)
+	addr, err := axontransport.Multiaddr(worker.Destination)
 	if err != nil {
 		return nil, fmt.Errorf("dcs: worker destination %q: %w", worker.Destination, err)
 	}

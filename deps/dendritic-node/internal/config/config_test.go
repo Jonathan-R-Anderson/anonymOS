@@ -72,16 +72,44 @@ func TestPublicS3RequiresTLS(t *testing.T) {
 	}
 }
 
-func TestI2PControlEndpointsMustRemainLoopback(t *testing.T) {
+func TestAxonProxyMustRemainLoopback(t *testing.T) {
 	cfg := validTestConfig(t)
-	cfg.I2PSAM = "192.0.2.10:7656"
-	if err := cfg.Validate(); err == nil {
-		t.Fatal("remote cleartext SAM bridge was accepted")
+	if cfg.Axon.ProxyListen != DefaultProxyListen {
+		t.Fatalf("default AXON proxy is %q", cfg.Axon.ProxyListen)
 	}
-	cfg = validTestConfig(t)
-	cfg.I2PHTTPProxy = "http://192.0.2.10:4444"
+	cfg.Axon.ProxyListen = "0.0.0.0:4480"
 	if err := cfg.Validate(); err == nil {
-		t.Fatal("remote I2P HTTP proxy was accepted")
+		t.Fatal("an AXON proxy open to the network was accepted")
+	}
+	cfg.Axon.ProxyListen = ""
+	if err := cfg.Validate(); err != nil {
+		t.Fatalf("a disabled AXON proxy was rejected: %v", err)
+	}
+}
+
+func TestAxonSettingsAreChecked(t *testing.T) {
+	cases := map[string]func(*AxonConfig){
+		"relay with nowhere to listen":       func(a *AxonConfig) { a.Relay = true },
+		"listen that is not a multiaddr":     func(a *AxonConfig) { a.Listen = []string{"0.0.0.0:4001"} },
+		"seed without a peer id":             func(a *AxonConfig) { a.Seeds = []string{"/ip4/203.0.113.7/tcp/4001"} },
+		"origin that is not an AXON address": func(a *AxonConfig) { a.Origin = "rabbiit.io" },
+		"announce without a port":            func(a *AxonConfig) { a.Announce = []string{"203.0.113.7"} },
+	}
+	for name, mutate := range cases {
+		cfg := validTestConfig(t)
+		mutate(&cfg.Axon)
+		if err := cfg.Validate(); err == nil {
+			t.Errorf("%s: accepted", name)
+		}
+	}
+	cfg := validTestConfig(t)
+	cfg.Axon = AxonConfig{
+		Listen: []string{"/ip4/0.0.0.0/tcp/4001", "/ip4/0.0.0.0/udp/4001/quic-v1"}, Relay: true,
+		Announce: []string{"203.0.113.7:4001"},
+		Seeds:    []string{"/ip4/203.0.113.8/tcp/4001/p2p/12D3KooWD3eckifWpRn9wQpMG9R9hX3sD158z7EqHWmweQAJU5SA"},
+	}
+	if err := cfg.Validate(); err != nil {
+		t.Fatalf("a valid relay configuration was rejected: %v", err)
 	}
 }
 

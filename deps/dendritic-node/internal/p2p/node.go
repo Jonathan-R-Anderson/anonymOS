@@ -21,7 +21,6 @@ import (
 	"net/url"
 	"os"
 	"path/filepath"
-	"strings"
 	"sync"
 	"sync/atomic"
 	"time"
@@ -39,12 +38,12 @@ import (
 	"github.com/multiformats/go-multiaddr"
 	"github.com/multiformats/go-multihash"
 
+	axontransport "github.com/rabbiit/maniwani/storage-client/internal/axon/transport"
 	"github.com/rabbiit/maniwani/storage-client/internal/bootstrap"
 	"github.com/rabbiit/maniwani/storage-client/internal/config"
 	"github.com/rabbiit/maniwani/storage-client/internal/dcs"
 	"github.com/rabbiit/maniwani/storage-client/internal/gateway"
 	"github.com/rabbiit/maniwani/storage-client/internal/heartbeat"
-	syndii2p "github.com/rabbiit/maniwani/storage-client/internal/i2p"
 	"github.com/rabbiit/maniwani/storage-client/internal/place"
 	"github.com/rabbiit/maniwani/storage-client/internal/placement"
 	"github.com/rabbiit/maniwani/storage-client/internal/store"
@@ -57,23 +56,15 @@ const (
 	maxNetworkShard  = 32 << 20
 	bootstrapRefresh = 15 * time.Minute
 	heartbeatRefresh = heartbeat.Interval
-	// An I2P dial is nothing like a TCP dial. Before libp2p's Noise handshake
-	// can even begin, the router must look the destination's LeaseSet up from
-	// the floodfills, build or reuse a tunnel pair, and complete several
-	// garlic-encrypted round trips -- each hop adding its own latency. A cold
-	// dial routinely takes 20-60 seconds.
-	//
-	// This was 10 seconds for both cases, which expired during the LeaseSet
-	// lookup. Every bootstrap attempt failed with "all dials failed" no matter
-	// how healthy both routers were: correct destination, established tunnels,
-	// unfirewalled router, and still no peer ever connected.
-	i2pDialTimeout    = 2 * time.Minute
+	// A direct dial (tests, and nothing else) is one TCP handshake. An overlay
+	// dial is several circuits deep; see overlayDialTimeout.
 	directDialTimeout = 10 * time.Second
-	// Retry cadence WHILE STILL PEERLESS. A freshly installed I2P router needs
-	// 10-30 minutes to integrate into the network, so the first attempts are
-	// expected to fail. At the 15-minute steady-state cadence that is roughly
-	// one doomed attempt per 15 minutes, and a new node can sit peerless for
-	// hours. Retry quickly until the first peer sticks, then back off.
+	// Retry cadence WHILE STILL PEERLESS. A node that has only just joined the
+	// overlay may not reach its first peers until their services have been
+	// republished, so the first attempts are expected to fail. At the
+	// 15-minute steady-state cadence that is roughly one doomed attempt per 15
+	// minutes, and a new node can sit peerless for hours. Retry quickly until
+	// the first peer sticks, then back off.
 	bootstrapRetry = 60 * time.Second
 	// Backfill cadence for shards stored before any peer existed.
 	//
@@ -84,7 +75,7 @@ const (
 	// which is the exact condition this whole subsystem exists to end.
 	//
 	// The old comment called it "a trickle, not a flush" because each shard
-	// needs a coordinator lease over I2P first. That cost is real but it is
+	// needs a coordinator lease first. That cost is real but it is
 	// per-shard and concurrent, not per-object and serial, so the batch was
 	// throttling the wrong thing. 40 keeps a pass bounded while cutting the
 	// drain to well under a day.
@@ -149,6 +140,7 @@ var leaseURL = "https://rabbiit.io" + leasePath
 type BootstrapDocument struct {
 	Version              int       `json:"version"`
 	Peers                []string  `json:"peers"`
+	Origin               string    `json:"origin"`
 	CoordinatorPublicKey string    `json:"coordinator_public_key"`
 	ExpiresAt            time.Time `json:"expires_at"`
 }
@@ -284,13 +276,19 @@ type Node struct {
 	containMu sync.RWMutex
 	contained interface{ Denied(id string) bool }
 
+	// coordMu guards http, which is replaced when the bootstrap document names
+	// the origin's AXON service (useOrigin).
+	coordMu        sync.RWMutex
 	http           *http.Client
 	directHTTP     *http.Client
+	overlay        *Overlay
 	keyMu          sync.RWMutex
 	coordKey       ed25519.PublicKey
 	peerMu         sync.RWMutex
 	bootstrapPeers map[peer.ID]struct{}
-	i2pOnly        bool
+	// overlayOnly: peer traffic goes over AXON and nothing else. False only
+	// for the direct-TCP test nodes.
+	overlayOnly bool
 	// candidateCache holds the storage peers the last discovery found, so one
 	// dispersal pass does not issue a DHT capacity query per chunk.
 	// refusals tracks peers that answered "no" to a shard, so the planner stops
@@ -389,76 +387,61 @@ func (n *Node) RefreshHeartbeat(ctx context.Context) {
 	n.sendHeartbeat(ctx, heartbeatEndpoint)
 }
 
-func Open(ctx context.Context, dataDir, samAddr, httpProxy string, storage *store.Store, logger *log.Logger) (*Node, error) {
-	return openI2PNode(ctx, dataDir, samAddr, httpProxy, storage, logger, true)
-}
-
-// OpenGateway creates the identity and I2P DHT transport needed to publish
-// independently verified gateway records, but deliberately does not install
-// the shard protocol, advertise/replicate stored data, or send storage-node
-// heartbeats. It is the networking substrate for the command's gateway-only
-// mode, not a storage peer with its UI hidden.
-func OpenGateway(ctx context.Context, dataDir, samAddr, httpProxy string, logger *log.Logger) (*Node, error) {
-	return openI2PNode(ctx, dataDir, samAddr, httpProxy, nil, logger, false)
-}
-
-func openI2PNode(
-	ctx context.Context,
-	dataDir, samAddr, httpProxy string,
-	storage *store.Store,
-	logger *log.Logger,
-	storageEnabled bool,
-) (*Node, error) {
+// Open starts a storage node whose every peer connection runs over AXON. Its
+// libp2p address is one of its own AXON hidden services, /axon/<addr>, so it is
+// reachable without a public port and no peer learns its IP.
+func Open(ctx context.Context, dataDir string, overlay Overlay, storage *store.Store, logger *log.Logger) (*Node, error) {
+	if overlay.Runtime == nil {
+		return nil, errors.New("p2p: the AXON overlay is required")
+	}
 	identity, err := loadOrCreateIdentity(filepath.Join(dataDir, "p2p.key"))
 	if err != nil {
 		return nil, err
 	}
-	session, err := syndii2p.Open(ctx, samAddr, filepath.Join(dataDir, "i2p.destination"))
+	seed, err := loadOrCreateServiceSeed(filepath.Join(dataDir, serviceSeedFile))
 	if err != nil {
 		return nil, err
 	}
-	local, err := syndii2p.Multiaddr(session.Base32())
+	service, err := overlay.Runtime.Listen(seed)
 	if err != nil {
-		session.Close()
+		return nil, fmt.Errorf("publish this node's AXON service: %w", err)
+	}
+	local, err := axontransport.Multiaddr(service.Addr())
+	if err != nil {
+		service.Close()
 		return nil, err
 	}
 	h, err := libp2p.New(
 		libp2p.Identity(identity),
 		libp2p.NoTransports,
 		libp2p.Transport(func(upgrader coretransport.Upgrader, rcmgr network.ResourceManager) (coretransport.Transport, error) {
-			return syndii2p.NewTransport(upgrader, rcmgr, session)
+			return axontransport.New(upgrader, rcmgr, overlay.Runtime, service)
 		}),
 		libp2p.ListenAddrs(local),
 		libp2p.DisableRelay(),
-		libp2p.AddrsFactory(i2pAddressesOnly),
+		libp2p.AddrsFactory(overlayAddressesOnly),
 	)
 	if err != nil {
-		session.Close()
+		service.Close()
 		return nil, err
-	}
-	proxyURL, err := url.Parse(httpProxy)
-	if err != nil {
-		h.Close()
-		return nil, err
-	}
-	httpClient := &http.Client{
-		Timeout: 75 * time.Second,
-		Transport: &http.Transport{
-			Proxy:           http.ProxyURL(proxyURL),
-			TLSClientConfig: &tls.Config{MinVersion: tls.VersionTLS12},
-		},
 	}
 	directHTTP := &http.Client{
 		Timeout: 20 * time.Second,
 		Transport: &http.Transport{
-			// Intentionally direct: heartbeat presence is the one connection the
-			// user explicitly requires to bypass I2P. A nil Proxy also prevents
-			// HTTP_PROXY/HTTPS_PROXY environment variables from changing that.
+			// Direct, and a nil Proxy keeps HTTP_PROXY/HTTPS_PROXY from
+			// silently changing that: the heartbeat is the one connection meant
+			// to show the coordinator a real source address, and the other
+			// coordinator calls fall back to it only when the overlay fails.
 			Proxy:           nil,
 			TLSClientConfig: &tls.Config{MinVersion: tls.VersionTLS12},
 		},
 	}
-	return finishNode(ctx, h, dataDir, storage, logger, httpClient, directHTTP, true, true, storageEnabled)
+	n, err := finishNode(ctx, h, dataDir, storage, logger, overlay.coordinatorClient(directHTTP), directHTTP, true, true, true)
+	if err != nil {
+		return nil, err
+	}
+	n.overlay = &overlay
+	return n, nil
 }
 
 func openNode(ctx context.Context, dataDir string, listen []string, storage *store.Store, logger *log.Logger, useCoordinatorBootstrap bool) (*Node, error) {
@@ -491,7 +474,7 @@ func finishNode(
 	httpClient *http.Client,
 	directHTTP *http.Client,
 	useCoordinatorBootstrap bool,
-	i2pOnly bool,
+	overlayOnly bool,
 	storageEnabled bool,
 ) (*Node, error) {
 	kad, err := dht.New(h, dht.Mode(dht.ModeAutoServer))
@@ -502,7 +485,7 @@ func finishNode(
 	n := &Node{
 		host: h, dht: kad, store: storage, logger: logger, bootstrap: bootstrapURL,
 		bootstrapPeers: make(map[peer.ID]struct{}), http: httpClient, dataDir: dataDir,
-		directHTTP: directHTTP, i2pOnly: i2pOnly,
+		directHTTP: directHTTP, overlayOnly: overlayOnly,
 		repairing: make(map[string]struct{}), shardMoves: newShardMoveBudget(),
 		// Empty until the first bootstrap fetch, and empty reports STALE — so a
 		// node that has not yet learned the network offers no candidates rather
@@ -533,7 +516,7 @@ func finishNode(
 	if useCoordinatorBootstrap {
 		go n.bootstrapLoop(ctx)
 	}
-	if i2pOnly && storageEnabled {
+	if overlayOnly && storageEnabled {
 		go n.heartbeatLoop(ctx)
 	}
 	if storageEnabled {
@@ -562,10 +545,10 @@ func finishNode(
 	return n, nil
 }
 
-func i2pAddressesOnly(values []multiaddr.Multiaddr) []multiaddr.Multiaddr {
+func overlayAddressesOnly(values []multiaddr.Multiaddr) []multiaddr.Multiaddr {
 	result := make([]multiaddr.Multiaddr, 0, len(values))
 	for _, value := range values {
-		if syndii2p.IsI2PAddr(value) {
+		if axontransport.IsAxonAddr(value) {
 			result = append(result, value)
 		}
 	}
@@ -614,7 +597,7 @@ func (n *Node) ConfigureGatewayRecords(validator gateway.DHTValidator) error {
 }
 
 // Host exposes the libp2p host so the DCS subsystem can register its stream
-// protocol and open streams to workers over the SAME I2P transport the storage
+// protocol and open streams to workers over the SAME AXON transport the storage
 // protocol uses. DCS reuses this host rather than opening a second network.
 func (n *Node) Host() host.Host { return n.host }
 
@@ -762,29 +745,47 @@ func (n *Node) Addresses() []string {
 	return result
 }
 
-// I2PDestination returns this node's own base32 garlic destination -- the <b32>
-// in its /garlic32/<b32> address -- or "" before the I2P session is up. It is
-// what another peer dials to reach this node. The node reports it in its
+// AxonAddress returns this node's own AXON service address, <56 base32>.key.axon
+// -- the service behind its /axon/<addr> multiaddr -- or "" when it has none.
+// It is what another peer dials to reach this node. The node reports it in its
 // heartbeat so the coordinator can hand it out as a live bootstrap peer.
-func (n *Node) I2PDestination() string {
+func (n *Node) AxonAddress() string {
 	for _, addr := range n.host.Addrs() {
-		for _, part := range strings.Split(addr.String(), "/") {
-			// a garlic32 host is 52 base32 chars; the multiaddr is /garlic32/<b32>.
-			if len(part) == 52 && isBase32Lower(part) {
-				return part
-			}
+		if !axontransport.IsAxonAddr(addr) {
+			continue
+		}
+		if full, err := axontransport.Address(addr); err == nil {
+			return full
 		}
 	}
 	return ""
 }
 
-func isBase32Lower(s string) bool {
-	for _, c := range s {
-		if !((c >= 'a' && c <= 'z') || (c >= '2' && c <= '7')) {
-			return false
-		}
+// coordinatorHTTP is the client for coordinator calls: through the overlay to
+// the origin's AXON service once one is known, direct before that.
+func (n *Node) coordinatorHTTP() *http.Client {
+	n.coordMu.RLock()
+	defer n.coordMu.RUnlock()
+	return n.http
+}
+
+// useOrigin adopts the origin AXON address a bootstrap document names, unless
+// the operator configured one: configuration is the operator's choice, and a
+// document is only what some source served.
+func (n *Node) useOrigin(origin string) {
+	if n.overlay == nil || origin == "" || n.overlay.Origin != "" {
+		return
 	}
-	return true
+	n.coordMu.Lock()
+	defer n.coordMu.Unlock()
+	adopted := Overlay{Runtime: n.overlay.Runtime, Origin: origin}
+	client := adopted.coordinatorClient(n.directHTTP)
+	if client == n.directHTTP {
+		return
+	}
+	n.http = client
+	n.overlay.Origin = origin
+	n.logger.Printf("coordinator: reaching the origin through AXON at %s", origin)
 }
 
 func loadOrCreateIdentity(path string) (crypto.PrivKey, error) {
@@ -944,7 +945,7 @@ func (n *Node) sendHeartbeat(ctx context.Context, endpoint string) {
 				GPUCompute:      gpuCompute,
 				CPUCompute:      cpuCompute,
 				MicroVM:         n.microVM,
-				I2PDestination:  n.I2PDestination(),
+				AxonAddress:     n.AxonAddress(),
 				// Read from the cached last pass -- no ledger walk and no peer
 				// contact on the heartbeat path. Nil until a pass has completed,
 				// and nil is sent as an absent field.
@@ -963,9 +964,9 @@ func (n *Node) sendHeartbeat(ctx context.Context, endpoint string) {
 			return state
 		},
 		// The heartbeat doubles as the live bootstrap exchange: we report our
-		// destination and the coordinator answers with a few reachable peers to
-		// dial into the DHT. Dialling can block on I2P tunnel build, so run it
-		// off the heartbeat goroutine.
+		// address and the coordinator answers with a few reachable peers to
+		// dial into the DHT. Dialling builds overlay circuits and can take a
+		// while, so run it off the heartbeat goroutine.
 		OnPeers: func(peers []string) {
 			go n.connectBootstrapPeers(ctx, peers)
 		},
@@ -1051,7 +1052,10 @@ func (n *Node) bootstrapCfg() *bootstrap.Config {
 // second layer when there is no key to check against.
 func (n *Node) refreshDiscoveredBootstrap(ctx context.Context, cfg *bootstrap.Config) {
 	now := time.Now()
-	result, err := bootstrap.Fetch(ctx, n.http, nil, *cfg, n.logger, now)
+	// Direct: the sources are gateways on clearnet, which the overlay has no
+	// exit to reach, and the document is signed, so the path it took does not
+	// matter.
+	result, err := bootstrap.Fetch(ctx, n.directHTTP, nil, *cfg, n.logger, now)
 	if err != nil {
 		// T16.2. Every source is unreachable, so there is no document to
 		// verify and no coordinator key to refresh -- but joining the DHT does
@@ -1190,34 +1194,23 @@ func (n *Node) refreshBootstrap(ctx context.Context) {
 		return
 	}
 	req.Header.Set("Accept", "application/json")
-	resp, err := n.http.Do(req)
-	if err != nil && n.directHTTP != nil {
-		// The proxied attempt failed. Retry DIRECT rather than give up.
+	client := n.coordinatorHTTP()
+	resp, err := client.Do(req)
+	if err != nil && n.directHTTP != nil && client != n.directHTTP {
+		// The overlay attempt failed. Retry DIRECT rather than give up: without
+		// the document a node learns no peers at all, and one unreachable
+		// origin service must not keep the network unformed.
 		//
-		// n.http routes through the I2P HTTP proxy, which reaches clearnet only
-		// via an outproxy. Measured on every node in this network: the proxied
-		// fetch fails (000) while the same URL answers 200 directly, because a
-		// young router has no addressbook entry for any outproxy -- and
-		// exit.stormycloud.i2p, false.i2p, purokishi.i2p and
-		// outproxy.acetone.i2p all failed. Without the document a node learns no
-		// peers at all, so this one failure kept the whole network unformed.
-		//
-		// Falling back leaks nothing new: the heartbeat at
-		// internal/heartbeat already POSTs to rabbiit.io over clearnet by
-		// deliberate design, so the site knows this node's address regardless.
-		// NOT gated on i2pOnly, and that is deliberate rather than an oversight.
-		// Open() passes i2pOnly=true for every storage node, so gating on it
-		// disables this fallback in precisely the configuration that needs it --
-		// measured: the flag was set, the fallback never ran, and the node sat
-		// logging "bootstrap unavailable" forever. The flag is also already
-		// inconsistent with the heartbeat, which goes direct on these same
-		// nodes; it describes PEER TRAFFIC staying inside I2P, which this fetch
-		// is not.
+		// Falling back leaks nothing new: the heartbeat at internal/heartbeat
+		// already POSTs to rabbiit.io over clearnet by deliberate design, so
+		// the site knows this node's address regardless. NOT gated on
+		// overlayOnly, which describes PEER TRAFFIC staying inside the
+		// overlay; this fetch is not peer traffic.
 		directReq, rerr := http.NewRequestWithContext(ctx, http.MethodGet, n.bootstrap, nil)
 		if rerr == nil {
 			directReq.Header.Set("Accept", "application/json")
 			if dresp, derr := n.directHTTP.Do(directReq); derr == nil {
-				n.logger.Printf("bootstrap over I2P failed (%v); fetched it directly instead", err)
+				n.logger.Printf("bootstrap through AXON failed (%v); fetched it directly instead", err)
 				resp, err = dresp, nil
 			}
 		}
@@ -1236,7 +1229,7 @@ func (n *Node) refreshBootstrap(ctx context.Context) {
 		return
 	}
 	var document BootstrapDocument
-	if err := json.Unmarshal(body, &document); err != nil || document.Version != 1 {
+	if err := json.Unmarshal(body, &document); err != nil || document.Version != bootstrap.DocumentVersion {
 		n.logger.Printf("bootstrap document rejected")
 		return
 	}
@@ -1252,6 +1245,7 @@ func (n *Node) refreshBootstrap(ctx context.Context) {
 	n.keyMu.Lock()
 	n.coordKey = append(ed25519.PublicKey(nil), publicKey...)
 	n.keyMu.Unlock()
+	n.useOrigin(document.Origin)
 	n.connectBootstrapPeers(ctx, document.Peers)
 }
 
@@ -1263,7 +1257,7 @@ func (n *Node) refreshBootstrap(ctx context.Context) {
 func (n *Node) connectBootstrapPeers(ctx context.Context, peers []string) {
 	for _, value := range peers {
 		address, err := multiaddr.NewMultiaddr(value)
-		if err != nil || n.i2pOnly && !syndii2p.IsI2PAddr(address) {
+		if err != nil || n.overlayOnly && !axontransport.IsAxonAddr(address) {
 			continue
 		}
 		info, err := peer.AddrInfoFromP2pAddr(address)
@@ -1289,8 +1283,8 @@ func (n *Node) connectBootstrapPeers(ctx context.Context, peers []string) {
 			continue
 		}
 		dialTimeout := directDialTimeout
-		if n.i2pOnly {
-			dialTimeout = i2pDialTimeout
+		if n.overlayOnly {
+			dialTimeout = overlayDialTimeout
 		}
 		connectCtx, cancel := context.WithTimeout(ctx, dialTimeout)
 		err = n.host.Connect(connectCtx, *info)
@@ -1372,7 +1366,7 @@ func (n *Node) handleStream(stream network.Stream) {
 		n.handleChallengeFrame(stream, reader, header.Size)
 	case ComputeAdmit, ComputeSubmit, ComputeResult:
 		// Compute, riding this protocol as three more operations for the same
-		// reason pof-challenge does: a second protocol ID means a second I2P
+		// reason pof-challenge does: a second protocol ID means a second AXON
 		// tunnel to build and keep alive, reaching strictly fewer peers.
 		//
 		// Listed as exact cases, not matched by prefix. A prefix test would pull
@@ -1482,7 +1476,7 @@ const advertiseInterval = 10 * time.Minute
 // doing so.
 //
 // It used to run exactly once, at startup, and return. That is precisely when it
-// cannot work: I2P tunnels take minutes to build, so the routing table is still
+// cannot work: overlay circuits take time to build, so the routing table is still
 // empty and every announce fails with "failed to find any peer in table". The
 // backlog was then never advertised again for the lifetime of the process, so a
 // node that had accumulated shards before meeting a peer stayed invisible --
@@ -1574,7 +1568,7 @@ func (n *Node) replicateOnce(ctx context.Context) {
 	peers := len(n.host.Network().Peers())
 	if peers == 0 {
 		// RECORDED, not skipped. "Nowhere to push" is a diagnosis in its own
-		// right -- it is what an i2pd that has core-dumped looks like from here,
+		// right -- it is what a node that has lost the overlay looks like from here,
 		// and it is the difference between a node being refused and a node that
 		// is alone. Returning silently would leave this node reporting nothing,
 		// which the coordinator draws identically to a build too old to report.
@@ -1714,22 +1708,18 @@ func (n *Node) requestLease(ctx context.Context, target peer.ID, objectID, shard
 	req.Header.Set("Accept", "application/json")
 	req.Header.Set("X-Rabbiit-Node", n.host.ID().String())
 	req.Header.Set("X-Rabbiit-Signature", base64.RawStdEncoding.EncodeToString(signature))
-	resp, err := n.http.Do(req)
-	if err != nil && n.directHTTP != nil {
+	client := n.coordinatorHTTP()
+	resp, err := client.Do(req)
+	if err != nil && n.directHTTP != nil && client != n.directHTTP {
 		// Same fallback as refreshBootstrap, and needed for the same reason.
 		// EVERY shard placement asks the site for a lease first, so when this
-		// call fails nothing disperses at all -- measured on production:
-		//   shard dafcbae37ed8 not placed on 12D3KooWArj768...:
-		//   proxyconnect tcp: dial tcp 127.0.0.1:4444: connect: connection refused
-		// with "placed 0, failed 9" for every chunk, against nine peers the
-		// planner had already chosen correctly. The peers were fine; the lease
-		// request never left the machine.
+		// call fails nothing disperses at all: "placed 0, failed 9" for every
+		// chunk, against nine peers the planner had already chosen correctly.
+		// The peers would be fine; the lease request would never arrive.
 		//
-		// n.http goes through the I2P HTTP proxy, which is absent in the
-		// container deployment and reaches clearnet only via an outproxy
-		// elsewhere. Falling back direct leaks nothing new: this is a SIGNED
-		// request to rabbiit.io naming this node, sent to the same host the
-		// heartbeat already contacts directly.
+		// Falling back direct leaks nothing new: this is a SIGNED request to
+		// rabbiit.io naming this node, sent to the same host the heartbeat
+		// already contacts directly.
 		directReq, rerr := http.NewRequestWithContext(ctx, http.MethodPost, leaseURL, bytes.NewReader(body))
 		if rerr == nil {
 			directReq.Header = req.Header.Clone()
@@ -1820,7 +1810,7 @@ func (n *Node) storeOnPeer(ctx context.Context, target peer.ID, objectID, shardI
 // looks: n.bootstrapPeers is append-only and never pruned, and this file says
 // so itself ("it only records that a dial once succeeded... it cannot be used to
 // decide whether the node still has a network"). Every stale entry in it is a
-// fresh I2P dial worth up to i2pDialTimeout (2 minutes) charged against the
+// fresh overlay dial worth up to overlayDialTimeout (2 minutes) charged against the
 // caller's 3-minute budget, so the provider lookup that actually knows the
 // answer was regularly never reached. A recorded holder is a node that
 // confirmed these exact bytes, which is the strongest evidence available.
@@ -1893,10 +1883,10 @@ func (n *Node) FetchShard(ctx context.Context, shardID string, hints []string) (
 }
 
 func (n *Node) acceptablePeerAddrs(values []multiaddr.Multiaddr) []multiaddr.Multiaddr {
-	if !n.i2pOnly {
+	if !n.overlayOnly {
 		return values
 	}
-	return i2pAddressesOnly(values)
+	return overlayAddressesOnly(values)
 }
 
 func (n *Node) fetchFromPeer(ctx context.Context, candidate peer.ID, shardID string) ([]byte, error) {
@@ -1905,7 +1895,7 @@ func (n *Node) fetchFromPeer(ctx context.Context, candidate peer.ID, shardID str
 		return nil, err
 	}
 	defer stream.Close()
-	// Honour the caller's budget: over I2P even a small shard's round trip
+	// Honour the caller's budget: over AXON even a small shard's round trip
 	// exceeds a few seconds, and the old fixed 5s deadline aborted the read
 	// mid-transfer. Fall back to a generous ceiling only when unbounded.
 	deadline := time.Now().Add(2 * time.Minute)

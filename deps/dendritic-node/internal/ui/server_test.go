@@ -15,7 +15,7 @@ import (
 type testNode struct{}
 
 func (testNode) ID() string          { return "test-node" }
-func (testNode) Addresses() []string { return []string{"/garlic32/test/p2p/12D3Koo"} }
+func (testNode) Addresses() []string { return []string{"/axon/test/p2p/12D3Koo"} }
 func (testNode) PeerCount() int      { return 3 }
 
 func TestDashboardRejectsDNSRebindingHosts(t *testing.T) {

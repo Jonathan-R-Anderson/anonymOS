@@ -119,7 +119,7 @@ func main() {
 	var cfgMu sync.Mutex
 	var storageNode *store.Store
 	if noStorage {
-		logger.Printf("storage subsystems skipped: shard store, S3, I2P (management page stays up)")
+		logger.Printf("storage subsystems skipped: shard store, S3, AXON storage DHT (management page stays up)")
 	}
 	if !noStorage {
 		logger.Printf("opening encrypted shard store: %s", filepath.Join(cfg.DataDir, "storage"))
@@ -143,9 +143,29 @@ func main() {
 	if noStorage {
 		logger.Printf("loading standalone gateway identity from %s", cfg.DataDir)
 		signer, err = gateway.LoadOrCreateFileIdentity(cfg.DataDir)
+		// A gateway or probe box with a public address can relay for the
+		// overlay without storing anything.
+		if err == nil && cfg.Axon.Relay {
+			overlay, _, oerr := startOverlay(ctx, cfg, true, logger)
+			if oerr != nil {
+				logger.Fatal(oerr)
+			}
+			defer overlay.Close()
+		}
 	} else {
-		logger.Printf("starting I2P transport and storage DHT via SAM %s", cfg.I2PSAM)
-		node, err = p2p.Open(ctx, cfg.DataDir, cfg.I2PSAM, cfg.I2PHTTPProxy, storageNode, logger)
+		logger.Printf("joining the AXON overlay for the storage DHT")
+		overlay, origin, oerr := startOverlay(ctx, cfg, cfg.Axon.Relay, logger)
+		if oerr != nil {
+			logger.Fatal(oerr)
+		}
+		defer overlay.Close()
+		if cfg.Axon.ProxyListen != "" {
+			startAxonProxy(ctx, cfg.Axon.ProxyListen, overlay, logger)
+		}
+		node, err = p2p.Open(ctx, cfg.DataDir, p2p.Overlay{Runtime: overlay, Origin: origin}, storageNode, logger)
+		if err == nil {
+			logger.Printf("storage DHT on AXON at %s", node.AxonAddress())
+		}
 	}
 	if err != nil {
 		logger.Fatal(err)
@@ -850,7 +870,7 @@ func main() {
 	}
 	// Distributed Container Service. Off unless dcs.enabled + role.worker; a
 	// no-op otherwise, and non-fatal if Docker is unreachable. Needs the full
-	// storage node (host, DHT, I2P, store), so it is wired here in that path.
+	// storage node (host, DHT, overlay, store), so it is wired here in that path.
 	if !noStorage {
 		startDCSWorker(ctx, cfg, node, storageNode, logger)
 		// Compute, made reachable from the network rather than from loopback

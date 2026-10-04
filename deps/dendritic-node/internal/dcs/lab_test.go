@@ -120,8 +120,8 @@ type fakeSession struct {
 	closed bool
 }
 
-func (f *fakeSession) Base32() string { return f.addr }
-func (f *fakeSession) Close() error   { f.closed = true; return nil }
+func (f *fakeSession) Address() string { return f.addr }
+func (f *fakeSession) Close() error    { f.closed = true; return nil }
 func (f *fakeSession) AcceptStreamPort() (net.Conn, int, error) {
 	return nil, 0, errors.New("fake session does not accept streams")
 }
@@ -134,9 +134,9 @@ type fakeOpener struct {
 
 func (f *fakeOpener) Open(_ context.Context, keyPath string) (Session, error) {
 	f.n++
-	// 52 chars of base32, distinct per call.
-	body := strings.Repeat("abcdefgh", 7)[:51] + string(rune('a'+f.n%26))
-	addr := body + ".b32.i2p"
+	// 56 chars of base32, distinct per call.
+	body := strings.Repeat("abcdefgh", 7)[:55] + string(rune('a'+f.n%26))
+	addr := body + ".key.axon"
 	f.made = append(f.made, addr)
 	f.paths = append(f.paths, keyPath)
 	return &fakeSession{addr: addr}, nil
@@ -156,14 +156,14 @@ func TestEachContainerGetsItsOwnDestination(t *testing.T) {
 		t.Fatal(err)
 	}
 	if a.Destination == b.Destination {
-		t.Fatal("two containers share one I2P destination; co-location is observable")
+		t.Fatal("two containers share one AXON address; co-location is observable")
 	}
 	// Separate key files, so one container's key cannot impersonate another.
 	if opener.paths[0] == opener.paths[1] {
 		t.Fatalf("both containers used the same key file: %s", opener.paths[0])
 	}
 	for _, p := range opener.paths {
-		if filepath.Base(p) != "i2p.destination" {
+		if filepath.Base(p) != "axon.service.key" {
 			t.Fatalf("unexpected key path %s", p)
 		}
 	}
@@ -239,7 +239,7 @@ func TestImplausibleAddressIsRejected(t *testing.T) {
 	bad := &badOpener{}
 	alloc := NewAddressAllocator(bad, t.TempDir())
 	if _, err := alloc.Allocate(context.Background(), "c", true); err == nil {
-		t.Fatal("a malformed I2P address was accepted as a container identity")
+		t.Fatal("a malformed AXON address was accepted as a container identity")
 	}
 	if !bad.closed {
 		t.Fatal("the rejected session was leaked instead of closed")
@@ -254,8 +254,8 @@ func (b *badOpener) Open(context.Context, string) (Session, error) {
 
 type closerSession struct{ onClose func() }
 
-func (c *closerSession) Base32() string { return "192.0.2.1" } // not an I2P address
-func (c *closerSession) Close() error   { c.onClose(); return nil }
+func (c *closerSession) Address() string { return "192.0.2.1" } // not an AXON address
+func (c *closerSession) Close() error    { c.onClose(); return nil }
 func (c *closerSession) AcceptStreamPort() (net.Conn, int, error) {
 	return nil, 0, errors.New("fake session does not accept streams")
 }

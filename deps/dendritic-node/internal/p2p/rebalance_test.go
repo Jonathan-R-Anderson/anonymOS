@@ -311,7 +311,7 @@ func TestTheSourceIsNotAskedToDeleteUntilTheDestinationIsVerified(t *testing.T) 
 //
 // Every node here is off the target by 1.5 GiB against a 2 GiB band. Without a
 // deadband those differences are "work": two nodes a megabyte apart trade shards
-// forever, and every trade costs a lease, a revocation and two I2P round trips.
+// forever, and every trade costs a lease, a revocation and two overlay round trips.
 //
 // Reverted to prove it fails: LevelDeadband set to 0. The 1.5 GiB differences
 // then exceed the remaining floor and the mover starts trading.
@@ -359,7 +359,7 @@ func TestNodesInsideTheDeadbandProduceNoMoves(t *testing.T) {
 // under the threshold; the others are untouched and have margin to spare. That
 // separation is the point: the guard is about the OBJECT, because while any part
 // of it is short the whole object is a dispersal problem, and spending leases
-// and I2P round trips tidying its healthy chunks is work taken from the loop
+// and overlay round trips tidying its healthy chunks is work taken from the loop
 // that is trying to make it whole. With a single-chunk object the object guard
 // and the per-chunk margin guard cannot be told apart, and a test that cannot
 // tell them apart cannot show either one is load-bearing.

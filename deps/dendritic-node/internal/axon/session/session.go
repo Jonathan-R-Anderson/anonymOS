@@ -319,6 +319,20 @@ func NewClient(keySeed [32]byte, cfg Config) (*Session, error) {
 	return newSession(Client, id, keySeed, cfg), nil
 }
 
+// NewClientWithID starts a client session under an id chosen beforehand. The
+// rendezvous needs it: the id travels inside INTRODUCE1, and the KEY_SEED it is
+// combined with exists only once RENDEZVOUS2 has come back.
+func NewClientWithID(keySeed [32]byte, id ID, cfg Config) *Session {
+	return newSession(Client, id, keySeed, cfg)
+}
+
+// NewID is a fresh session id.
+func NewID() (ID, error) {
+	var id ID
+	_, err := rand.Read(id[:])
+	return id, err
+}
+
 // NewService starts the service end for a session id the client chose.
 func NewService(keySeed [32]byte, id ID, cfg Config) *Session {
 	return newSession(Service, id, keySeed, cfg)

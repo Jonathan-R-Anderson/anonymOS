@@ -7,6 +7,8 @@ import (
 	"encoding/base64"
 	"encoding/json"
 	"fmt"
+	"github.com/rabbiit/maniwani/storage-client/internal/bootstrap"
+	"io"
 	"math/big"
 	"net/http"
 	"net/http/httptest"
@@ -44,13 +46,13 @@ func newCoord(t *testing.T) (*Coordinator, ed25519.PublicKey) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	return NewCoordinator(priv, []string{"/garlic32/" + strings.Repeat("a", 52) + "/p2p/12D3KooWseed"}, store), pub
+	return NewCoordinator(priv, []string{"/axon/" + strings.Repeat("a", 56) + "/p2p/12D3KooWseed"}, store), pub
 }
 
 func signedHeartbeat(t *testing.T, nodeKey ed25519.PrivateKey, ts int64, nonce string) ([]byte, string, string) {
 	id := peerIDFor(nodeKey.Public().(ed25519.PublicKey))
 	body, _ := json.Marshal(map[string]any{"version": 1, "node_id": id, "timestamp": ts, "nonce": nonce,
-		"capacity_bytes": int64(1 << 30), "platform": "anonymos/amd64", "i2p_destination": strings.Repeat("b", 52)})
+		"capacity_bytes": int64(1 << 30), "platform": "anonymos/amd64", "axon_address": strings.Repeat("b", 56) + ".key.axon"})
 	sig := strings.TrimRight(base64.StdEncoding.EncodeToString(ed25519.Sign(nodeKey, body)), "=")
 	return body, id, sig
 }
@@ -106,46 +108,53 @@ func TestHeartbeatRefusals(t *testing.T) {
 	}
 }
 
-// verifyLikeNode re-checks a document the way the node's internal/bootstrap does: rebuild the
-// signed message from the parsed fields and verify it against the pinned key.
-func verifyLikeNode(doc bootstrapDocument, pinned ed25519.PublicKey) error {
-	sig, err := base64.StdEncoding.DecodeString(doc.Signature)
+// verifyLikeNode checks a document with the node's own verifier: internal/bootstrap parses the
+// served bytes and rebuilds the signed message from them, exactly as a joining node does.
+func verifyLikeNode(raw []byte, pinned ed25519.PublicKey) (*bootstrap.Document, error) {
+	doc, rawExpires, err := bootstrap.Parse(raw)
 	if err != nil {
-		return err
+		return nil, err
 	}
-	if doc.CoordinatorPublicKey != strings.TrimRight(base64.StdEncoding.EncodeToString(pinned), "=") {
-		return fmt.Errorf("signed by an unexpected coordinator")
+	if err := bootstrap.Verify(doc, rawExpires, base64.StdEncoding.EncodeToString(pinned)); err != nil {
+		return nil, err
 	}
-	if !ed25519.Verify(pinned, BootstrapMessage(doc.Peers, doc.CoordinatorPublicKey, doc.ExpiresAt), sig) {
-		return fmt.Errorf("signature did not verify")
+	if time.Now().After(doc.ExpiresAt) {
+		return nil, fmt.Errorf("expired")
 	}
-	exp, err := time.Parse(time.RFC3339Nano, doc.ExpiresAt)
-	if err != nil || time.Now().After(exp) {
-		return fmt.Errorf("expired or malformed expiry: %v", err)
-	}
-	return nil
+	return doc, nil
 }
 
 func TestBootstrapDocumentVerifies(t *testing.T) {
 	c, coordPub := newCoord(t)
+	relay := "/ip4/203.0.113.7/tcp/4001/p2p/12D3KooWE4cFJCDqC8j9u7P2ZvbFpXo2mQpdE95ojGCoSJPR8ofb"
+	origin := "t2wjif2vwjmam26dhdjpi5uoy2vszh6ndhe4offhcaq6a3jhyc4yieyb.key.axon"
+	c.SetOverlay([]string{relay, "not a relay"}, origin)
 	srv := httptest.NewServer(func() http.Handler { m := http.NewServeMux(); c.Register(m); return m }())
 	defer srv.Close()
 	resp, err := http.Get(srv.URL + "/.well-known/rabbiit/storage-node.json")
 	if err != nil {
 		t.Fatal(err)
 	}
-	var doc bootstrapDocument
-	if err := json.NewDecoder(resp.Body).Decode(&doc); err != nil {
-		t.Fatal(err)
-	}
-	if err := verifyLikeNode(doc, coordPub); err != nil {
+	raw, _ := io.ReadAll(resp.Body)
+	resp.Body.Close()
+	doc, err := verifyLikeNode(raw, coordPub)
+	if err != nil {
 		t.Fatalf("bootstrap document: %v", err)
 	}
-	if len(doc.Peers) != 1 {
-		t.Fatalf("peers = %v", doc.Peers)
+	if len(doc.Peers) != 1 || len(doc.Relays) != 1 || doc.Relays[0] != relay || doc.Origin != origin {
+		t.Fatalf("peers = %v, relays = %v, origin = %q", doc.Peers, doc.Relays, doc.Origin)
 	}
-	doc.Peers = append(doc.Peers, "/garlic32/"+strings.Repeat("c", 52)+"/p2p/12D3KooWevil")
-	if verifyLikeNode(doc, coordPub) == nil {
+	var tampered map[string]any
+	json.Unmarshal(raw, &tampered)
+	tampered["relays"] = []string{"/ip4/198.51.100.66/tcp/4001/p2p/12D3KooWevil"}
+	forged, _ := json.Marshal(tampered)
+	if _, err := verifyLikeNode(forged, coordPub); err == nil {
+		t.Fatal("a document with a swapped relay still verified")
+	}
+	json.Unmarshal(raw, &tampered)
+	tampered["peers"] = append(doc.Peers, "/axon/"+strings.Repeat("c", 56)+"/p2p/12D3KooWevil")
+	forged, _ = json.Marshal(tampered)
+	if _, err := verifyLikeNode(forged, coordPub); err == nil {
 		t.Fatal("a peer list with an added peer still verified")
 	}
 }

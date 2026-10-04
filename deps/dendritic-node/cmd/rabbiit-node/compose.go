@@ -22,7 +22,7 @@ import (
 //
 // Containment: before `up`, every host port publish is stripped from the compose
 // file (see dcs.SanitizeComposeForContainment), so a lab binds nothing on the
-// worker's clearnet. The only way in is the I2P destination the agent attaches to
+// worker's clearnet. The only way in is the AXON address the agent attaches to
 // the primary service's container.
 type dockerComposeRunner struct {
 	baseDir  string   // project working dirs live under here

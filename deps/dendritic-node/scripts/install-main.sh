@@ -9,16 +9,21 @@
 #
 # Two service managers are supported, systemd and OpenRC, because Alpine has no
 # systemd and boot-start is the whole point of the default install. Everything
-# outside install_unit/start_router/start_docker is manager-agnostic.
+# outside install_unit/start_docker is manager-agnostic.
+#
+# NETWORKING NEEDS NOTHING FROM THIS SCRIPT. The node carries its own anonymity
+# overlay (AXON) inside the binary: no separate daemon to install, nothing to
+# wait for, no proxy to configure. It fetches its seed relays from the signed
+# bootstrap document over direct HTTPS and retries joining with backoff on its
+# own, so the service has no readiness dependency to order after.
 #
 # BUSYBOX: Alpine's coreutils are busybox applets. That rules out `useradd`,
 # `runuser`, `sudo`, GNU-style `adduser` flags, `install -o` with a numeric id,
 # and `--` end-of-options on `install`. Each is handled where it appears; none
 # of them is assumed.
 #
-# bash, not sh, for /dev/tcp: the most important check here is a real SAM
-# handshake on 127.0.0.1:7656, and bash opens a TCP socket without nc, socat or
-# python, none of which are guaranteed on a fresh server.
+# bash, not sh, for arrays and /dev/tcp: the port-clash checks open a TCP socket
+# without nc, socat or python, none of which are guaranteed on a fresh server.
 #
 # Shape: DETECT -> REPORT -> ASK -> ACT, never interleaved. Nothing in DETECT
 # writes to the machine, which is what makes --check honest: not a second code
@@ -28,16 +33,13 @@
 # to one DO_* flag set in DETECT and consumed by one ACT function:
 #
 #   PKGS[]              -> package rows          -> install_packages
-#   DO_CONFIGURE_I2PD   -> I2P router (SAM)      -> configure_i2pd
-#   DO_ENABLE_ROUTER    -> I2P router on boot    -> start_router
-#   DO_START_ROUTER     -> I2P router (SAM)      -> start_router
 #   DO_ENABLE_DOCKER    -> Docker Engine         -> start_docker
 #   DO_BOOTSTRAP_GO     -> Go toolchain          -> bootstrap_go
 #   DO_BUILD_BINARY     -> rabbiit-node binary -> build_binary
 #   DO_CREATE_USER      -> service account       -> create_user_and_dirs
 #   DO_ADD_DOCKER_GROUP -> docker group          -> add_docker_group,
 #                                                    install_compute_dropin
-#   INSTALL_SERVICE     -> boot service, SAM readiness helper, data directory
+#   INSTALL_SERVICE     -> boot service, data directory
 #
 # Add an action, add its row. A --check that under-promises is a lie.
 #
@@ -110,16 +112,9 @@ NODE_USER="rabbiit"
 NODE_GROUP="rabbiit"
 PREFIX="/usr/local"
 BIN_DEST="$PREFIX/bin/rabbiit-node"
-WAIT_HELPER="$PREFIX/lib/rabbiit/wait-for-sam"
 UNIT_PATH="/etc/systemd/system/rabbiit-node.service"
 UNIT_DROPIN="/etc/systemd/system/rabbiit-node.service.d/10-compute.conf"
 OPENRC_PATH="/etc/init.d/rabbiit-node"
-
-# Not tunable, on purpose. Java I2P delays its SAM client app by 120s and a cold
-# router still has tunnels to build after that, so any budget short enough to be
-# worth shortening mostly measures how fast this script gives up on a router
-# that was going to work.
-SAM_WAIT_SECONDS=300
 
 GO_ROOT_DEST="/usr/local/go"
 GO_BIN_LINK="/usr/local/bin/go"
@@ -172,8 +167,13 @@ Options:
                        so this is the escape hatch when 9090 is taken.
   -h, --help           This text.
 
+Networking needs no setup: the AXON overlay is built into the node, which
+finds its seed relays itself. Relaying for other nodes is off by default; to
+offer it, set axon.relay and axon.listen in config.json and make that port
+reachable from the internet (firewall rule / NAT forward).
+
 gateway-only and probe-only nodes are configured by setting run_mode in
-config.json (see GATEWAY.md); they need no I2P router and are out of scope here.
+config.json (see GATEWAY.md); they are out of scope here.
 
 Exit: 0 ok; 1 required dependency missing (--check) or install failed; 2 usage.
 EOF
@@ -304,17 +304,11 @@ pkg_add() {
   return 0
 }
 
-DO_CONFIGURE_I2PD=0
-DO_ENABLE_ROUTER=0
-DO_START_ROUTER=0
 DO_ENABLE_DOCKER=0
 DO_BOOTSTRAP_GO=0
 DO_BUILD_BINARY=0
 DO_CREATE_USER=0
 DO_ADD_DOCKER_GROUP=0
-ROUTER_KIND=""       # i2pd | java | none
-ROUTER_UNIT=""
-I2PD_CONF=""
 DOCKER_UNIT=""
 GO_CMD=""
 BINARY_RESOLVED=""
@@ -363,7 +357,6 @@ fi
 # finds out later it was not what they needed.
 pkg_name_for() {
   case "$PKG_MGR:$1" in
-    apt:i2pd|dnf:i2pd|yum:i2pd|pacman:i2pd|zypper:i2pd|apk:i2pd) echo "i2pd" ;;
     apt:ca-certificates|dnf:ca-certificates|yum:ca-certificates|pacman:ca-certificates|zypper:ca-certificates|apk:ca-certificates) echo "ca-certificates" ;;
     apt:docker) echo "docker.io" ;;
     dnf:docker|yum:docker) echo "moby-engine" ;;
@@ -401,52 +394,6 @@ tcp_open() {
   return 1
 }
 
-# sam_probe -- the ONLY correct readiness test for the I2P transport.
-# 0 = SAM answered RESULT=OK, 1 = nothing listening, 2 = connected but silent,
-# 3 = something that is not SAM owns the port. Byte-for-byte what
-# internal/i2p/sam.go connectSAM does, so a pass here guarantees the node's own
-# handshake passes; a bare TCP connect does not.
-#
-# NOT THE CONSOLE PORTS. 7657 (Java) and 7070 (i2pd) bind immediately at router
-# start, but Java I2P ships SAM with clientApp.N.delay=120, so SAM opens ~2
-# minutes later. Checking a console port reports success, systemd starts the
-# node, p2p.Open gets ECONNREFUSED, main.go calls logger.Fatal -- the node has NO
-# startup retry. Literal 127.0.0.1, never "localhost": where the resolver
-# prefers ::1, "localhost" can reach a console on [::1] and miss the bridge.
-sam_probe() {
-  local line=""
-  if ! { exec 3<>"/dev/tcp/127.0.0.1/7656"; } 2>/dev/null; then return 1; fi
-  if ! printf 'HELLO VERSION MIN=3.1 MAX=3.3\n' >&3 2>/dev/null; then exec 3>&-; return 2; fi
-  if ! IFS= read -r -t 10 line <&3; then exec 3>&-; return 2; fi
-  exec 3>&-
-  case "$line" in
-    "HELLO REPLY"*RESULT=OK*) return 0 ;;
-    *) return 3 ;;
-  esac
-}
-
-# "Fail fast" is wrong here: the thing waited for is known to be slow, and
-# giving up early costs an operator who reinstalls a router that was working.
-# The one thing that DOES fail fast is a non-SAM reply -- waiting cannot fix a
-# port collision, and continuing to wait hides it.
-wait_for_sam() {
-  local budget="$1" waited=0 rc=0
-  while :; do
-    rc=0; sam_probe || rc=$?
-    case "$rc" in
-      0) return 0 ;;
-      3) warn "127.0.0.1:7656 answered, but not with a SAM greeting -- something other than an I2P router owns that port"
-         return 3 ;;
-    esac
-    [ "$waited" -ge "$budget" ] && return 1
-    if [ "$waited" -gt 0 ] && [ $((waited % 30)) -eq 0 ]; then
-      note "still waiting for the SAM bridge (${waited}s of ${budget}s) -- normal for a Java router"
-    fi
-    sleep 2
-    waited=$((waited + 2))
-  done
-}
-
 free_mib() { # MiB free on the filesystem holding the nearest existing ancestor
   local d="$1"
   while [ ! -d "$d" ] && [ "$d" != "/" ]; do d="$(dirname "$d")"; done
@@ -470,14 +417,6 @@ service_exists() {
   return 1
 }
 
-service_is_enabled() { # service_is_enabled NAME-as-this-manager-calls-it
-  case "$SERVICE_MGR" in
-    systemd) systemctl is-enabled "$1" >/dev/null 2>&1 ;;
-    openrc)  rc-update show default 2>/dev/null | grep -q "^ *$1 " ;;
-    *) return 1 ;;
-  esac
-}
-
 service_enable() {
   case "$SERVICE_MGR" in
     systemd) run systemctl enable "$1" ;;
@@ -486,7 +425,6 @@ service_enable() {
 }
 
 service_start()   { case "$SERVICE_MGR" in systemd) run systemctl start "$1" ;; openrc) run rc-service "$1" start ;; esac; }
-service_restart() { case "$SERVICE_MGR" in systemd) run systemctl restart "$1" ;; openrc) run rc-service "$1" restart ;; esac; }
 
 sha_of() { sha256sum | awk '{print $1}'; }
 MARKER_PREFIX="# managed-by: rabbiit install.sh v$VERSION sha256="
@@ -517,153 +455,22 @@ detect_ca_certs() {
   local f
   for f in /etc/ssl/certs/ca-certificates.crt /etc/pki/tls/certs/ca-bundle.crt /etc/ssl/cert.pem; do
     if [ -s "$f" ]; then
-      plan ok "CA trust store" "heartbeat, gateway" "$f"
+      plan ok "CA trust store" "AXON, heartbeat, gateway" "$f"
       return 0
     fi
   done
-  # Nastier than it looks: the presence heartbeat is a real clearnet HTTPS POST
-  # to rabbiit.io (Proxy is nil on purpose). With no root certs every
-  # peer-to-peer thing works and the node is invisible to the site -- a split
-  # brain with no error anywhere the operator is looking.
+  # Nastier than it looks: the node joins the AXON overlay by fetching its seed
+  # relays from the signed bootstrap document over direct HTTPS, and the
+  # presence heartbeat is a real clearnet HTTPS POST to rabbiit.io (Proxy is nil
+  # on purpose). With no root certs the node retries the join forever and is
+  # invisible to the site, with no error anywhere the operator is looking.
   REQUIRED_MISSING=1
   local p; p="$(pkg_name_for ca-certificates)"
   if [ -n "$p" ]; then
     pkg_add "$p"
-    plan fix "CA trust store" "heartbeat, gateway" "no CA bundle found; will install $p"
+    plan fix "CA trust store" "AXON, heartbeat, gateway" "no CA bundle found; will install $p"
   else
-    plan manual "CA trust store" "heartbeat, gateway" "no CA bundle found; install your distro's ca-certificates package"
-  fi
-  return 0
-}
-
-detect_router_install() {
-  # The shipped packaging unit hardcodes Requires=i2pd.service, which fails the
-  # node outright ("Unit i2pd.service not found") on a machine running the Java
-  # router as i2p.service, before it ever tries SAM. The generated unit names
-  # the router actually found.
-  if have i2pd || [ -f /etc/i2pd/i2pd.conf ]; then
-    ROUTER_KIND="i2pd"
-  elif have i2prouter || [ -f /usr/share/i2p/clients.config ] || [ -d /var/lib/i2p ]; then
-    ROUTER_KIND="java"
-  else
-    ROUTER_KIND="none"
-  fi
-  local u
-  for u in i2pd i2p; do
-    if service_exists "$u"; then
-      ROUTER_UNIT="$SERVICE_FOUND"
-      [ "$u" = "i2pd" ] && ROUTER_KIND="i2pd"
-      [ "$u" = "i2p" ] && [ "$ROUTER_KIND" = "none" ] && ROUTER_KIND="java"
-      break
-    fi
-  done
-  [ "$ROUTER_KIND" = "i2pd" ] && [ -f /etc/i2pd/i2pd.conf ] && I2PD_CONF="/etc/i2pd/i2pd.conf"
-  return 0
-}
-
-detect_i2p() {
-  local rc=0
-  sam_probe || rc=$?
-  detect_router_install
-
-  if [ "$rc" = "0" ]; then
-    # A live bridge answers the question completely. Install no router, edit no
-    # router config, restart nothing: only one process can hold 7656, and a
-    # second router loses the bind and says so in a log nobody is reading. An
-    # operator's working router is never touched.
-    plan ok "I2P router (SAM)" "storage" "SAM v3 answered RESULT=OK on 127.0.0.1:7656 (${ROUTER_KIND:-unknown} router)"
-    detect_router_boot
-    return 0
-  fi
-
-  REQUIRED_MISSING=1
-  if [ "$rc" = "3" ]; then
-    plan manual "I2P router (SAM)" "storage" "127.0.0.1:7656 is held by something that does not speak SAM -- free that port first"
-    return 0
-  fi
-
-  case "$ROUTER_KIND" in
-    i2pd)
-      if [ -n "$I2PD_CONF" ]; then
-        DO_CONFIGURE_I2PD=1
-        DO_START_ROUTER=1
-        plan fix "I2P router (SAM)" "storage" "i2pd installed but SAM silent; will assert [sam]/[httpproxy] in $I2PD_CONF (backed up; mode and owner preserved) and restart ${ROUTER_UNIT:-i2pd}"
-      else
-        plan manual "I2P router (SAM)" "storage" "i2pd is installed but /etc/i2pd/i2pd.conf is missing; set [sam] enabled = true, address = 127.0.0.1, port = 7656 yourself"
-      fi
-      ;;
-    java)
-      # Deliberately NOT edited. The router rewrites clients.config on shutdown;
-      # the SAM entry's index differs between the monolithic file and the
-      # clients.config.d fragments; and an entry with no startOnLoad line is
-      # silently unfixable by sed -- so the old code could stop somebody's
-      # router, change nothing, restart it, and then wait five minutes for a
-      # bridge that was never going to appear. The two-click fix is honest.
-      plan manual "I2P router (SAM)" "storage" "Java I2P found but SAM silent; enable it at http://127.0.0.1:7657/configclients -> 'SAM application bridge' -> Start + 'Run at Startup', then re-run"
-      detect_router_boot
-      ;;
-    *)
-      local p; p="$(pkg_name_for i2pd)"
-      if [ -n "$p" ]; then
-        DO_CONFIGURE_I2PD=1
-        DO_ENABLE_ROUTER=1
-        DO_START_ROUTER=1
-        pkg_add "$p"
-        ROUTER_KIND="i2pd"
-        I2PD_CONF="/etc/i2pd/i2pd.conf"
-        # ROUTER_UNIT is only set where something can actually act on it. With no
-        # service manager the plan must not promise "enable+start"; start_router
-        # could not deliver it, and that is exactly the kind of quiet gap between
-        # --check and ACT this script exists to avoid.
-        if [ -z "$ROUTER_UNIT" ] && [ "$SERVICE_MGR" != "none" ]; then
-          case "$SERVICE_MGR" in openrc) ROUTER_UNIT="i2pd" ;; *) ROUTER_UNIT="i2pd.service" ;; esac
-        fi
-        if [ -n "$ROUTER_UNIT" ]; then
-          plan fix "I2P router (SAM)" "storage" "no router found; will install $p, set its SAM bridge in /etc/i2pd/i2pd.conf, and enable+start $ROUTER_UNIT"
-        else
-          DO_ENABLE_ROUTER=0
-          DO_START_ROUTER=0
-          plan fix "I2P router (SAM)" "storage" "no router found; will install $p and set its SAM bridge in /etc/i2pd/i2pd.conf -- but there is no service manager here, so START IT YOURSELF: i2pd --daemon"
-        fi
-        case "$PKG_MGR" in
-          dnf|yum) plan manual "i2pd repository" "storage" "i2pd is not in Fedora/RHEL's official repos; run 'dnf copr enable supervillain/i2pd' first" ;;
-          apk) plan manual "i2pd repository" "storage" "i2pd lives in Alpine's COMMUNITY repository (verified: v3.23/community, i2pd 2.60.0); make sure community is enabled in /etc/apk/repositories" ;;
-        esac
-      else
-        plan manual "I2P router (SAM)" "storage" "no router found and no known package name here; install i2pd with SAM on 127.0.0.1:7656"
-      fi
-      ;;
-  esac
-  return 0
-}
-
-detect_router_boot() {
-  # Without this the node reboots into nothing: SAM refused, logger.Fatal, and a
-  # unit that looks broken when the router is what never came back.
-  [ -n "$ROUTER_UNIT" ] || return 0
-  if service_is_enabled "$ROUTER_UNIT"; then
-    plan ok "I2P router on boot" "storage" "$ROUTER_UNIT is enabled"
-  else
-    DO_ENABLE_ROUTER=1
-    case "$SERVICE_MGR" in
-      systemd) plan fix "I2P router on boot" "storage" "will run 'systemctl enable $ROUTER_UNIT'" ;;
-      openrc)  plan fix "I2P router on boot" "storage" "will run 'rc-update add $ROUTER_UNIT default'" ;;
-    esac
-  fi
-  return 0
-}
-
-detect_i2p_proxy() {
-  # Same daemon as SAM, separate port, separate config switch. An i2pd with SAM
-  # on and httpproxy off passes every 7656 check and still leaves the node
-  # half-blind: the bootstrap document and every .i2p fetch go through here.
-  if tcp_open 127.0.0.1 4444; then
-    plan ok "I2P HTTP proxy" "storage" "127.0.0.1:4444 accepting connections"
-  elif [ "$DO_CONFIGURE_I2PD" = "1" ]; then
-    # Only claimed when this script actually owns the config it would change.
-    plan fix "I2P HTTP proxy" "storage" "127.0.0.1:4444 silent; [httpproxy] will be set in $I2PD_CONF alongside SAM"
-  else
-    plan manual "I2P HTTP proxy" "storage" "127.0.0.1:4444 silent; enable your router's HTTP proxy on loopback (Java: http://127.0.0.1:7657/i2ptunnelmgr)"
+    plan manual "CA trust store" "AXON, heartbeat, gateway" "no CA bundle found; install your distro's ca-certificates package"
   fi
   return 0
 }
@@ -960,9 +767,10 @@ resolve_runtime_data_dir() {
       fi ;;
   esac
 
-  # The data dir ITSELF, never <data_dir>/storage: p2p.key, i2p.destination and
-  # content.key are written BESIDE storage/, not inside it. Widening to the
-  # storage subdirectory is exactly how this bug survived its first fix.
+  # The data dir ITSELF, never <data_dir>/storage: p2p.key, axon.service.key,
+  # content.key and the axon/ directory are written BESIDE storage/, not inside
+  # it. Widening to the storage subdirectory is exactly how this bug survived
+  # its first fix.
   #
   # $DATA_DIR stays in the list whatever the config says: config.json lives
   # there, config.Save() rewrites it from the management page, and HOME points
@@ -1003,7 +811,7 @@ detect_service_user() {
     *) return 0 ;;
   esac
   if [ ! -f "$target" ]; then
-    plan fix "boot service" "auto-start" "will write, enable and start $target (runs as $NODE_USER, waits for SAM first, restarts on failure)"
+    plan fix "boot service" "auto-start" "will write, enable and start $target (runs as $NODE_USER, restarts on failure)"
   else
     local recorded body
     recorded="$(sed -n "s|^${MARKER_PREFIX}||p" "$target" | head -1)"
@@ -1014,10 +822,6 @@ detect_service_user() {
       plan manual "boot service" "auto-start" "$target exists and was NOT written by this installer; it will be left alone (but still enabled and restarted)"
     fi
   fi
-  if [ "$SERVICE_MGR" = "openrc" ]; then
-    plan manual "OpenRC boot delay" "boot service" "start_pre waits up to ${SAM_WAIT_SECONDS}s for SAM. OpenRC starts services serially by default, so a cold router delays the rest of boot; set rc_parallel=YES in /etc/rc.conf if that matters"
-  fi
-  plan fix "SAM readiness helper" "boot service" "will install $WAIT_HELPER, run before the node starts"
   return 0
 }
 
@@ -1074,7 +878,7 @@ detect_runtime_data_dir() {
       "$RUNTIME_DATA_DIR_WHY. ReadWritePaths will name $DATA_DIR only; if the config points data_dir somewhere else, the node will fail to write there and blame the filesystem"
   elif [ "$RUNTIME_DATA_DIR" != "$DATA_DIR" ]; then
     plan ok "node data_dir" "storage" \
-      "$RUNTIME_DATA_DIR ($RUNTIME_DATA_DIR_WHY) -- the node writes storage/, p2p.key, i2p.destination and content.key THERE, not in $DATA_DIR"
+      "$RUNTIME_DATA_DIR ($RUNTIME_DATA_DIR_WHY) -- the node writes storage/, axon/, p2p.key, axon.service.key and content.key THERE, not in $DATA_DIR"
   elif [ "$CONFIG_STATE" = "parsed" ] && [ -z "$CONFIG_DATA_DIR" ]; then
     plan manual "node data_dir" "storage" "$RUNTIME_DATA_DIR_WHY"
   else
@@ -1476,108 +1280,6 @@ install_packages() {
   return 0
 }
 
-# i2pd has no conf.d for its main config, so settings go INTO i2pd.conf. This
-# rewrites one key in one section, uncommenting it if the shipped file has it
-# commented (it does, for all of [sam]) and appending the section if absent.
-# Writing only on real change is what makes a second run a no-op instead of a
-# pile of duplicate keys. Returns 0 if changed, 1 if already correct. The awk is
-# verified byte-identical on a second pass -- do not rewrite it casually.
-#
-# packaging/systemd/i2pd-rabbiit.default is NOT used: upstream's unit has no
-# EnvironmentFile and hardcodes ExecStart, so $DAEMON_OPTS from /etc/default/i2pd
-# is read only by the sysvinit script -- dropping it on a systemd box silently
-# applies nothing.
-i2pd_set_key() { # SECTION KEY VALUE FILE
-  local section="$1" key="$2" value="$3" file="$4" tmp mode uid gid
-  tmp="$(workdir)/i2pd.conf.new"
-  awk -v sect="$section" -v key="$key" -v val="$value" '
-    BEGIN { cur = ""; done = 0 }
-    /^[[:space:]]*\[/ {
-      if (cur == sect && !done) { print key " = " val; done = 1 }
-      s = $0; sub(/^[[:space:]]*\[/, "", s); sub(/\].*$/, "", s)
-      cur = s
-      print; next
-    }
-    {
-      if (cur == sect && !done && $0 ~ ("^[[:space:]]*#*[[:space:]]*" key "[[:space:]]*=")) {
-        print key " = " val; done = 1; next
-      }
-      print
-    }
-    END {
-      if (!done) {
-        if (cur != sect) print "[" sect "]"
-        print key " = " val
-      }
-    }
-  ' "$file" >"$tmp"
-  cmp -s "$tmp" "$file" && return 1
-  # Mode and ownership carried over from the file being replaced. The old code
-  # used `install -m 0644`, which quietly WIDENED a config an operator had
-  # deliberately locked down, and handed it to root:root besides.
-  #
-  # install -m then chown, rather than install -o/-g: busybox's install takes
-  # only NAMES for -o/-g, and a numeric id there fails on Alpine. chown accepts
-  # numeric everywhere, and numeric is what survives an orphaned uid.
-  mode="$(stat -c '%a' "$file")"; uid="$(stat -c '%u' "$file")"; gid="$(stat -c '%g' "$file")"
-  run install -m "$mode" "$tmp" "$file"
-  run chown "$uid:$gid" "$file"
-  return 0
-}
-
-configure_i2pd() {
-  [ "$DO_CONFIGURE_I2PD" = "1" ] || return 0
-  [ -n "$I2PD_CONF" ] || I2PD_CONF="/etc/i2pd/i2pd.conf"
-  if [ ! -f "$I2PD_CONF" ]; then
-    warn "$I2PD_CONF is not there after installation; enable SAM by hand: [sam] enabled = true, address = 127.0.0.1, port = 7656"
-    return 0
-  fi
-  step "Configuring i2pd: $I2PD_CONF"
-  [ -f "$I2PD_CONF.rabbiit.bak" ] || run cp -p "$I2PD_CONF" "$I2PD_CONF.rabbiit.bak"
-  local changed=0
-  # SAM is on by default in i2pd >= 2.28, so most of these are assertions. Assert
-  # anyway: the failure mode is a config where somebody uncommented
-  # enabled = false, invisible from outside until the node dies at startup.
-  i2pd_set_key sam enabled true "$I2PD_CONF" && changed=1
-  i2pd_set_key sam address 127.0.0.1 "$I2PD_CONF" && changed=1
-  i2pd_set_key sam port 7656 "$I2PD_CONF" && changed=1
-  i2pd_set_key httpproxy enabled true "$I2PD_CONF" && changed=1
-  i2pd_set_key httpproxy address 127.0.0.1 "$I2PD_CONF" && changed=1
-  i2pd_set_key httpproxy port 4444 "$I2PD_CONF" && changed=1
-  # i2pd's stock outproxy is the placeholder http://false.i2p, so clearnet
-  # fetches through the proxy fail on a default install even with SAM healthy.
-  # Replaced only while it is still that placeholder.
-  if grep -qE '^[[:space:]]*outproxy[[:space:]]*=[[:space:]]*http' "$I2PD_CONF" &&
-     ! grep -qE '^[[:space:]]*outproxy[[:space:]]*=.*false\.i2p' "$I2PD_CONF"; then
-    note "keeping the outproxy already configured in $I2PD_CONF"
-  else
-    i2pd_set_key httpproxy outproxy http://exit.stormycloud.i2p "$I2PD_CONF" && changed=1
-  fi
-  [ "$changed" = "0" ] && note "already configured; nothing changed"
-  return 0
-}
-
-start_router() {
-  [ -n "$ROUTER_UNIT" ] || return 0
-  [ "$SERVICE_MGR" != "none" ] || { warn "no service manager; start your I2P router yourself"; return 0; }
-  if [ "$DO_ENABLE_ROUTER" = "1" ]; then
-    step "Enabling $ROUTER_UNIT on boot"
-    service_enable "$ROUTER_UNIT" || warn "could not enable $ROUTER_UNIT"
-  fi
-  [ "$DO_START_ROUTER" = "1" ] || return 0
-  # `restart` ONLY when this script actually changed the router's config.
-  # Restarting somebody's healthy router drops every tunnel it has built, and
-  # "SAM is off" is not a reason to do that to them.
-  if [ "$DO_CONFIGURE_I2PD" = "1" ]; then
-    step "Restarting $ROUTER_UNIT (its configuration changed)"
-    service_restart "$ROUTER_UNIT" || warn "could not restart $ROUTER_UNIT"
-  else
-    step "Starting $ROUTER_UNIT"
-    service_start "$ROUTER_UNIT" || warn "could not start $ROUTER_UNIT"
-  fi
-  return 0
-}
-
 start_docker() {
   [ "$DO_ENABLE_DOCKER" = "1" ] || return 0
   local unit="$DOCKER_UNIT"
@@ -1841,61 +1543,11 @@ create_config() {
   return 0
 }
 
-install_wait_helper() {
-  [ "$INSTALL_SERVICE" = "1" ] || return 0
-  step "Installing $WAIT_HELPER"
-  local tmp; tmp="$(workdir)/wait-for-sam"
-  cat >"$tmp" <<'HELPER'
-#!/usr/bin/env bash
-set -u
-# Wait for the local I2P SAM bridge, then exit 0. Run before the node starts.
-#
-# The node has NO startup retry: p2p.Open -> i2p.Open -> connectSAM fails,
-# main.go calls logger.Fatal, and the process is gone. After= only orders
-# against the ROUTER, which is up long before its SAM bridge (Java I2P delays
-# SAM by 120s while the console answers immediately). So this probes SAM itself
-# with the same HELLO exchange internal/i2p/sam.go performs -- never the console
-# on 7657/7070. Safe to run by hand: `wait-for-sam 30`.
-budget="${1:-300}"
-waited=0
-while :; do
-  line=""
-  if { exec 3<>/dev/tcp/127.0.0.1/7656; } 2>/dev/null; then
-    if printf 'HELLO VERSION MIN=3.1 MAX=3.3\n' >&3 2>/dev/null && IFS= read -r -t 10 line <&3; then
-      exec 3>&-
-      case "$line" in
-        "HELLO REPLY"*RESULT=OK*)
-          echo "rabbiit: I2P SAM bridge ready after ${waited}s"
-          exit 0 ;;
-        *)
-          # Something owns 7656 and does not speak SAM. Waiting cannot fix a
-          # port collision, and pretending otherwise hides it.
-          echo "rabbiit: 127.0.0.1:7656 is not a SAM bridge: ${line}" >&2
-          exit 1 ;;
-      esac
-    fi
-    exec 3>&-
-  fi
-  if [ "$waited" -ge "$budget" ]; then
-    echo "rabbiit: I2P SAM bridge did not answer within ${budget}s" >&2
-    exit 1
-  fi
-  sleep 2
-  waited=$((waited + 2))
-done
-HELPER
-  run install -d -m 0755 "$PREFIX/lib/rabbiit"
-  run install -m 0755 "$tmp" "$WAIT_HELPER"
-  return 0
-}
-
 # EVERY interpolated path is quoted. systemd honours double quotes in Exec
 # lines, Environment= and ReadWritePaths=, and a data directory containing a
 # space silently truncated all three before this was fixed. Characters systemd
 # cannot express at all (% and quotes and backslashes) are refused at parse time.
 generate_unit() {
-  local wants="network-online.target"
-  [ -n "$ROUTER_UNIT" ] && wants="$wants $ROUTER_UNIT"
   # Defensive: every path in here is one resolve_runtime_data_dir already
   # checked, and a unit rendered without it would silently re-create the exact
   # bug the ReadWritePaths comment below describes.
@@ -1915,14 +1567,13 @@ generate_unit() {
 [Unit]
 Description=Rabbiit encrypted volunteer storage and edge node
 Documentation=https://github.com/Jonathan-R-Anderson/rabbiit/tree/main/storage-client
-Wants=$wants
-After=$wants
-# Wants=, not Requires=. Requires=i2pd.service (as the shipped packaging unit
-# has it) fails the node outright where the router is i2p.service, and takes the
-# node down with the router on every restart. Ordering plus the readiness wait
-# below does the same job without the shared fate. The rate limit is generous
-# because a cold router can outlast the node's 75s SAM timeout building its
-# first tunnels.
+# No other unit to order after: the AXON overlay is built into the node, which
+# fetches its seed relays over HTTPS and retries joining with backoff on its
+# own. network-online only spares that first fetch a pointless failure.
+Wants=network-online.target
+After=network-online.target
+# A node that dies 20 times in 10 minutes is broken in a way restarting will
+# not fix; systemd stops trying (systemctl reset-failed rabbiit-node to retry).
 StartLimitIntervalSec=600
 StartLimitBurst=20
 
@@ -1933,16 +1584,11 @@ Group=$NODE_GROUP
 # config.Default() calls os.UserConfigDir() unconditionally, so a missing HOME
 # makes the node exit before it reads the -config file it was handed.
 Environment="HOME=$DATA_DIR"
-# The node has no startup retry. This is what stops systemd racing the router.
-ExecStartPre=$WAIT_HELPER $SAM_WAIT_SECONDS
 # The node registers exactly six flags: -config, -payout, -capacity-gib,
 # -ui-listen, -show-config, -config-path. -data-dir exits 2.
 ExecStart=$BIN_DEST -config "$CONFIG_FILE"
 Restart=on-failure
 RestartSec=15s
-# Longer than systemd's 90s default: the wait above legitimately takes ~120s on
-# a Java router, and a start job killed mid-wait fails a unit that was fine.
-TimeoutStartSec=$((SAM_WAIT_SECONDS + 120))
 TimeoutStopSec=75s
 LimitNOFILE=65535
 
@@ -1964,10 +1610,11 @@ MemoryDenyWriteExecute=true
 # ProtectSystem=strict makes the WHOLE filesystem read-only to this service,
 # mount options be damned, so this list is the only thing that lets the node
 # write at all. It names the DATA DIRECTORIES THEMSELVES, never <dir>/storage:
-# i2p.destination, p2p.key and content.key are written BESIDE storage/, and a
-# unit that lists only the subdirectory fails on the second file instead of the
-# first. The first entry holds config.json (which the management page rewrites)
-# and is \$HOME; the second, when present, is the data_dir the config names.
+# p2p.key, axon.service.key, content.key and axon/ are written BESIDE storage/,
+# and a unit that lists only the subdirectory fails on the second file instead
+# of the first. The first entry holds config.json (which the management page
+# rewrites) and is \$HOME; the second, when present, is the data_dir the config
+# names.
 ${warning}ReadWritePaths=$rw
 
 [Install]
@@ -2032,10 +1679,11 @@ EOF
 }
 
 generate_openrc() {
-  # OpenRC equivalent of the systemd unit, with the same three guarantees: runs
-  # as the dedicated non-root user, waits for SAM before starting, restarts when
-  # it dies. supervise-daemon rather than start-stop-daemon because the node has
-  # no internal retry -- it is what Restart=on-failure buys on the systemd side.
+  # OpenRC equivalent of the systemd unit, with the same two guarantees: runs
+  # as the dedicated non-root user, and restarts when it dies. supervise-daemon
+  # rather than start-stop-daemon because it is what Restart=on-failure buys on
+  # the systemd side. No start_pre and no ordering beyond the network: the node
+  # joins its built-in AXON overlay itself, retrying with backoff.
   #
   # OpenRC has NO equivalent of the systemd hardening block: ProtectSystem,
   # PrivateDevices and the rest are namespace features systemd sets up itself.
@@ -2059,14 +1707,6 @@ export HOME="$DATA_DIR"
 
 depend() {
 	need net
-	after $( [ -n "\$ROUTER_UNIT" ] && printf '%s' "i2pd" || printf '%s' "i2pd i2p" )
-}
-
-start_pre() {
-	# The node has no startup retry: if SAM is not up, it calls log.Fatal and
-	# dies. Wait for the bridge itself -- never the console on 7657/7070, which
-	# answers up to two minutes before SAM does.
-	"$WAIT_HELPER" $SAM_WAIT_SECONDS || return 1
 }
 EOF
   return 0
@@ -2202,12 +1842,10 @@ if [ "$DRY_RUN" = "1" ]; then
   printf '%s--check: detecting only. Nothing on this machine will be changed.%s\n' "$C_DIM" "$C_RESET"
 fi
 
-# Order matters in one place: detect_service_user renders the unit to compare it
-# against the installed one, and the unit names the router detect_i2p found.
+# Order matters in one place: detect_data_dir reads the existing config, and
+# detect_state_conflicts and detect_docker both act on what it found.
 detect_platform
 detect_ca_certs
-detect_i2p
-detect_i2p_proxy
 detect_binary
 detect_service_user
 detect_data_dir
@@ -2237,7 +1875,7 @@ fi
 # Consent is asked once, for the whole plan, AFTER it is printed and BEFORE
 # anything is touched. Installing software on somebody's machine without asking
 # is not acceptable merely because the thing doing it is called an installer --
-# and that covers creating a user, editing a router config and writing a systemd
+# and that covers creating a user, joining a docker group and writing a systemd
 # unit, not only `apt-get install`.
 if ! confirm "Proceed with the plan above?"; then
   say "Nothing was changed."
@@ -2245,8 +1883,6 @@ if ! confirm "Proceed with the plan above?"; then
 fi
 
 install_packages
-configure_i2pd
-start_router      # started early, so the router builds tunnels while Go compiles
 start_docker
 bootstrap_go
 build_binary
@@ -2254,18 +1890,6 @@ create_user_and_dirs
 add_docker_group
 install_binary
 create_config
-install_wait_helper
-
-step "Waiting for the I2P SAM bridge on 127.0.0.1:7656 (up to ${SAM_WAIT_SECONDS}s)"
-sam_rc=0; wait_for_sam "$SAM_WAIT_SECONDS" || sam_rc=$?
-case "$sam_rc" in
-  0) note "SAM bridge ready" ;;
-  3) warn "not starting the node against a port that is not SAM" ;;
-  *) warn "the SAM bridge did not answer in ${SAM_WAIT_SECONDS}s."
-     note "the service has the same readiness wait built in and will start on its own once the router is ready."
-     note "check the router: ${ROUTER_UNIT:-your I2P router}, and http://127.0.0.1:7657 or :7070" ;;
-esac
-
 install_unit
 
 printf '\n%sDone.%s\n' "$C_BOLD" "$C_RESET"

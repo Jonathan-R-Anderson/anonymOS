@@ -193,7 +193,7 @@ func (s *Server) recallObject(w http.ResponseWriter, r *http.Request, bucket, ke
 	if len(reason) > 200 {
 		reason = reason[:200]
 	}
-	// Bounded independently of the caller's client timeout: a recall over I2P is
+	// Bounded independently of the caller's client timeout: a recall over AXON is
 	// slow, and abandoning it midway would leave the tombstone right, the report
 	// missing, and the operator guessing.
 	ctx, cancel := context.WithTimeout(r.Context(), 4*time.Minute)

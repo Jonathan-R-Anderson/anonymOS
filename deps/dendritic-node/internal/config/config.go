@@ -29,12 +29,13 @@ const BootstrapPath = "/.well-known/rabbiit/storage-node.json"
 // the configuration is read, so validation only ever demands settings the role
 // will actually use. A dedicated gateway has no shard store, no S3 service and
 // no dashboard, so it must not be asked for S3 credentials, an erasure layout,
-// a capacity, or an I2P bridge.
+// or a capacity.
 type Role string
 
 const (
 	// RoleStorage is the default full node: shard storage, S3, dashboard and
-	// I2P, plus the gateway/probe services if the config enables them.
+	// the AXON overlay, plus the gateway/probe services if the config enables
+	// them.
 	RoleStorage Role = "storage"
 	// RoleGatewayOnly runs the gateway and/or probe services alone (-gateway-only).
 	RoleGatewayOnly Role = "gateway-only"
@@ -55,11 +56,11 @@ func (r Role) NeedsStorage() bool { return r == RoleStorage }
 func (r Role) Description() string {
 	switch r {
 	case RoleStorage:
-		return "shard storage, S3, dashboard, I2P, heartbeat; gateway/probe if configured"
+		return "shard storage, S3, dashboard, AXON overlay, heartbeat; gateway/probe if configured"
 	case RoleGatewayOnly:
-		return "gateway/probe services and presence heartbeat; no storage, S3, dashboard, or I2P"
+		return "gateway/probe services and presence heartbeat; no storage, S3, or dashboard; AXON relay if configured"
 	case RoleProbeOnly:
-		return "signed verification probe and presence heartbeat; no storage, S3, dashboard, or I2P"
+		return "signed verification probe and presence heartbeat; no storage, S3, or dashboard; AXON relay if configured"
 	case RoleManagement:
 		return "inspect or update the configuration file; no subsystem is started"
 	}
@@ -159,13 +160,13 @@ type Config struct {
 	// /api/status, so a KDF would hand any unauthenticated LAN host a cheap way
 	// to burn this node's CPU. Use a password you do not use anywhere else.
 	UIUsername    string   `json:"ui_username"`
-	UIPassword    string   `json:"ui_password"`
-	P2PListen     []string `json:"p2p_listen"`
-	I2PSAM        string   `json:"i2p_sam"`
-	I2PHTTPProxy  string   `json:"i2p_http_proxy"`
-	AccessKey     string   `json:"access_key"`
-	SecretKey     string   `json:"secret_key"`
-	CapacityBytes int64    `json:"capacity_bytes"`
+	UIPassword string `json:"ui_password"`
+	// Axon places this node on AXON, the network's own anonymous overlay,
+	// which carries every peer connection. See AxonConfig.
+	Axon          AxonConfig `json:"axon"`
+	AccessKey     string     `json:"access_key"`
+	SecretKey     string     `json:"secret_key"`
+	CapacityBytes int64      `json:"capacity_bytes"`
 	// PayoutAddress is where this node's CREDIT earnings are sent — an
 	// address the operator controls, typically their MetaMask. Empty means
 	// the node does the work but is never paid for it, so the dashboard
@@ -290,7 +291,7 @@ type DCSRoleConfig struct {
 	Volumes bool `json:"volumes"`
 	// Lab accepts DELIBERATELY VULNERABLE workloads (Attack Range and similar).
 	// Separate from Worker on purpose: a plain worker must never be handed one.
-	// A lab container is unreachable except through an I2P destination that is
+	// A lab container is unreachable except through an AXON address that is
 	// never published anywhere -- see dcs.LabContainment.
 	Lab bool `json:"lab"`
 }
@@ -583,12 +584,8 @@ func Default() (Config, error) {
 		// theirs to replace with something memorable.
 		UIUsername: DefaultDashboardUsername,
 		UIPassword: generatedDashboardPassword(),
-		// P2PListen is retained only so old configuration files still parse. The
-		// production node never uses these clearnet addresses.
-		P2PListen:     nil,
-		I2PSAM:        "127.0.0.1:7656",
-		I2PHTTPProxy:  "http://127.0.0.1:4444",
 		CapacityBytes: 20 << 30,
+		Axon:          AxonConfig{ProxyListen: DefaultProxyListen},
 		DataShards:    6,
 		ParityShards:  3,
 		ChunkBytes:    1 << 20,
@@ -705,6 +702,12 @@ func (c Config) ValidateForRole(role Role) error {
 	}
 	if role.NeedsStorage() {
 		if err := c.validateStorage(); err != nil {
+			return err
+		}
+	} else if c.Axon.Relay && role != RoleManagement {
+		// A gateway or probe box with a public address can relay for the
+		// overlay without storing anything.
+		if err := c.Axon.Validate(); err != nil {
 			return err
 		}
 	}
@@ -828,8 +831,8 @@ func (c Config) validateDashboard() error {
 
 // validateStorage covers every setting that only a storage node consumes: the
 // loopback S3 gateway and its credentials, the erasure layout, the donated
-// capacity, and the I2P control endpoints. A gateway-only or probe-only process
-// starts none of these and must never reach this function.
+// capacity, and its place on the AXON overlay. A gateway-only or probe-only
+// process starts none of these and must never reach this function.
 func (c Config) validateStorage() error {
 	if c.AccessKey == "" || len(c.SecretKey) < 32 {
 		return errors.New("S3 credentials are missing or too short")
@@ -853,23 +856,7 @@ func (c Config) validateStorage() error {
 	if !isLoopback(s3Host) && (c.TLSCert == "" || c.TLSKey == "") {
 		return fmt.Errorf("%s is non-loopback; TLS certificate and key are required", c.S3Listen)
 	}
-	samHost, _, err := net.SplitHostPort(c.I2PSAM)
-	if err != nil {
-		return fmt.Errorf("invalid I2P SAM address %q: %w", c.I2PSAM, err)
-	}
-	if !isLoopback(samHost) {
-		return errors.New("the I2P SAM bridge must be on loopback")
-	}
-	proxy, err := url.Parse(c.I2PHTTPProxy)
-	if err != nil || proxy.Scheme != "http" || proxy.User != nil || proxy.Path != "" ||
-		proxy.RawQuery != "" || proxy.Fragment != "" {
-		return errors.New("i2p_http_proxy must be an unauthenticated loopback HTTP proxy URL")
-	}
-	proxyHost, _, err := net.SplitHostPort(proxy.Host)
-	if err != nil || !isLoopback(proxyHost) {
-		return errors.New("i2p_http_proxy must point to a loopback address")
-	}
-	return nil
+	return c.Axon.Validate()
 }
 
 func (c Config) validateGateway() error {

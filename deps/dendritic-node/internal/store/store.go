@@ -41,7 +41,7 @@ const (
 // shardFetchTimeout budgets a single missing-shard fetch.
 //
 // RE-DERIVED FOR AXON (T11.2). The old figure existed to outlast a cold I2P dial
-// (p2p.i2pDialTimeout, 2m) and that dial no longer happens. The AXON budget is
+// (2m) and that dial no longer happens. The AXON budget is
 // built from §8.4's circuit state machine instead:
 //
 //	link to the guard                          5 s
@@ -167,7 +167,7 @@ func (s *Store) Close() error {
 //
 // The fetcher takes holder HINTS: peer IDs the placement ledger recorded as
 // having confirmed the shard. Without them a miss degrades into a search --
-// every peer that ever connected, tried serially, each one worth a cold I2P
+// every peer that ever connected, tried serially, each one worth a cold overlay
 // dial -- and the DHT provider lookup that actually knows the answer is
 // consulted last, frequently after the budget is already spent.
 func (s *Store) SetShardFetcher(fetcher func(ctx context.Context, shardID string, hints []string) ([]byte, error)) {
@@ -390,8 +390,8 @@ func (s *Store) putObject(bucket, key, contentType string, r io.Reader, expected
 			//
 			// The write is acked here, with nine shards on local disk and zero
 			// confirmed remote holders. That is deliberate: a peer push needs a
-			// coordinator lease over an I2P outproxy and a cold I2P dial takes
-			// 20-60s, so blocking the S3 PUT on six confirmed remote shards
+			// coordinator lease and a cold overlay dial can take
+			// up to two minutes, so blocking the S3 PUT on six confirmed remote shards
 			// would put minutes on the site's upload path and would fail
 			// outright whenever the network is young. What must never happen is
 			// claiming a durability that does not exist, which is why the row
@@ -781,7 +781,7 @@ func (s *Store) GetObject(bucket, key string, w io.Writer) (*Manifest, error) {
 // origin kept all nine shards locally and the remote branch was dead code. The
 // moment shards actually live on other nodes it is the hot path, and the
 // arithmetic does not survive contact: a 40 MB object is 39 chunks x 9 = 351
-// acquisitions, and at an optimistic 2s per I2P fetch that is 11.7 minutes
+// acquisitions, and at an optimistic 2s per overlay fetch that is 11.7 minutes
 // against the S3 server's 10-minute WriteTimeout -- over budget before a single
 // failure, and one dead peer alone costs 3 minutes.
 //

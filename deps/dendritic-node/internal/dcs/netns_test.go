@@ -11,7 +11,7 @@ import (
 )
 
 // fakeListener feeds pre-made inbound streams to the proxy, standing in for the
-// container's I2P destination accepting connections.
+// container's AXON address accepting connections.
 type fakeListener struct {
 	ch     chan InboundStream
 	closed chan struct{}
@@ -88,7 +88,7 @@ func (d *containerDialer) DialContainerPort(ctx context.Context, port int) (net.
 }
 func (d *containerDialer) Close() error { return nil }
 
-// A researcher reaches an OPEN port on the vulnerable box over its I2P
+// A researcher reaches an OPEN port on the vulnerable box over its AXON
 // destination and exchanges data with the service behind it.
 func TestProxyReachesOpenContainerPort(t *testing.T) {
 	// The "container" runs an echo service on logical port 8080.
@@ -104,7 +104,7 @@ func TestProxyReachesOpenContainerPort(t *testing.T) {
 	defer cancel()
 	go proxy.Serve(ctx)
 
-	// The researcher's end of an inbound I2P stream aimed at port 8080.
+	// The researcher's end of an inbound AXON stream aimed at port 8080.
 	researcher, wire := net.Pipe()
 	listener.ch <- InboundStream{Conn: wire, TargetPort: 8080}
 
@@ -136,7 +136,7 @@ func TestProxyReachesOpenContainerPort(t *testing.T) {
 
 // A CLOSED port refuses the connection -- the proxy dials the netns, gets a
 // refusal, and drops the inbound stream. This is what makes a port scan
-// meaningful: open and closed are distinguishable over I2P.
+// meaningful: open and closed are distinguishable over AXON.
 func TestProxyClosedPortIsRefused(t *testing.T) {
 	container := newLoopbackContainer(t, map[int]func(net.Conn){
 		8080: func(conn net.Conn) { _ = conn.Close() },

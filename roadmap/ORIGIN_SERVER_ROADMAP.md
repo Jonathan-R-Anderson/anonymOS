@@ -17,7 +17,7 @@ produce it, and the dendritic node fully working inside the OS.
   DHT) -- with **its own on-chain naming**: domains registered on Ethereum under namespaces anyone
   can propose (`.anonymous`, or whatever gets registered), resolving to AXON service keys.  i2pd is
   not part of the build, and there is no non-anonymous fallback transport.
-- **syndichan.org plays no part.** The coordinator role the node used to get from it moves to the new
+- **rabbiit.io plays no part.** The coordinator role the node used to get from it moves to the new
   server, which also pushes updates into the peer-to-peer network.
 - The server is **a single VPS**.
 
@@ -94,7 +94,7 @@ public HTTP; it listens on loopback and the node's rendezvous path carries reque
 
 | Part | Does |
 |---|---|
-| **Coordinator** | what nodes previously asked syndichan.org for: a signed bootstrap document (live peers), heartbeats, the peer list, network directives — re-implemented with the same signed formats so the node needs only an endpoint change. Signed by a coordinator Ed25519 key that the OS pins (rotatable by a wallet-signed directive). |
+| **Coordinator** | what nodes previously asked rabbiit.io for: a signed bootstrap document (live peers), heartbeats, the peer list, network directives — re-implemented with the same signed formats so the node needs only an endpoint change. Signed by a coordinator Ed25519 key that the OS pins (rotatable by a wallet-signed directive). |
 | **Release push** | watches ReleaseRegistry; when the wallet publishes, fetches the manifest + artifacts from the publisher's upload, verifies them against the chain, **seeds them into the swarm** (§4a: it is the tracker and the first, super-seeding source; the computers fetching an update serve it to each other) and stores a durable copy as dendritic objects, and announces `{channel, version, manifestHash}` to connected nodes. Nodes also learn it on their next heartbeat, so a missed push costs at most one interval. |
 | **Repository** | the signed software catalog and a **mirror of every pinned `.apk`** the catalog names, so installs keep working when Alpine rotates versions, served through the dendritic network instead of plain HTTP to Alpine's CDN. |
 | **Crash intake** | accepts scrubbed crash reports (§5) over the dendritic network: schema-checked, size-capped (unknown fields refused), rate-limited per circuit; stored as JSON lines and grouped by crash signature. No IP is ever seen -- reports arrive through AXON circuits. |
@@ -157,9 +157,9 @@ Today it is a wallpaper only: nothing builds, launches or networks the node. Wha
 needs, all found in the survey (2026-10-01):
 
 ### 6.1 Build
-- `make syndichan-node` points at `dendritic/` — moved to `deps/dendritic-node/`; fix the path. Static,
+- `make rabbiit-node` points at `dendritic/` — moved to `deps/dendritic-node/`; fix the path. Static,
   `CGO_ENABLED=0` (no cgo anywhere in the node).
-- Endpoints hardcoded to syndichan.org (`config.go:22`, `heartbeat.go:37`, `p2p/node.go:111`,
+- Endpoints hardcoded to rabbiit.io (`config.go:22`, `heartbeat.go:37`, `p2p/node.go:111`,
   `p2p/recall.go:119`, `config.go:591`, `computeimage/loader.go:83`) become config, defaulting to
   the origin's AXON name.  The heartbeat -- deliberately sent DIRECT today so the coordinator sees
   the node's real address -- goes through AXON like everything else.

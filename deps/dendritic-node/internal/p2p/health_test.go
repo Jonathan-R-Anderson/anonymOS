@@ -96,7 +96,7 @@ func TestEveryRefusalAnswerClassifiesToItsOwnPhrase(t *testing.T) {
 		"rejected by this node":                            "rejected by this node",
 		"dial backoff: no addresses for peer":              "",
 		"context deadline exceeded":                        "",
-		"i2p: tunnel build failed after 3 attempts":        "",
+		"axon: circuit build failed after 3 attempts":      "",
 		"rejected by this node: storage capacity exceeded": "storage capacity exceeded",
 		"EOF": "",
 	}

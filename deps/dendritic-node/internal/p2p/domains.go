@@ -20,8 +20,8 @@ import (
 //
 // WHERE THE ADDRESS COMES FROM, AND WHY NOT FROM THE DHT RECORD
 //
-// `place.Record` carries `Destination: "<b32>.i2p"`. That is not an address in
-// any sense the diversity ladder can use: an I2P destination is a public key,
+// `place.Record` carries `Destination: "<56>.key.axon"`. That is not an address in
+// any sense the diversity ladder can use: an AXON address is a public key,
 // deliberately unrelated to where the machine is. §1.4's finding, in one field.
 //
 // A LIVE CONNECTION does expose one. libp2p hands back the remote multiaddr it
@@ -31,7 +31,7 @@ import (
 // diversity claim may rest on.
 //
 // So domains are populated for peers reached over an IP transport and are EMPTY
-// for peers reached over I2P. That is not a gap to paper over: with no
+// for peers reached over AXON. That is not a gap to paper over: with no
 // observable address there is no observable failure domain, the planner falls
 // back to distinct-peer for those candidates, and `placement.DomainsUnavailable`
 // counts them so the weaker guarantee is visible rather than assumed.

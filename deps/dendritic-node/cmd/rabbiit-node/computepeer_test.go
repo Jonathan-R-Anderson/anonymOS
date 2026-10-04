@@ -212,7 +212,7 @@ func TestTheRelayRefusesAnUndecodablePeer(t *testing.T) {
 func TestABadDestinationHintDoesNotStopTheRelay(t *testing.T) {
 	peers := &fakePeers{
 		status: http.StatusOK, body: []byte(`{"admitted":true}`),
-		destErr: errors.New("invalid I2P base32 destination"),
+		destErr: errors.New("invalid AXON address"),
 	}
 	rec := relayTo(t, peers, "admit", map[string]any{
 		"peer": testPeerID, "destination": "nonsense", "request": map[string]any{"device": "cpu"},

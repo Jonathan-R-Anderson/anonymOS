@@ -103,9 +103,9 @@ func startCatalogueImages(ctx context.Context, cfg config.Config,
 		BaseURL:    cfg.Compute.ImageBaseURL,
 		ScratchDir: computeimage.ScratchDirFor(cfg.DataDir),
 		Logger:     logger,
-		// Direct, never through the I2P HTTP proxy. This is a fetch from the
+		// Direct, never through the overlay. This is a fetch from the
 		// origin over TLS, the same shape as the heartbeat, and routing ~190 MB
-		// through a volunteer's garlic tunnels would be slow enough to look
+		// through volunteers' relays would be slow enough to look
 		// broken while hiding nothing: the request is for a public artifact
 		// whose contents everybody running compute has.
 		HTTP: &http.Client{Timeout: 30 * time.Minute},

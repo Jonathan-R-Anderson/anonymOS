@@ -182,9 +182,9 @@ Where a milestone is partly done, the remaining part is what is listed.
 - *All of the transport half is gated on 4.6's TBD decision.*
 
 ### Anonymous overlay network (I2P replacement) — `DENDRITIC_NETWORK_ROADMAP`
-The `dendritic` node (`syndichan-node`, a static Go binary) is the system's native anonymizing
+The `dendritic` node (`rabbiit-node`, a static Go binary) is the system's native anonymizing
 layer — the I2P replacement, built around the **AXON** overlay. Phasing it into the OS:
-- **P0** ✅ — node builds as a static x86-64 ELF, wired into the build + staged as a boot module (opt-in `make syndichan-node`)
+- **P0** ✅ — node builds as a static x86-64 ELF, wired into the build + staged as a boot module (opt-in `make rabbiit-node`)
 - **P1** — Go runtime survives anonymOS: fix the thin syscalls (`nanosleep` is a no-op, plus epoll/futex/threads/signals) *(the gate — bring up a minimal Go binary first)*
 - **P2** — direct transport bring-up (interim, non-anonymous) so the node runs end to end
 - **P3** — auto-launch as an OS service (kernel hook beside dbus/sshd)

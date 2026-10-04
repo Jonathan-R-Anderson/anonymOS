@@ -32,7 +32,7 @@ func newHost(t *testing.T) (host.Host, crypto.PrivKey) {
 	}
 	// A real libp2p host on TCP loopback: a genuine Noise handshake, stream
 	// muxer and peer authentication. This is the DCS transport running for
-	// real, minus only the I2P tunnel underneath (which libp2p treats as just
+	// real, minus only the AXON overlay underneath (which libp2p treats as just
 	// another transport, so the DCS-layer behaviour is identical).
 	h, err := libp2p.New(
 		libp2p.Identity(key),
@@ -47,7 +47,7 @@ func newHost(t *testing.T) (host.Host, crypto.PrivKey) {
 }
 
 // THE INTEGRATION: a real deployer host opens a real DCS stream to a real
-// worker host, the worker admits the lab deployment, and the private I2P
+// worker host, the worker admits the lab deployment, and the private AXON
 // destination comes back across the wire.
 func TestStreamDeployReturnsAddressAcrossRealHosts(t *testing.T) {
 	workerHost, workerKey := newHost(t)
@@ -72,10 +72,10 @@ func TestStreamDeployReturnsAddressAcrossRealHosts(t *testing.T) {
 
 	record := WorkerRecord{
 		RecordType: "dcs_worker", NodeID: workerHost.ID().String(),
-		// The transport needs a parseable destination to build a garlic
+		// The transport needs a parseable address to build an /axon
 		// multiaddr for the peerstore; the actual dial goes over the memory
-		// transport via the already-open connection, so any valid b32 works.
-		Destination:  "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa.b32.i2p",
+		// transport via the already-open connection, so any valid address works.
+		Destination:  "jmc2jg7bl26yl4732e437oo2izsa6ym7msm4thuiu3erwvhduhur2syb.key.axon",
 		Capabilities: []string{"worker", "lab"}, Slots: 4,
 		RAMBytes: 8 << 30, Arch: "linux/amd64", ExpiresAt: 1 << 40,
 	}
@@ -89,8 +89,8 @@ func TestStreamDeployReturnsAddressAcrossRealHosts(t *testing.T) {
 	if worker.NodeID != workerHost.ID().String() {
 		t.Fatal("deployed to the wrong worker")
 	}
-	if !base32Address.MatchString(reply.Destination) {
-		t.Fatalf("no I2P destination came back: %q", reply.Destination)
+	if !overlayAddress.MatchString(reply.Destination) {
+		t.Fatalf("no AXON address came back: %q", reply.Destination)
 	}
 	if !reply.Private {
 		t.Fatal("lab address not marked private")
@@ -124,7 +124,7 @@ func TestStreamRefusesRelayedEnvelope(t *testing.T) {
 	raw, err := (&StreamTransport{host: relay, timeout: 30 * time.Second}).RoundTrip(
 		context.Background(),
 		WorkerRecord{NodeID: workerHost.ID().String(),
-			Destination: "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa.b32.i2p"},
+			Destination: "jmc2jg7bl26yl4732e437oo2izsa6ym7msm4thuiu3erwvhduhur2syb.key.axon"},
 		env)
 	if err == nil {
 		t.Fatalf("a relayed envelope was accepted; reply=%s", raw)
@@ -144,7 +144,7 @@ func connect(t *testing.T, a, b host.Host) {
 // Confirm the reply frame round-trips.
 func TestReplyFrameRoundTrip(t *testing.T) {
 	reply := DeployReply{DeploymentID: "d", ContainerID: "c",
-		Destination: "abc.b32.i2p", Private: true}
+		Destination: "abc.key.axon", Private: true}
 	raw, _ := json.Marshal(reply)
 	var back DeployReply
 	if err := json.Unmarshal(raw, &back); err != nil || back.ContainerID != "c" {

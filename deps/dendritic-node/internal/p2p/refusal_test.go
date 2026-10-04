@@ -72,7 +72,7 @@ func TestOnlyAnsweredRefusalsCount(t *testing.T) {
 		"failed to dial: all dials failed",
 		"context deadline exceeded",
 		"stream reset",
-		"i2p stream connect failed: CANT_REACH_PEER",
+		"axon/runtime: rendezvous with the service failed",
 	} {
 		if answeredNo(errors.New(absent)) {
 			t.Errorf("an unreachable peer was counted as refusing: %q", absent)

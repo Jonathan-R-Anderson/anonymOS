@@ -142,7 +142,7 @@ func TestP14EvidenceStoreLatency(t *testing.T) {
 		len(reads), reads[0], pct(reads, 0.5), pct(reads, 0.95), reads[len(reads)-1])
 	t.Logf("STORAGE GROWTH: %d records, %d bytes total, %d bytes/record",
 		len(keys), stored, stored/max1(len(keys)))
-	t.Logf("NOT MEASURED: DHT network latency, erasure coding, I2P transport. "+
+	t.Logf("NOT MEASURED: DHT network latency, erasure coding, AXON transport. "+
 		"Those need a reachable node; a local number presented as DHT latency "+
 		"would be wrong in the flattering direction.")
 	_ = runtime.NumCPU()

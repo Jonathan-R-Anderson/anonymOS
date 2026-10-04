@@ -47,12 +47,10 @@ var storageRemovals = []struct {
 	{"missing storage capacity", func(c *Config) { c.CapacityBytes = 0 }},
 	{"missing erasure layout", func(c *Config) { c.DataShards, c.ParityShards = 0, 0 }},
 	{"missing chunk size", func(c *Config) { c.ChunkBytes = 0 }},
-	{"missing I2P SAM bridge", func(c *Config) { c.I2PSAM = "" }},
-	{"missing I2P HTTP proxy", func(c *Config) { c.I2PHTTPProxy = "" }},
+	{"AXON origin that is not an AXON address", func(c *Config) { c.Axon.Origin = "rabbiit.io" }},
 	{"no storage configuration at all", func(c *Config) {
 		c.AccessKey, c.SecretKey = "", ""
 		c.UIListen, c.S3Listen = "", ""
-		c.I2PSAM, c.I2PHTTPProxy = "", ""
 		c.CapacityBytes, c.DataShards, c.ParityShards, c.ChunkBytes = 0, 0, 0, 0
 	}},
 }
@@ -404,7 +402,7 @@ func TestLoadOrCreateGatewayOnlyAcceptsConfigWithoutStorageSettings(t *testing.T
 func TestSaveRoundTripsAStorageFreeGatewayConfig(t *testing.T) {
 	cfg := gatewayCandidateConfig(t)
 	cfg.AccessKey, cfg.SecretKey = "", ""
-	cfg.I2PSAM, cfg.I2PHTTPProxy, cfg.UIListen, cfg.S3Listen = "", "", "", ""
+	cfg.UIListen, cfg.S3Listen = "", ""
 	path := filepath.Join(t.TempDir(), "gateway.json")
 	if err := Save(path, cfg, RoleGatewayOnly); err != nil {
 		t.Fatalf("saving a gateway-only config failed: %v", err)

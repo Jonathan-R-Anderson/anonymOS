@@ -22,13 +22,13 @@ import (
 //
 // It rides the existing storage protocol as one more operation rather than
 // opening a second protocol ID, so challenges reach every node already speaking
-// to us — including over I2P, where a second listener would mean a second
+// to us — including over AXON, where a second listener would mean a second
 // tunnel to build and keep alive.
 
 const challengeOperation = "pof-challenge"
 
 // challengeTimeout bounds a single challenge round trip. Generous because a
-// cold I2P dial is slow, but bounded: a peer that will not answer must fail the
+// cold overlay dial is slow, but bounded: a peer that will not answer must fail the
 // audit rather than stall the epoch.
 const challengeTimeout = 90 * time.Second
 
@@ -150,7 +150,7 @@ func (n *Node) PeerForNodeID(nodeID [32]byte) (peer.ID, bool) {
 			return p, true
 		}
 	}
-	// Fall back to everything known, not just what is dialled: over I2P a peer
+	// Fall back to everything known, not just what is dialled: over AXON a peer
 	// may be reachable without a live connection.
 	for _, p := range n.host.Peerstore().Peers() {
 		if id, err := NodeIDFromPeer(p); err == nil && id == nodeID {

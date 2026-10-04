@@ -478,6 +478,41 @@ private void wakePollers() @nogc nothrow {
 // boot shows WHERE each process and thread is waiting.
 private __gshared ulong g_adumpNextMs = 0;
 private __gshared uint  g_adumpN = 0;
+// D3 (Darling): process_vm_readv/writev(2).  darlingserver copies Mach messages and their buffers in
+// and out of guest processes this way.  The caller's iovecs are in the current address space; each
+// remote page is resolved in the target's tables (faulted in, copy-on-write broken for a write).
+private long processVmRw(ulong pid, ulong liovA, ulong liovcnt, ulong riovA, ulong riovcnt, bool write) {
+    import core.addrspace : userPagePhysForAccess;
+    struct IoVec { ulong base; ulong len; }
+    if (liovcnt > 1024 || riovcnt > 1024) return -22;                       // EINVAL
+    const int ttid = taskIdFromLinuxPid(cast(int)pid);
+    if (cast(int)pid <= 0 || ttid < 0 || !g_tasks[ttid].active || g_tasks[ttid].exited) return -3;   // ESRCH
+    auto L = cast(IoVec*)liovA;
+    auto R = cast(IoVec*)riovA;
+    ulong li = 0, loff = 0, total = 0;
+    foreach (ri; 0 .. riovcnt) {
+        ulong rva = R[ri].base, rlen = R[ri].len;
+        while (rlen > 0) {
+            while (li < liovcnt && loff >= L[li].len) { ++li; loff = 0; }
+            if (li >= liovcnt) return cast(long)total;
+            ulong n = rlen;
+            if (L[li].len - loff < n) n = L[li].len - loff;
+            if (4096 - (rva & 0xFFF) < n) n = 4096 - (rva & 0xFFF);
+            const ulong phys = userPagePhysForAccess(ttid, rva, write);
+            if (phys == 0) return total > 0 ? cast(long)total : -14;            // EFAULT
+            auto tp = cast(ubyte*)phys_to_virt(phys) + (rva & 0xFFF);
+            auto lp = cast(ubyte*)(L[li].base + loff);
+            if (write) foreach (k; 0 .. n) tp[k] = lp[k];
+            else       foreach (k; 0 .. n) lp[k] = tp[k];
+            total += n; rva += n; rlen -= n; loff += n;
+        }
+    }
+    return cast(long)total;
+}
+
+private enum ulong PIPE_WR_PARK_MS = 5000;
+private __gshared ulong[MAX_TASKS] g_pipeWrParkMs;   // D3: when a blocking pipe write started waiting
+
 private void androidTaskDump() {
     const ulong now = pitMs();
     if (g_adumpN >= 30 || now < g_adumpNextMs) return;
@@ -1007,6 +1042,12 @@ private void exitTask(int tid, int code) {
     const int exitLinuxPid = linuxPidForTask(tid);
     t.exited   = true;
     t.exitCode = code;
+    {   // D3: the process's last thread: its pidfds (pidfd_open) become readable.
+        bool live = false;
+        foreach (i; 1 .. MAX_TASKS)
+            if (i != tid && g_tasks[i].active && !g_tasks[i].exited && linuxPidForTask(i) == exitLinuxPid) { live = true; break; }
+        if (!live) { import core.syscalls.posix : pidfdProcessExited; pidfdProcessExited(exitLinuxPid); }
+    }
     // Freeze probe: if the COMPOSITOR (the presenting task) dies, the desktop hard-freezes with a
     // moving cursor — record the cause so the on-screen overlay can show it (the klog ring does not
     // survive the hard reset the user then has to do).
@@ -6121,10 +6162,21 @@ private void dispatchSyscall(int tid) {
     // writev / sendto / sendmsg into a full send ring returned EAGAIN -- park and re-run it, the
     // same treatment as a blocking read (inetTcpBlockingFd excludes O_NONBLOCK sockets, and
     // MSG_DONTWAIT opts a single send out: sendto flags=r10, sendmsg flags=rdx).
+    // D3: and write/writev into a FULL blocking pipe parks too -- for at most PIPE_WR_PARK_MS without
+    // room, after which it fails EAGAIN as it always did, so a writer whose reader never drains (a
+    // desktop child logging into an unread pipe) cannot hang where it used to carry on.
+    if ((rax == 1 || rax == 20) && ret != -11) g_pipeWrParkMs[tid] = 0;
     if (ret == -11 && (rax == 42 || rax == 43 || rax == 288 || rax == 1 || rax == 20 ||
                        (rax == 44 && (r10 & 0x40) == 0) || (rax == 46 && (rdx & 0x40) == 0))) {
-        import core.syscalls.posix : inetTcpBlockingFd;
-        if (inetTcpBlockingFd(rdi)) {
+        import core.syscalls.posix : inetTcpBlockingFd, pipeBlockingWriteFd;
+        bool pipePark = false;
+        if ((rax == 1 || rax == 20) && pipeBlockingWriteFd(rdi)) {
+            const ulong nowMs = pitMs();
+            if (g_pipeWrParkMs[tid] == 0) g_pipeWrParkMs[tid] = nowMs;
+            if (nowMs - g_pipeWrParkMs[tid] < PIPE_WR_PARK_MS) pipePark = true;
+            else g_pipeWrParkMs[tid] = 0;
+        }
+        if (inetTcpBlockingFd(rdi) || pipePark) {
             g_pollBlocked[tid]  = true;
             g_pollDeadline[tid] = 0;
             g_pollEpfd[tid]     = -1;
@@ -6848,6 +6900,10 @@ private long dispatchLinuxSyscallCall(ulong n, ulong a, ulong b, ulong c,
         case 328: return linux_sys_pwritev2(a, b, c, d, f);
         case 332: return linux_sys_statx(a, b, c, d, e);
         case 334: return linux_sys_rseq(a, b, c, d);
+        case 310: return processVmRw(a, b, c, d, e, false);   // D3: process_vm_readv
+        case 311: return processVmRw(a, b, c, d, e, true);    // D3: process_vm_writev
+        case 424: { import core.syscalls.posix : linux_sys_pidfd_send_signal; return linux_sys_pidfd_send_signal(a, b, c, d); }
+        case 434: { import core.syscalls.posix : linux_sys_pidfd_open; return linux_sys_pidfd_open(a, b); }
         case 435: return linux_sys_clone3(a, b);
         case 436: return linux_sys_close_range(a, b, c);
         case 439: return linux_sys_faccessat2(a, b, c, d);  // Z1: zsh/musl access() checks

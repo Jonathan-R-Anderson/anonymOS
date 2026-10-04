@@ -72,7 +72,7 @@ func (a *memAudit) Record(e AuditEntry) {
 }
 
 // loopback transport: verifies the envelope as the worker would, runs the
-// agent, and returns the reply. This is the whole deploy path minus the I2P
+// agent, and returns the reply. This is the whole deploy path minus the AXON
 // stream, which is exactly what a unit test should cover.
 type loopback struct {
 	agent      *Agent
@@ -102,7 +102,7 @@ func workerRecord(t *testing.T, id *testIdentity, caps ...string) WorkerRecord {
 	key, _ := id.PublicKey()
 	return WorkerRecord{
 		RecordType: "dcs_worker", NodeID: id.ID(),
-		PublicKey: b64(key), Destination: "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa.b32.i2p",
+		PublicKey: b64(key), Destination: "cqb6votf5q5malem4h7gs25wblko4d5qk6kcmf5oqvtcgydfuoxe46qb.key.axon",
 		ProtocolVer: 1, Arch: "linux/amd64",
 		Capabilities: caps, CPUCores: 4, RAMBytes: 8 << 30, Slots: 4,
 		Sequence: 1, IssuedAt: 0, ExpiresAt: 1 << 40,
@@ -115,7 +115,7 @@ func b64(b []byte) string {
 }
 
 // THE HEADLINE PATH: deploy a lab instance to a random peer and get its private
-// I2P destination back -- the address the researcher points a port scanner at.
+// AXON address back -- the address the researcher points a port scanner at.
 func TestDeployLabToRandomPeerReturnsPrivateAddress(t *testing.T) {
 	researcher := newIdentity(t)
 	worker := newIdentity(t)
@@ -155,9 +155,9 @@ func TestDeployLabToRandomPeerReturnsPrivateAddress(t *testing.T) {
 	if chosen.NodeID != worker.ID() {
 		t.Fatalf("lab workload placed on a non-lab worker %s", chosen.NodeID)
 	}
-	// The address came back and is a real-looking I2P destination.
-	if !base32Address.MatchString(reply.Destination) {
-		t.Fatalf("returned destination is not an I2P address: %q", reply.Destination)
+	// The address came back and is a real-looking AXON address.
+	if !overlayAddress.MatchString(reply.Destination) {
+		t.Fatalf("returned destination is not an AXON address: %q", reply.Destination)
 	}
 	if !reply.Private {
 		t.Fatal("a lab container's address was not marked private")

@@ -10,7 +10,7 @@ import (
 )
 
 // FileIdentity is a lightweight probe signer. It uses the same persistent
-// libp2p Ed25519 key format as a full node without starting storage, I2P, or a
+// libp2p Ed25519 key format as a full node without starting storage, the overlay, or a
 // DHT. Probe results are returned directly to candidates, so probes do not need
 // storage-node networking.
 type FileIdentity struct {

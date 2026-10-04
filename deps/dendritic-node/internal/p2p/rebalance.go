@@ -62,7 +62,7 @@ const (
 	rebalanceInterval = 1 * time.Hour
 	// rebalanceObjectsPerPass and rebalanceShardsPerPass bound one pass. Small
 	// on purpose: converging a fleet is not urgent, and every move costs the
-	// coordinator a revocation, the lease service a lease, and two peers an I2P
+	// coordinator a revocation, the lease service a lease, and two peers an overlay
 	// round trip each. Eight shards an hour still shifts gigabytes a week.
 	rebalanceObjectsPerPass = 8
 	rebalanceShardsPerPass  = 8

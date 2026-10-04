@@ -11,7 +11,7 @@
 //
 // Peer data is synthesised deterministically (fixed seed) so the build is
 // reproducible: no network, no live API. When the retained dendritic node
-// (syndichan-node) later exposes its own peer view, this generator can be
+// (rabbiit-node) later exposes its own peer view, this generator can be
 // pointed at that instead of the synthetic set — the drawing code does not care
 // where the peers come from.
 //

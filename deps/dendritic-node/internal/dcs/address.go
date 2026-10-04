@@ -12,30 +12,32 @@ import (
 	"sync"
 )
 
-// SessionOpener creates an I2P session from a key file, returning something
-// that knows its own base32 address. internal/i2p.Session satisfies this; the
-// interface exists so the allocator is testable without a SAM bridge.
+// SessionOpener starts a container's AXON hidden service from a key file,
+// returning something that knows its own address. The node supplies one over
+// its overlay runtime; the interface keeps the allocator testable without an
+// overlay.
 type SessionOpener interface {
 	Open(ctx context.Context, keyPath string) (Session, error)
 }
 
 type Session interface {
-	Base32() string
-	// AcceptStreamPort accepts an inbound stream on this destination and reports
+	// Address is the service's AXON address, <56 base32>.key.axon.
+	Address() string
+	// AcceptStreamPort accepts an inbound stream on this service and reports
 	// the port the caller dialed. It is here so ONE session serves BOTH the
-	// container's address (Base32) and its inbound proxy: opening a second SAM
-	// session on the same destination is rejected by I2P (DUPLICATED_DEST), so the
-	// address the deployer is handed and the destination the proxy accepts on must
-	// be the very same session -- otherwise every port reads closed.
+	// container's address and its inbound proxy: the address the deployer is
+	// handed and the service the proxy accepts on must be the very same one --
+	// a second service on the same key would split the intro points between
+	// two publishers, and every port would read closed half the time.
 	AcceptStreamPort() (net.Conn, int, error)
 	Close() error
 }
 
-var base32Address = regexp.MustCompile(`^[a-z2-7]{52}\.b32\.i2p$`)
+var overlayAddress = regexp.MustCompile(`^[a-z2-7]{56}\.key\.axon$`)
 
-// AddressAllocator gives each container its own I2P destination.
+// AddressAllocator gives each container its own AXON address.
 //
-// One destination per container is the whole point: a shared destination would
+// One address per container is the whole point: a shared address would
 // mean two containers on the same worker are visibly the same host, and would
 // make a private lab address impossible to keep private -- anyone who could
 // reach any container could reach all of them.
@@ -61,13 +63,13 @@ func NewAddressAllocator(opener SessionOpener, dataDir string) *AddressAllocator
 // stable across a container restart: losing it would hand the container a new
 // address and silently break whoever was told the old one.
 func (a *AddressAllocator) keyPath(containerID string) string {
-	return filepath.Join(a.dataDir, "containers", containerID, "i2p.destination")
+	return filepath.Join(a.dataDir, "containers", containerID, "axon.service.key")
 }
 
 // AcceptSession returns the container's already-open session as a stream accepter
-// so the inbound proxy reuses the SAME destination the address came from, instead
-// of opening a second session on it (which I2P rejects as a duplicate, leaving the
-// address the deployer holds with nothing behind it).
+// so the inbound proxy reuses the SAME service the address came from, instead of
+// starting a second one on it (leaving the address the deployer holds with a
+// rival publisher behind it).
 func (a *AddressAllocator) AcceptSession(containerID string) (SessionAccepter, bool) {
 	a.mu.Lock()
 	defer a.mu.Unlock()
@@ -78,7 +80,7 @@ func (a *AddressAllocator) AcceptSession(containerID string) (SessionAccepter, b
 	return s, true
 }
 
-// Allocate creates (or reopens) the container's destination.
+// Allocate creates (or reopens) the container's address.
 //
 // private=true marks the address as never-publishable. That flag travels with
 // the address rather than being re-derived at each publication site, because a
@@ -99,18 +101,17 @@ func (a *AddressAllocator) Allocate(ctx context.Context, containerID string, pri
 	}
 	session, err := a.opener.Open(ctx, path)
 	if err != nil {
-		return nil, fmt.Errorf("dcs: i2p session for %s: %w", containerID, err)
+		return nil, fmt.Errorf("dcs: AXON service for %s: %w", containerID, err)
 	}
-	// session.Base32() returns the bare 52-char destination hash; the dialable
-	// address -- and what base32Address validates and the owner reaches the
-	// container at -- includes the .b32.i2p suffix.
-	address := session.Base32()
-	if !strings.HasSuffix(address, ".b32.i2p") {
-		address += ".b32.i2p"
+	// The dialable address -- what overlayAddress validates and the owner
+	// reaches the container at -- is the full <56>.key.axon form.
+	address := session.Address()
+	if !strings.HasSuffix(address, ".key.axon") {
+		address += ".key.axon"
 	}
-	if !base32Address.MatchString(address) {
+	if !overlayAddress.MatchString(address) {
 		session.Close()
-		return nil, fmt.Errorf("dcs: implausible i2p address %q", address)
+		return nil, fmt.Errorf("dcs: implausible AXON address %q", address)
 	}
 
 	entry := &ContainerAddress{ContainerID: containerID, Destination: address, Private: private}

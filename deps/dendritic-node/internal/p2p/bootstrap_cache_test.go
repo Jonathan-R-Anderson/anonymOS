@@ -27,10 +27,10 @@ func signedDocument(t *testing.T, peers []string, expires time.Time) (body []byt
 	}
 	key := base64.RawStdEncoding.EncodeToString(pub)
 	rawExpires := expires.UTC().Format(time.RFC3339)
-	sig := ed25519.Sign(priv, bootstrap.Message(peers, key, rawExpires))
+	sig := ed25519.Sign(priv, bootstrap.Message(peers, nil, "", key, rawExpires))
 
 	envelope := map[string]any{
-		"version":                1,
+		"version":                bootstrap.DocumentVersion,
 		"peers":                  peers,
 		"coordinator_public_key": key,
 		"expires_at":             rawExpires,

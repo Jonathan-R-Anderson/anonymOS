@@ -333,7 +333,7 @@ func TestReadFailsWithFiveOfNineShards(t *testing.T) {
 }
 
 // A read that is fully served locally must not touch the network at all -- the
-// common case, and the one where a stray fetch costs an I2P round trip.
+// common case, and the one where a stray fetch costs an overlay round trip.
 func TestReadDoesNotFetchWhenSixShardsAreLocal(t *testing.T) {
 	storage := openProductionShapedStore(t)
 	content := distinctBytes(15, 40<<10)

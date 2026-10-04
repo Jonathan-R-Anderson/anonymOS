@@ -1,5 +1,5 @@
 // Package dcs implements the Distributed Container Service: optional,
-// off-by-default container hosting between peers over I2P. See DCS.md.
+// off-by-default container hosting between peers over AXON. See DCS.md.
 //
 // This file is the containment for LAB workloads -- deliberately vulnerable
 // hosts (Attack Range and similar) run for academic and security-research
@@ -9,16 +9,19 @@
 //
 // A vulnerable host is only safe to run on someone else's hardware if nobody
 // can reach it except the one researcher who asked for it. That is achieved
-// with the I2P destination itself rather than with a firewall:
+// with the AXON address itself rather than with a firewall:
 //
-//   - Every container gets its OWN I2P destination, generated at launch from a
+//   - Every container gets its OWN AXON address, generated at launch from a
 //     fresh key the agent stores under the container's private state.
-//   - A destination is 52 characters of base32 over a 256-bit hash. It cannot
-//     be guessed, scanned for, or enumerated -- I2P has no address-space sweep
+//   - A destination is 56 characters of base32 over a 256-bit key. It cannot
+//     be guessed, scanned for, or enumerated -- AXON has no address-space sweep
 //     the way IPv4 does.
 //   - For a lab container that destination is NEVER PUBLISHED. Not in the
 //     worker's capability record, not in a service record, not in the DHT, not
-//     in the gateway, not in any log line that leaves the host.
+//     in the gateway, not in any log line that leaves the host. (The overlay
+//     does store the service's descriptor with relays, but under a per-period
+//     BLINDED key the address cannot be recovered from; only someone who
+//     already holds the address can find it.)
 //   - It is returned exactly once, over the signed and encrypted RPC, to the
 //     owner who deployed it.
 //
@@ -114,13 +117,13 @@ type Disclosure struct {
 	Reason string
 }
 
-// ContainerAddress is a container's I2P identity plus who has been told it.
+// ContainerAddress is a container's AXON identity plus who has been told it.
 //
 // The zero value is deliberately useless: a destination must be set explicitly
-// by the launcher after the SAM session exists.
+// by the launcher after the AXON service exists.
 type ContainerAddress struct {
 	ContainerID string
-	Destination string // <52 chars>.b32.i2p
+	Destination string // <56 chars>.key.axon
 	Private     bool   // true for lab: never published anywhere
 
 	disclosures []Disclosure

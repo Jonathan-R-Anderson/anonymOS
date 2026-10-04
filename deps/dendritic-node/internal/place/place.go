@@ -15,7 +15,7 @@
 // Nodes advertise free space at a rendezvous CID, exactly as DCS workers
 // advertise deploy capacity. When a local write cannot fit, the node finds peers
 // with room and streams the blob to one of them over the existing libp2p host —
-// the same Noise handshake and I2P tunnels the rest of the protocol uses, no
+// the same Noise handshake and AXON sessions the rest of the protocol uses, no
 // second network. The receiving node verifies, stores, and advertises itself as
 // a provider, so a later lookup by digest finds it there.
 //
@@ -73,7 +73,7 @@ const RecordTTL = 10 * time.Minute
 type Record struct {
 	RecordType  string `json:"record_type"` // "storage_capacity"
 	NodeID      string `json:"node_id"`
-	Destination string `json:"destination"` // <b32>.i2p
+	Destination string `json:"destination"` // <56 base32>.key.axon
 	FreeBytes   int64  `json:"free_bytes"`
 	Capacity    int64  `json:"capacity_bytes"`
 	// Draining says this node is being retired: do not send it anything, and if
@@ -154,7 +154,7 @@ type Placer struct {
 	logger  *log.Logger
 	timeout time.Duration
 	// Dial resolves a node id + destination to something the host can reach.
-	// Injected so tests can avoid I2P.
+	// Injected so tests can avoid the overlay.
 	dial func(ctx context.Context, r Record) (peer.ID, error)
 }
 

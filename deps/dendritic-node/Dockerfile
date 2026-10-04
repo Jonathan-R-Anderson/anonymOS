@@ -9,7 +9,7 @@
 #
 #   1. THE STABLE BOOTSTRAP PEER. The well-known document currently publishes
 #      "peers": [], so no volunteer can discover another. This node has a
-#      persistent I2P destination and is always up, so it is the anchor every
+#      persistent AXON identity and is always up, so it is the anchor every
 #      other node dials first.
 #
 #   2. THE S3 GATEWAY the backend offloads to (DHT_S3_ENDPOINT). Objects written
@@ -34,10 +34,15 @@ RUN CGO_ENABLED=0 go build -trimpath -ldflags="-s -w" \
 # -----------------------------------------------------------------------------
 FROM alpine:3.20
 
-# ca-certificates: the presence heartbeat is a real HTTPS POST to rabbiit.io
-# and is the ONE deliberate exception to I2P-only networking. Without root certs
-# it fails TLS verification while peer traffic looks perfectly healthy -- the
-# exact split-brain the upstream troubleshooting section warns about.
+# ca-certificates: the node fetches its AXON seed relays from the signed
+# bootstrap document over direct HTTPS, and the presence heartbeat is a real
+# HTTPS POST to rabbiit.io. Without root certs both fail TLS verification, and
+# the node cannot join the overlay unless axon.seeds is set by hand.
+#
+# AXON itself is built into the binary: nothing else to install or run here.
+# Peer traffic is outbound only unless this node RELAYS (axon.relay with
+# axon.listen in the config), and then the relay port must be published
+# (e.g. -p 4001:4001/tcp -p 4001:4001/udp) and reachable from the internet.
 RUN apk add --no-cache ca-certificates \
  && adduser -D -H -u 10001 rabbiit
 

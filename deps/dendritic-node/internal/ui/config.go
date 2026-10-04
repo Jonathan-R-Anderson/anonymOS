@@ -71,7 +71,7 @@ func formInt(r *http.Request, name string, fallback int) int {
 
 // setRunMode changes what the node runs (storage | gateway-only | probe-only).
 // It takes effect on the next start, because switching modes opens or closes the
-// shard store, I2P and the S3 gateway -- not something to do under a live process.
+// shard store, the AXON overlay and the S3 gateway -- not something to do under a live process.
 func (s *Server) setRunMode(w http.ResponseWriter, r *http.Request) {
 	if !s.checkCSRF(w, r) {
 		return

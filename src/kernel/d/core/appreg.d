@@ -132,7 +132,7 @@ static immutable AppRegEntry[] g_appReg = [
     AppRegEntry("hos-http-upload",   null, SYS, SYH, DNO, null, 0),
     AppRegEntry("nmcli",             null, SYS, SYH, DNO, null, 0),
     AppRegEntry("wpa_cli",           null, SYS, SYH, DNO, null, 0),
-    AppRegEntry("syndichan-node",    null, SYS, SYH, DNO, null, 0),
+    AppRegEntry("rabbiit-node",    null, SYS, SYH, DNO, null, 0),
     AppRegEntry("weston",            null, SYS, SYH, DNO, null, 0),
     AppRegEntry("weston-desktop-shell", null, SYS, SYH, DNO, null, 0),
     AppRegEntry("weston-keyboard",   null, SYS, SYH, DNO, null, 0),

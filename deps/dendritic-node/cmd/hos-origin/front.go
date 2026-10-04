@@ -63,6 +63,33 @@ func (f *Front) ServeSession(s *session.Session) {
 	}
 }
 
+// ServeListener routes the streams of an AXON service -- every client session's,
+// already demultiplexed by the runtime -- until the listener closes. Swarm streams
+// go to the swarm host and everything else is HTTP, the same rule ServeSession
+// applies within one session.
+func (f *Front) ServeListener(l net.Listener) {
+	for {
+		conn, err := l.Accept()
+		if err != nil {
+			return
+		}
+		var meta []byte
+		if m, ok := conn.(interface{ Meta() []byte }); ok {
+			meta = m.Meta()
+		}
+		if _, ok := swarm.ParseStreamMeta(meta); ok {
+			go f.host.Accept(conn, meta)
+			continue
+		}
+		select {
+		case f.conns <- conn:
+		case <-f.done:
+			conn.Close()
+			return
+		}
+	}
+}
+
 func (f *Front) Close() {
 	f.once.Do(func() { close(f.done) })
 	f.srv.Close()

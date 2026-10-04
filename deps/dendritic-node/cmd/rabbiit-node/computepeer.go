@@ -5,7 +5,7 @@ package main
 // TWO HALVES, AND THEY RUN ON DIFFERENT MACHINES
 // ----------------------------------------------
 // peerComputeHandler is the RECEIVING half, installed on a volunteer that lends
-// a device: it answers a compute frame that arrived over libp2p/I2P.
+// a device: it answers a compute frame that arrived over libp2p/AXON.
 //
 // handleComputePeer is the RELAYING half, served on the same loopback listener
 // as everything else in dcsapi.go: it takes a target peer plus a job from the
@@ -15,7 +15,7 @@ package main
 // because the site cannot speak libp2p and a volunteer cannot be dialled. What
 // runs in production is:
 //
-//	site --plain HTTP--> its own node --libp2p/I2P--> volunteer node
+//	site --plain HTTP--> its own node --libp2p/AXON--> volunteer node
 //	   handleComputePeer  ^                            ^ peerComputeHandler
 //
 // The relay is registered whether or not this node lends compute itself. The
@@ -180,7 +180,7 @@ type computeRelayRequest struct {
 	// Peer is the target node's libp2p id: the identity the Noise handshake
 	// proves, and therefore the only part of this that decides WHO runs the job.
 	Peer string `json:"peer"`
-	// Destination is that node's garlic address, from its own heartbeat. A
+	// Destination is that node's AXON address, from its own heartbeat. A
 	// dialling hint only -- a wrong one produces a failed dial, never a
 	// conversation with the wrong node -- and omitted when the relay is already
 	// connected to the peer.

@@ -23,7 +23,7 @@ import (
 )
 
 // The site's own logo, compiled into the binary. Embedded rather than fetched
-// because this node runs behind I2P and must never reach the web server for an
+// because this node runs behind AXON and must never reach the web server for an
 // asset -- and a volunteer's dashboard should not phone home to render.
 //
 //go:embed icon.png
@@ -322,7 +322,7 @@ func (s *Server) status(w http.ResponseWriter) {
 	// stats then, so the management page still works for configuring those roles.
 	out := map[string]any{
 		"node_id": nodeID(s.node), "addresses": nodeAddrs(s.node),
-		"peers": nodePeers(s.node), "i2p_address": i2pAddress(nodeAddrs(s.node)),
+		"peers": nodePeers(s.node), "axon_address": axonAddress(nodeAddrs(s.node)),
 		"data_dir": s.dataDir, "has_store": s.store != nil,
 	}
 	if s.store != nil {
@@ -437,14 +437,14 @@ func (s *Server) reject(w http.ResponseWriter, r *http.Request) {
 	http.Redirect(w, r, "/", http.StatusSeeOther)
 }
 
-// i2pAddress pulls the .b32.i2p host out of a /garlic32/<b32>/p2p/<id>
+// axonAddress pulls the <56>.key.axon address out of an /axon/<addr>/p2p/<id>
 // multiaddr, which is the form a person can actually read and share.
-func i2pAddress(addresses []string) string {
+func axonAddress(addresses []string) string {
 	for _, address := range addresses {
 		parts := strings.Split(address, "/")
 		for index, part := range parts {
-			if part == "garlic32" && index+1 < len(parts) && parts[index+1] != "" {
-				return parts[index+1] + ".b32.i2p"
+			if part == "axon" && index+1 < len(parts) && parts[index+1] != "" {
+				return parts[index+1] + ".key.axon"
 			}
 		}
 	}
@@ -491,7 +491,7 @@ const pageHTML = `<!doctype html>
 <style>
 /* Palette mirrors the site's dark themes and uses the same --sc-* naming
    convention. It is duplicated rather than imported on purpose: this node runs
-   offline behind I2P and must never reach out to the web server for an asset. */
+   offline behind AXON and must never reach out to the web server for an asset. */
 :root{
   --sc-bg:#0e1116; --sc-panel:#161b22; --sc-panel-2:#1b2230; --sc-border:#2b3440;
   --sc-fg:#d7e0ea; --sc-muted:#8b9bad; --sc-accent:#4ba3e3; --sc-accent-dim:#2b6ea3;
@@ -570,8 +570,8 @@ site's keys, and rejecting an item deletes its bytes and refuses that content ID
     <div class="stat"><div class="k">Peers connected</div><div class="v" id="peers">&mdash;</div></div>
     <div class="stat"><div class="k">Stored</div><div class="v" id="used">&mdash;</div>
       <div class="bar"><span id="bar" style="width:0"></span></div></div>
-    <div class="stat"><div class="k">Your I2P address</div>
-      <div class="v small" id="i2p">&mdash;</div>
+    <div class="stat"><div class="k">Your AXON address</div>
+      <div class="v small" id="axon">&mdash;</div>
       <button class="copy" type="button" id="copy">Copy</button></div>
     <div class="stat"><div class="k">Node ID</div><div class="v small" id="nodeid">&mdash;</div></div>
   </div>
@@ -792,8 +792,8 @@ site's keys, and rejecting an item deletes its bytes and refuses that content ID
     <input type="hidden" name="csrf" value="{{.CSRF}}">
     <label>Mode
       <select name="run_mode">
-        <option value="storage"{{if eq (printf "%s" .Mode) "storage"}} selected{{end}}>Storage node (full: shards, S3, I2P, dashboard)</option>
-        <option value="gateway-only"{{if eq (printf "%s" .Mode) "gateway-only"}} selected{{end}}>Gateway only (no storage/S3/I2P)</option>
+        <option value="storage"{{if eq (printf "%s" .Mode) "storage"}} selected{{end}}>Storage node (full: shards, S3, AXON, dashboard)</option>
+        <option value="gateway-only"{{if eq (printf "%s" .Mode) "gateway-only"}} selected{{end}}>Gateway only (no storage/S3; AXON relay if configured)</option>
         <option value="probe-only"{{if eq (printf "%s" .Mode) "probe-only"}} selected{{end}}>Probe only (verification probe)</option>
       </select>
     </label>
@@ -1017,7 +1017,7 @@ function render(s,data){
   el("peers").innerHTML='<span class="dot '+(on?"on":"off")+'"></span>'+(s.peers||0);
   el("used").textContent=bytes(s.used_bytes)+" / "+bytes(s.capacity_bytes);
   el("bar").style.width=(s.capacity_bytes?Math.min(100,s.used_bytes/s.capacity_bytes*100):0)+"%";
-  el("i2p").textContent=s.i2p_address||"not published yet";
+  el("axon").textContent=s.axon_address||"not published yet";
   el("nodeid").textContent=s.node_id||"";
   if(s.data_dir&&!el("datadir").value)el("datadir").value=s.data_dir;
   el("capacity").value=(s.capacity_bytes/1073741824).toFixed(2).replace(/\.?0+$/,"");
@@ -1066,7 +1066,7 @@ function refresh(){
     .catch(()=>{el("peers").textContent="?";el("items").textContent="Status unavailable."});
 }
 el("copy").addEventListener("click",()=>{
-  const v=el("i2p").textContent;
+  const v=el("axon").textContent;
   if(v&&navigator.clipboard)navigator.clipboard.writeText(v).then(()=>{
     el("copy").textContent="Copied";setTimeout(()=>el("copy").textContent="Copy",1200)})});
 refresh();

@@ -127,9 +127,9 @@ const (
 	// coordinator's per-minute limit and take an hour of round trips.
 	maxRevocationBatch = 128
 	// recallConcurrency bounds simultaneous delete streams. One operation per
-	// stream and a cold I2P dial of up to two minutes means sequential recall of
+	// stream and a cold overlay dial of up to two minutes means sequential recall of
 	// a large object takes hours; unbounded concurrency means hundreds of
-	// simultaneous I2P tunnels.
+	// simultaneous overlay sessions.
 	recallConcurrency = 8
 	recallInterval    = 10 * time.Minute
 	// recallCooldown keeps one object from being retried in a tight loop while
@@ -417,11 +417,12 @@ func (n *Node) requestRevocations(ctx context.Context, objectID string, shards [
 	if err != nil {
 		return nil, err
 	}
-	response, err := n.http.Do(request)
-	if err != nil && n.directHTTP != nil {
-		// Same I2P-proxy-then-direct fallback as requestLease, for the same
-		// reason: the outproxy is absent in the container deployment, and
-		// without the fallback nothing would ever be recalled there.
+	client := n.coordinatorHTTP()
+	response, err := client.Do(request)
+	if err != nil && n.directHTTP != nil && client != n.directHTTP {
+		// Same overlay-then-direct fallback as requestLease, for the same
+		// reason: without it, an unreachable origin service would mean nothing
+		// is ever recalled.
 		if direct, rerr := newRequest(); rerr == nil {
 			if dresp, derr := n.directHTTP.Do(direct); derr == nil {
 				response, err = dresp, nil

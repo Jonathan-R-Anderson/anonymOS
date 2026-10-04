@@ -65,7 +65,7 @@ const (
 	// WHY THREE AND NOT ONE
 	// --------------------
 	// One missed probe is the most ordinary event on this network. A holder
-	// reboots for a kernel update, an I2P tunnel is being rebuilt, the peer is
+	// reboots for a kernel update, an overlay circuit is being rebuilt, the peer is
 	// mid-restart behind a redeploy: evicting on the first silence would make
 	// every routine restart cost that node every shard it holds and cost this
 	// node a rebuild and a re-push of each one, and the object would be no safer

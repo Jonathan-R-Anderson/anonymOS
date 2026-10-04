@@ -34,7 +34,7 @@ import "sort"
 const (
 	// LevelDeadband is how far from the target a node may sit before anything
 	// moves. Without it two nodes a megabyte apart trade shards forever, and
-	// every trade costs a coordinator lease, two I2P round trips and a delete.
+	// every trade costs a coordinator lease, two overlay round trips and a delete.
 	//
 	// Same value as pool_levelling.DEADBAND so the node and the site's report
 	// agree about who is fat; an operator comparing the two must not see one

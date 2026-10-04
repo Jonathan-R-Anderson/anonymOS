@@ -3,36 +3,51 @@
     "document": {
       "coordinator_public_key": "8do4Rro602bRNYeHR5k7d8ewnHWHIkrwK80CkfNSdYE",
       "expires_at": "2026-08-01T22:00:00Z",
+      "origin": "",
       "peers": [],
-      "signature": "eZcVgDQzji8o5lxiX7H3CtGy30hSYZf4sf7DJ4jKVIR+9BjTovFB1VzU/WmNro9b9NfMj4NLAH8C9YzX6S9oAQ==",
-      "version": 1
+      "relays": [
+        "/ip4/203.0.113.10/tcp/4001/p2p/12D3KooWDCQ1tkDPUGHMUxHqBiPfR3gpbr6jgRTDMg3sdvatknbV"
+      ],
+      "signature": "c2/JN9696PD3hln4Az2FU+BHVynuxqsm/EgWMqhp6OMC8h2dtkB+r7hlGKB/87yT8LOzMqy0+PYvlFP8YTeYAQ==",
+      "version": 2
     },
-    "message": "rabbiit-storage-bootstrap-v1\nexpires_at: 2026-08-01T22:00:00Z\ncoordinator: 8do4Rro602bRNYeHR5k7d8ewnHWHIkrwK80CkfNSdYE\npeers: 0"
+    "message": "rabbiit-storage-bootstrap-v2\nexpires_at: 2026-08-01T22:00:00Z\ncoordinator: 8do4Rro602bRNYeHR5k7d8ewnHWHIkrwK80CkfNSdYE\npeers: 0\nrelays: 1\n/ip4/203.0.113.10/tcp/4001/p2p/12D3KooWDCQ1tkDPUGHMUxHqBiPfR3gpbr6jgRTDMg3sdvatknbV\norigin: -"
   },
   "one_peer": {
     "document": {
       "coordinator_public_key": "8do4Rro602bRNYeHR5k7d8ewnHWHIkrwK80CkfNSdYE",
       "expires_at": "2026-08-01T23:30:00.5Z",
+      "origin": "t2wjif2vwjmam26dhdjpi5uoy2vszh6ndhe4offhcaq6a3jhyc4yieyb.key.axon",
       "peers": [
-        "/garlic32/zzzz/p2p/12D3KooWZ"
+        "/axon/deotm6xjxfqymeusxoe76mmegwicf3igb6pvxs3chlngccf5wxzeziqb/p2p/12D3KooWBWQCPgXosnEpttG2JVFH7Fv8rcp2U3G5DEKQpzhCB9Sh"
       ],
-      "signature": "lkumrsWsUTey+uGOC4TzRDho3tVU04vO3ML2MnFjyrSMktGBNqI0imPJZ2LLeaZUw3ZQ+tzn6dnEVvcP24s6Dw==",
-      "version": 1
+      "relays": [
+        "/ip4/203.0.113.10/tcp/4001/p2p/12D3KooWDCQ1tkDPUGHMUxHqBiPfR3gpbr6jgRTDMg3sdvatknbV",
+        "/ip4/203.0.113.11/tcp/4001/p2p/12D3KooWE4cFJCDqC8j9u7P2ZvbFpXo2mQpdE95ojGCoSJPR8ofb"
+      ],
+      "signature": "8ivQIJsQPClFNPnFz3niUAj7iDL1zlrEVzeDnNe28O1y4qx8HjEsszlEjvdZF1mo4qYU6WQbiSURA+wTLdFXCw==",
+      "version": 2
     },
-    "message": "rabbiit-storage-bootstrap-v1\nexpires_at: 2026-08-01T23:30:00.5Z\ncoordinator: 8do4Rro602bRNYeHR5k7d8ewnHWHIkrwK80CkfNSdYE\npeers: 1\n/garlic32/zzzz/p2p/12D3KooWZ"
+    "message": "rabbiit-storage-bootstrap-v2\nexpires_at: 2026-08-01T23:30:00.5Z\ncoordinator: 8do4Rro602bRNYeHR5k7d8ewnHWHIkrwK80CkfNSdYE\npeers: 1\n/axon/deotm6xjxfqymeusxoe76mmegwicf3igb6pvxs3chlngccf5wxzeziqb/p2p/12D3KooWBWQCPgXosnEpttG2JVFH7Fv8rcp2U3G5DEKQpzhCB9Sh\nrelays: 2\n/ip4/203.0.113.10/tcp/4001/p2p/12D3KooWDCQ1tkDPUGHMUxHqBiPfR3gpbr6jgRTDMg3sdvatknbV\n/ip4/203.0.113.11/tcp/4001/p2p/12D3KooWE4cFJCDqC8j9u7P2ZvbFpXo2mQpdE95ojGCoSJPR8ofb\norigin: t2wjif2vwjmam26dhdjpi5uoy2vszh6ndhe4offhcaq6a3jhyc4yieyb.key.axon"
   },
   "three_peers": {
     "document": {
       "coordinator_public_key": "8do4Rro602bRNYeHR5k7d8ewnHWHIkrwK80CkfNSdYE",
       "expires_at": "2026-08-01T21:57:28.877772Z",
+      "origin": "t2wjif2vwjmam26dhdjpi5uoy2vszh6ndhe4offhcaq6a3jhyc4yieyb.key.axon",
       "peers": [
-        "/garlic32/aaaa/p2p/12D3KooWA",
-        "/garlic32/bbbb/p2p/12D3KooWB",
-        "/garlic32/cccc/p2p/12D3KooWC"
+        "/axon/deotm6xjxfqymeusxoe76mmegwicf3igb6pvxs3chlngccf5wxzeziqb/p2p/12D3KooWBWQCPgXosnEpttG2JVFH7Fv8rcp2U3G5DEKQpzhCB9Sh",
+        "/axon/t2tmcs5jahqhssk33myghutl7ngkgct2gwgv3p55xb5wriqonfmzbhab/p2p/12D3KooWLVg4foyv4uiQKDt1Low611MEiBkosSfEuPiXHMS6WTn8",
+        "/axon/rbbm7v5jewvohwtxae5xc3xqp3xywuao7xvf425p3et7jbnhzo25ksib/p2p/12D3KooWJzGhp7DrhUNB39iV1wDkE7nh5ShhRzeQP2NM8JktM2jW"
       ],
-      "signature": "wDy8JjdhMF2Tte2EgS+7Iik3FZyBaOJCueYm7AqUSEQLHzhQhg2zeJQe/DPz1XbXZMA9FtZreueQ9GNmtp7mCg==",
-      "version": 1
+      "relays": [
+        "/ip4/203.0.113.10/tcp/4001/p2p/12D3KooWDCQ1tkDPUGHMUxHqBiPfR3gpbr6jgRTDMg3sdvatknbV",
+        "/ip4/203.0.113.11/tcp/4001/p2p/12D3KooWE4cFJCDqC8j9u7P2ZvbFpXo2mQpdE95ojGCoSJPR8ofb",
+        "/ip4/203.0.113.12/tcp/443/p2p/12D3KooWLVmDPHzRisDiHmoyD16bgas2ztAFzNt8s8XYNj2Zf86C"
+      ],
+      "signature": "ldaTRlkUdF3k3mURKkk4qRNS1M77cXymeccrNPkATWcyzFLDv9VGCYUix8Z514kroLK1QeyZeji7H1eoVVMdCg==",
+      "version": 2
     },
-    "message": "rabbiit-storage-bootstrap-v1\nexpires_at: 2026-08-01T21:57:28.877772Z\ncoordinator: 8do4Rro602bRNYeHR5k7d8ewnHWHIkrwK80CkfNSdYE\npeers: 3\n/garlic32/aaaa/p2p/12D3KooWA\n/garlic32/bbbb/p2p/12D3KooWB\n/garlic32/cccc/p2p/12D3KooWC"
+    "message": "rabbiit-storage-bootstrap-v2\nexpires_at: 2026-08-01T21:57:28.877772Z\ncoordinator: 8do4Rro602bRNYeHR5k7d8ewnHWHIkrwK80CkfNSdYE\npeers: 3\n/axon/deotm6xjxfqymeusxoe76mmegwicf3igb6pvxs3chlngccf5wxzeziqb/p2p/12D3KooWBWQCPgXosnEpttG2JVFH7Fv8rcp2U3G5DEKQpzhCB9Sh\n/axon/t2tmcs5jahqhssk33myghutl7ngkgct2gwgv3p55xb5wriqonfmzbhab/p2p/12D3KooWLVg4foyv4uiQKDt1Low611MEiBkosSfEuPiXHMS6WTn8\n/axon/rbbm7v5jewvohwtxae5xc3xqp3xywuao7xvf425p3et7jbnhzo25ksib/p2p/12D3KooWJzGhp7DrhUNB39iV1wDkE7nh5ShhRzeQP2NM8JktM2jW\nrelays: 3\n/ip4/203.0.113.10/tcp/4001/p2p/12D3KooWDCQ1tkDPUGHMUxHqBiPfR3gpbr6jgRTDMg3sdvatknbV\n/ip4/203.0.113.11/tcp/4001/p2p/12D3KooWE4cFJCDqC8j9u7P2ZvbFpXo2mQpdE95ojGCoSJPR8ofb\n/ip4/203.0.113.12/tcp/443/p2p/12D3KooWLVmDPHzRisDiHmoyD16bgas2ztAFzNt8s8XYNj2Zf86C\norigin: t2wjif2vwjmam26dhdjpi5uoy2vszh6ndhe4offhcaq6a3jhyc4yieyb.key.axon"
   }
 }

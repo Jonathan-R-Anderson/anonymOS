@@ -1,7 +1,7 @@
 # Distributed Container Service (DCS)
 
 An optional capability of `rabbiit-node` that lets peers run Docker
-containers for one another over I2P. No coordinator, no registry server, no
+containers for one another over AXON. No coordinator, no registry server, no
 Swarm, no Kubernetes.
 
 This document is the design. Nothing here is implemented yet; §20 is the
@@ -16,9 +16,9 @@ nothing described here — it does not advertise, does not accept work, and does
 not install a Docker client. Enabling it is an explicit act of donating compute
 to strangers, and the design treats every request as hostile.
 
-**Containers are addressed by I2P destination, never by IP.** Each container
-gets its own SAM session and therefore its own `.b32.i2p`. A container's
-identity on the network *is* that destination. Nothing in DCS transmits, logs,
+**Containers are addressed by AXON address, never by IP.** Each container
+gets its own AXON hidden service and therefore its own `.key.axon` address. A
+container's identity on the network *is* that address. Nothing in DCS transmits, logs,
 or resolves a worker's clearnet address, and a container cannot learn the host's
 address either (§10.4). This is the single constraint that most shapes the
 networking design.
@@ -30,7 +30,7 @@ DCS adds one protocol and four DHT namespaces. Everything else already exists:
 | Need | Existing component | Reused how |
 | --- | --- | --- |
 | Peer identity | `gateway.Signer` (Ed25519, `12D3Koo…`) | Signs every DCS message; worker identity == node identity |
-| Transport | `internal/i2p` SAM v3 + libp2p | New stream protocol on the same host |
+| Transport | `internal/axon` (runtime + libp2p transport) | New stream protocol on the same host |
 | Discovery | `internal/p2p` Kademlia DHT | New namespaces, same `PutValue`/`GetValue` |
 | Record validation | `gateway.DHTValidator` pattern | Same `Validate`/`Select`-by-sequence shape |
 | Content addressing | `internal/store` (SHA-256, chunked, Reed-Solomon) | Image layers are blobs in the same store |
@@ -50,7 +50,7 @@ in the design, not a feature.
    p2pctl ────────► │            DCS Manager (client side)     │
                     │  intent → plan → negotiate → reconcile   │
                     └───────┬──────────────────────────┬───────┘
-                            │ RPC over I2P             │ DHT
+                            │ RPC over AXON            │ DHT
                             ▼                          ▼
    ┌────────────────────────────────────┐   ┌────────────────────────┐
    │        Local Agent (worker)        │   │  DHT namespaces        │
@@ -161,7 +161,7 @@ type WorkerRecord struct {
     RecordType   string   `json:"record_type"`   // "dcs_worker"
     NodeID       string   `json:"node_id"`
     PublicKey    string   `json:"public_key"`    // base64, matches NodeID
-    Destination  string   `json:"destination"`   // <b32>.i2p — how to reach the agent
+    Destination  string   `json:"destination"`   // <56>.key.axon — how to reach the agent
     ProtocolVer  int      `json:"protocol_version"`
     AgentVersion string   `json:"agent_version"`
 
@@ -231,7 +231,7 @@ health = 100
       − 30 × (crashloops_last_hour  / 5,  capped 1)
       − 20 × (oom_kills_last_hour   / 3,  capped 1)
       − 20 × (failed_admissions_1h  / 10, capped 1)
-      − 15 × (i2p_tunnel_drops_1h   / 5,  capped 1)
+      − 15 × (axon_circuit_drops_1h / 5,  capped 1)
       − 15 × (1 if disk_free < 10%)
 ```
 
@@ -463,10 +463,10 @@ p2pctl deploy nginx --replicas 3
    │      Reserve(spec)          ──RPC──►  worker   ──► ACCEPT(reservation, ttl)
    │      Launch(reservation)    ──RPC──►  worker
    │                                       ├ pull layers (§5.2)
-   │                                       ├ create I2P destination for container
+   │                                       ├ create AXON address for container
    │                                       ├ docker create + start
    │                                       └ health probe until Running
-   │      ◄── LaunchResult(container_id, i2p_destination) ───
+   │      ◄── LaunchResult(container_id, axon_address) ──────
    │
 [5] Publish /rabbiit-dcs-deploy/<deployment-id>   (owner-signed)
    │
@@ -484,7 +484,7 @@ Messages, in order: `Reserve` → `ReserveAck` → `Launch` → `LayerProgress*`
 **Idempotency.** Every mutating RPC carries a client-generated
 `operation_id` (UUIDv7). The worker journals it in the Task DB before acting and
 returns the recorded result on replay. A Manager that times out and retries
-therefore cannot double-launch, which matters because I2P round trips are slow
+therefore cannot double-launch, which matters because overlay round trips are slow
 and timeouts are common.
 
 ---
@@ -537,7 +537,7 @@ adding a new field cannot leak it by default.
 
 ## 9. Logs
 
-Transport: a libp2p stream over I2P carrying length-prefixed frames.
+Transport: a libp2p stream over AXON carrying length-prefixed frames.
 
 ```
 LogRequest{container, follow, since, until, tail_lines, filter, level, compress}
@@ -548,10 +548,10 @@ LogRequest{container, follow, since, until, tail_lines, filter, level, compress}
 - **Historical**: agent reads the Docker JSON log file, seeks by timestamp.
 - **Streaming**: attaches to the Docker log stream; frames forwarded live.
 - **Search/filter**: applied *at the worker* — this matters, because sending a
-  gigabyte over I2P so the client can grep it would be absurd. Substring and
+  gigabyte over AXON so the client can grep it would be absurd. Substring and
   RE2 (never backtracking regex — a hostile pattern must not be able to pin the
   worker's CPU).
-- **Compression**: zstd per batch when a batch exceeds 4 KiB. I2P bandwidth is
+- **Compression**: zstd per batch when a batch exceeds 4 KiB. Overlay bandwidth is
   the scarce resource here; CPU is not.
 - **Backpressure**: a bounded ring buffer per stream. A slow reader causes
   *dropping*, not unbounded memory growth, and `LogEnd.dropped_count` reports
@@ -570,7 +570,7 @@ MetricsRequest{containers[], interval_seconds, fields[]}
 ```
 
 Sampled from the Docker stats API plus `nvidia-smi` where present. Minimum
-interval **5 seconds** — anything faster costs more in I2P overhead than the
+interval **5 seconds** — anything faster costs more in overlay overhead than the
 data is worth. Frames are deltas after the first full frame; the client
 reconstructs. A dropped frame is detectable via the sequence number and
 triggers a full frame on the next tick.
@@ -605,7 +605,7 @@ Detection:
 | OOM kill | `State.OOMKilled` from Docker |
 | High CPU/RAM | sustained >95% of limit for 5 min |
 | Deadlock | health check times out while process still alive |
-| Network failure | container's I2P tunnel down >2 min |
+| Network failure | container's AXON service unreachable >2 min |
 | Disk exhaustion | host free <5% → refuse new work, alert owner |
 | Health check | Docker `HEALTHCHECK` or DCS-configured HTTP/TCP/exec probe |
 
@@ -624,9 +624,9 @@ forever.
 | --- | --- | --- |
 | `local` | Docker named volume on that worker | Fast. Dies with the worker. |
 | `replicated` | Snapshot to the shard store on a schedule | Recovery to last snapshot; RPO = snapshot interval |
-| `distributed` | Every write erasure-coded into the shard store | Survives worker loss; write latency over I2P is brutal |
+| `distributed` | Every write erasure-coded into the shard store | Survives worker loss; write latency over AXON is brutal |
 
-**The honest tradeoff:** `distributed` is correct and slow. An I2P round trip is
+**The honest tradeoff:** `distributed` is correct and slow. An overlay round trip is
 tens of seconds under load, so synchronous distributed writes are unusable for
 anything database-shaped. Default is `local`; `replicated` is the recommended
 middle; `distributed` exists for small, write-rare, loss-intolerant data.
@@ -646,16 +646,16 @@ unrecoverable.
 
 ### 13.1 One destination per container
 
-At launch the agent opens a **new SAM session** for the container, producing a
-fresh `.b32.i2p`. That destination is the container's address, everywhere:
-service records, DNS, load balancing, logs. The worker's own destination is
+At launch the agent starts a **new AXON hidden service** for the container,
+producing a fresh `.key.axon`. That is the container's address, everywhere:
+service records, DNS, load balancing, logs. The worker's own address is
 never used for container traffic, so container-to-container flows do not reveal
 which containers are co-located.
 
 ### 13.2 Overlay
 
 ```
-container ──veth──► worker netns ──SAM──► container's own I2P destination
+container ──veth──► worker netns ──AXON──► container's own AXON address
                           │
                           └── egress policy (default: DENY ALL)
 ```
@@ -671,7 +671,7 @@ The agent runs a resolver on the container's gateway address, serving a
 synthetic zone:
 
 ```
-<container-alias>.<deployment>.dcs   →  <b32>.i2p
+<container-alias>.<deployment>.dcs   →  <56>.key.axon
 <service>.<owner>.svc.dcs            →  round-robin over healthy replicas
 ```
 
@@ -711,7 +711,7 @@ envelope for another node is never executed) → freshness → nonce unseen →
 signature → authorization. Nonces are kept for `2 × max_skew`; the short expiry
 bounds that table.
 
-Transport encryption is libp2p Noise over I2P, already in place. The envelope
+Transport encryption is libp2p Noise over AXON, already in place. The envelope
 signature is *additional* — it authenticates the request itself, so a
 compromised transport cannot forge an operation and the audit log entry is
 independently verifiable.
@@ -812,7 +812,7 @@ new digest, or error-rate regression beyond threshold. Rollback targets a
 | Network partition | RPC timeouts, DHT unreachable | freeze reconciliation, do **not** destroy, resume on heal |
 | Image corruption | digest mismatch | discard, downrank provider, refetch |
 | Disk full | resource monitor | refuse new work, GC image cache, alert owner |
-| I2P tunnel loss | SAM session error | rebuild session, container keeps its destination key so its address survives |
+| Overlay circuit loss | AXON session error | rebuild circuits, container keeps its service key so its address survives |
 
 **Split brain** is bounded by design: the worker is the sole authority on what it
 is running. Two Managers cannot both believe they own a container, because
@@ -897,9 +897,10 @@ people's machines, and the design has to say so plainly:
 4. **Egress denied, no exception.** §13.2's default deny is mandatory for lab
    containers — no `net.clearnet` grant is honoured. A vulnerable box that can
    reach the internet is a launch platform.
-5. **Reachable only by the owner's destination.** The container's I2P
-   destination is shared with the deploying owner alone, never in a public
-   service record.
+5. **Reachable only through the owner's copy of the address.** The container's
+   AXON address is shared with the deploying owner alone, never in a public
+   service record (its overlay descriptor is stored under a blinded key the
+   address cannot be recovered from).
 6. **Hard TTL.** Lab deployments carry a mandatory `max_runtime` (default 4h)
    after which the agent destroys them regardless of owner state. A forgotten
    vulnerable container is the failure mode to design against.
@@ -922,12 +923,12 @@ Each milestone is independently testable and leaves the node shippable.
 | # | Milestone | Done when |
 | --- | --- | --- |
 | 1 | **Config + capability record** — `dcs.enabled`, `WorkerRecord`, validator, publish/expire | Two nodes see each other's records; expiry removes them; role validation refuses a storage-only config |
-| 2 | **Secure RPC** — envelope, signing, replay, versioning, `Ping`/`Probe` | Signed round trip over I2P; replayed envelope rejected; wrong `to_node` rejected |
+| 2 | **Secure RPC** — envelope, signing, replay, versioning, `Ping`/`Probe` | Signed round trip over AXON; replayed envelope rejected; wrong `to_node` rejected |
 | 3 | **Docker runtime adapter** — hardened create/start/stop/destroy, no network yet | Container runs locally with the §14.3 profile; `--privileged` refused |
 | 4 | **Reserve/Launch + Task DB** — admission, reservations, idempotency journal | Concurrent Reserves race safely; duplicate `operation_id` returns the first result |
 | 5 | **Image distribution** — layers into the shard store, digest-verified pull | Cold pull works; second worker dedups shared layers; corrupted layer refetches |
 | 6 | **Scheduler** — filter/score/shortlist, all policies | Placement across 3 workers; anti-affinity honoured; no worker starves |
-| 7 | **Per-container I2P** — SAM session per container, destination in the record | Two containers reach each other by `.b32.i2p`; no clearnet egress |
+| 7 | **Per-container AXON** — hidden service per container, address in the record | Two containers reach each other by `.key.axon`; no clearnet egress |
 | 8 | **Health + restart policy** | Crash loop terminates in `CrashLooping`; OOM detected; backoff observed |
 | 9 | **Logs + metrics streaming** | Tail, follow, filter, backpressure drop counted |
 | 10 | **Replication + reconciliation** | Kill a worker → replica reappears; partition → no storm |

@@ -15,7 +15,7 @@ package compute
 //   - at rest in the DHT: storage nodes hold ciphertext. A node that stores a
 //     shard learns nothing from it, which matters because storage is replicated
 //     to strangers who never run the job.
-//   - in transit: already true over I2P, and true again independently, so a
+//   - in transit: already true over AXON, and true again independently, so a
 //     transport compromise is not a data compromise.
 //   - after the job: the guest is destroyed (M2 layer 11) and the plaintext
 //     dies with it. Nothing is left on disk for the next job or the operator.

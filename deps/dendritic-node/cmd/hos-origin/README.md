@@ -32,5 +32,7 @@ super-seeds it. Computers fetching it find each other through the tracker endpoi
 pieces among themselves, every piece checked against the root, so the origin's upload is the
 smallest part of a release reaching everyone (`internal/axon/swarm`; numbers in the roadmap §4a).
 
-Status: the coordinator speaks the node's current formats, which still carry I2P (`/garlic32`)
-addresses; those become AXON service addresses as the node moves onto AXON (roadmap P1b).
+Status: the coordinator speaks the node's current formats: peers are AXON service addresses
+(`/axon/<addr>/p2p/<id>`), heartbeats report `axon_address`, and the signed bootstrap document
+(version 2) carries the AXON relays (`-relay`) and, when started with `-axon-seed`, this
+origin's own AXON address, at which it serves everything above as a hidden service.

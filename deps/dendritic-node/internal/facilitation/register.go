@@ -32,8 +32,8 @@ import (
 // contract-level issue and not something the node can fix.
 
 // ZeroCommitment is the endpoint commitment for a node reachable only over
-// I2P: there is no endpoint worth committing to that would not also say where
-// the machine is, which is the thing I2P exists to hide.
+// AXON: there is no endpoint worth committing to that would not also say where
+// the machine is, which is the thing the overlay exists to hide.
 const ZeroCommitment = "0x" + "0000000000000000000000000000000000000000000000000000000000000000"
 
 // SelfRegistration is the registration a node files for itself.

@@ -186,7 +186,7 @@ func hardened(spec ContainerSpec) dockerCreateBody {
 		Env:    spec.Env,
 		Labels: spec.Labels,
 		// Docker's own networking is disabled entirely. The container reaches
-		// the network only through the I2P destination the agent attaches, so
+		// the network only through the AXON address the agent attaches, so
 		// there is no bridge, no port binding, and no route to the host LAN.
 		NetworkDisabled: true,
 		HostConfig: dockerHostConfig{
@@ -219,7 +219,7 @@ func hardened(spec ContainerSpec) dockerCreateBody {
 
 var ErrEmptyImage = errors.New("dcs: container spec has no image")
 
-// Create makes the container. It never starts it: the agent attaches the I2P
+// Create makes the container. It never starts it: the agent attaches the AXON
 // destination between create and start, so a container cannot run for even an
 // instant before its network identity exists.
 func (c *DockerClient) Create(ctx context.Context, spec ContainerSpec) (string, error) {

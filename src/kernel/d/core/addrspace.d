@@ -466,6 +466,28 @@ public void userRangeCount(ulong pml4Phys, ulong start, ulong end, out ulong pre
     }
 }
 
+// D3 (Darling): the frame behind `va` in task `taskId`'s address space, made present (and, for a
+// write, private and writable -- a copy-on-write share is broken) by running that task's own page
+// fault with its tables loaded.  For process_vm_readv/writev.  0 if the address is not mappable.
+public ulong userPagePhysForAccess(int taskId, ulong va, bool write) {
+    if (taskId < 0 || taskId >= MAX_TASKS || g_tasks[taskId].pml4Phys == 0) return 0;
+    const ulong page = va & ~0xFFFUL;
+    ulong* pte = leafPTEPtr(g_tasks[taskId].pml4Phys, page);
+    const bool need = pte is null || !(*pte & PTE_PRESENT) || !(*pte & PTE_USER)
+                      || (write && (!(*pte & PTE_RW) || (*pte & PTE_COW)));
+    if (need) {
+        const ulong saved = x64ReadCR3();
+        x64WriteCR3(g_tasks[taskId].pml4Phys);
+        const bool ok = handlePageFault(taskId, page, write);
+        x64WriteCR3(saved);
+        if (!ok) return 0;
+        pte = leafPTEPtr(g_tasks[taskId].pml4Phys, page);
+        if (pte is null || !(*pte & PTE_PRESENT)) return 0;
+        if (write && !(*pte & PTE_RW)) return 0;
+    }
+    return *pte & PTE_ADDR_MASK;
+}
+
 public void mapSharedCowPage(ulong phys, ulong va) {
     physPageRefInc(phys);
     map_page_hhdm(phys, va, PTE_PRESENT | PTE_USER | PTE_COW, &alloc_phys_page);

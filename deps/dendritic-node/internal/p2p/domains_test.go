@@ -63,7 +63,7 @@ func TestLoopbackYieldsNoDomain(t *testing.T) {
 
 // TestNonIPTransportsYieldNoDomain is §1.4's finding, as a test.
 //
-// An I2P destination is a public key, deliberately unrelated to where the
+// An AXON address is a public key, deliberately unrelated to where the
 // machine is. There is no failure domain to be had from it, and inventing one
 // would be worse than having none.
 func TestNonIPTransportsYieldNoDomain(t *testing.T) {

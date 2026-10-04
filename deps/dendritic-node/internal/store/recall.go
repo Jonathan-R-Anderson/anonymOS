@@ -41,8 +41,8 @@ import (
 //
 // A tombstone is only dropped when every holder of every shard has reached a
 // terminal answer. "Unreachable" is NOT terminal: a peer that has not fetched
-// the coordinator's bootstrap document yet refuses everything, and a peer over
-// I2P is routinely unreachable for minutes. Recording either as "gone" would
+// the coordinator's bootstrap document yet refuses everything, and a peer on
+// the overlay can be unreachable for minutes. Recording either as "gone" would
 // make the ledger lie in the one direction that matters.
 var bucketRecall = []byte("shard_recall")
 

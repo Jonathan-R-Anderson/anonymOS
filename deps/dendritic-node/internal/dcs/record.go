@@ -24,7 +24,7 @@ type WorkerRecord struct {
 	RecordType   string `json:"record_type"` // "dcs_worker"
 	NodeID       string `json:"node_id"`
 	PublicKey    string `json:"public_key"`
-	Destination  string `json:"destination"` // <b32>.i2p of the agent itself
+	Destination  string `json:"destination"` // <56 chars>.key.axon of the agent itself
 	ProtocolVer  int    `json:"protocol_version"`
 	AgentVersion string `json:"agent_version"`
 	// ContentPubKey is the worker's base64 Curve25519 content key. The coordinator
@@ -90,9 +90,9 @@ func (r WorkerRecord) satisfies(req Requirement, now time.Time) bool {
 	if r.expired(now) || r.RecordType != "dcs_worker" {
 		return false
 	}
-	// A worker with no I2P destination cannot be dialed -- an older agent that
+	// A worker with no AXON address cannot be dialed -- an older agent that
 	// advertised itself without one. Never pick it: doing so fails the whole
-	// deploy with "invalid I2P base32 destination" instead of trying a worker
+	// deploy with "invalid AXON base32 destination" instead of trying a worker
 	// that actually has an address.
 	if strings.TrimSpace(r.Destination) == "" {
 		return false

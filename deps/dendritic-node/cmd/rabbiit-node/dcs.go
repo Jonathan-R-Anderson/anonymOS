@@ -3,17 +3,20 @@ package main
 import (
 	"bytes"
 	"context"
+	"errors"
 	"fmt"
 	"log"
+	"net"
 	"os"
 	"path/filepath"
+	"strconv"
 	"strings"
 	"time"
 
+	"github.com/rabbiit/maniwani/storage-client/internal/axon/runtime"
 	"github.com/rabbiit/maniwani/storage-client/internal/compute"
 	"github.com/rabbiit/maniwani/storage-client/internal/config"
 	"github.com/rabbiit/maniwani/storage-client/internal/dcs"
-	syndii2p "github.com/rabbiit/maniwani/storage-client/internal/i2p"
 	"github.com/rabbiit/maniwani/storage-client/internal/p2p"
 	"github.com/rabbiit/maniwani/storage-client/internal/place"
 	"github.com/rabbiit/maniwani/storage-client/internal/store"
@@ -23,9 +26,9 @@ import (
 // the seam the README's "run a container worker" instructions describe: with
 // dcs.enabled and role.worker set, a storage node also becomes a DCS worker.
 //
-// DCS reuses the storage node wholesale -- its libp2p host for RPC over I2P, its
-// DHT for worker records, its I2P bridge for per-container destinations, and its
-// shard store for build contexts. It is not a second network; it is one more
+// DCS reuses the storage node wholesale -- its libp2p host for RPC over AXON,
+// its DHT for worker records, its overlay runtime for per-container addresses,
+// and its shard store for build contexts. It is not a second network; it is one more
 // protocol on the node already running.
 
 // startDCSWorker assembles and starts the worker. It returns without error when
@@ -37,7 +40,7 @@ func startDCSWorker(ctx context.Context, cfg config.Config, node *p2p.Node, stor
 		return
 	}
 	if node == nil || storage == nil {
-		// DCS needs the full storage node (host + DHT + I2P + store). A
+		// DCS needs the full storage node (host + DHT + overlay + store). A
 		// gateway-only or probe-only process has none of these.
 		logger.Printf("dcs: worker role requires full storage mode; not started")
 		return
@@ -54,10 +57,9 @@ func startDCSWorker(ctx context.Context, cfg config.Config, node *p2p.Node, stor
 		return
 	}
 
-	// Per-container I2P destinations come from fresh SAM sessions on the same
-	// bridge the node already uses.
-	sam := cfg.I2PSAM
-	allocator := dcs.NewAddressAllocator(&samOpener{sam: sam}, filepath.Join(cfg.DataDir, "dcs"))
+	// Per-container AXON addresses are hidden services on the same overlay
+	// runtime the node already runs.
+	allocator := dcs.NewAddressAllocator(&axonOpener{rt: node.Overlay()}, filepath.Join(cfg.DataDir, "dcs"))
 
 	admission := dcs.NewAdmissionController(dcs.AdmissionConfig{
 		MaxSlots:    cfg.DCS.Limits.MaxContainers,
@@ -130,21 +132,6 @@ func startDCSWorker(ctx context.Context, cfg config.Config, node *p2p.Node, stor
 		cfg.DCS.Limits.MaxContainers, cfg.DCS.Role.Lab, instanceTTL(cfg))
 }
 
-// nodeI2PDestination returns this node's own base32 I2P destination, taken from
-// its /garlic32/<b32>/p2p/<id> address. That base32 host is exactly what a
-// deployer passes to i2p.Multiaddr to dial the worker.
-func nodeI2PDestination(node *p2p.Node) string {
-	for _, addr := range node.Addresses() {
-		parts := strings.Split(addr, "/")
-		for i, part := range parts {
-			if part == "garlic32" && i+1 < len(parts) && parts[i+1] != "" {
-				return parts[i+1]
-			}
-		}
-	}
-	return ""
-}
-
 func instanceTTL(cfg config.Config) time.Duration {
 	if cfg.DCS.Limits.MaxRuntimeSeconds > 0 {
 		return time.Duration(cfg.DCS.Limits.MaxRuntimeSeconds) * time.Second
@@ -196,14 +183,14 @@ func advertiseWorker(ctx context.Context, cfg config.Config, node *p2p.Node, adm
 		if cfg.DCS.Role.Lab {
 			caps = append(caps, "lab")
 		}
-		// The record MUST carry the node's own I2P destination -- it is the only
+		// The record MUST carry the node's own AXON address -- it is the only
 		// address a deployer can dial the worker at. Without it the bridge finds
-		// the worker but has nothing to connect to ("invalid I2P base32
-		// destination"). It comes from the node's /garlic32/<b32> address, which
-		// exists once the I2P session is up (well before this runs).
-		destination := nodeI2PDestination(node)
+		// the worker but has nothing to connect to ("invalid AXON address"). It
+		// is the service behind the node's /axon/<addr> multiaddr, which exists
+		// as soon as the node is on the overlay (well before this runs).
+		destination := node.AxonAddress()
 		if destination == "" {
-			logger.Printf("dcs: worker not advertised yet -- I2P destination not ready")
+			logger.Printf("dcs: worker not advertised yet -- AXON address not ready")
 			return
 		}
 		now := time.Now()
@@ -257,7 +244,7 @@ type dcsDeployOptions struct {
 
 // runDCSDeploy is the client side end to end: open a node, discover workers,
 // deploy to a random one, poll while queued, and print the container's private
-// I2P address. It is what the README's "deploy a container" instructions call.
+// AXON address. It is what the README's "deploy a container" instructions call.
 func runDCSDeploy(cfg config.Config, opts dcsDeployOptions, logger *log.Logger) {
 	if opts.image == "" && opts.buildDir == "" {
 		logger.Fatal("dcs-deploy: pass -dcs-image or -dcs-build-context")
@@ -266,8 +253,8 @@ func runDCSDeploy(cfg config.Config, opts dcsDeployOptions, logger *log.Logger) 
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 
-	// A deploy needs the full node substrate: I2P, DHT, the shard store (for a
-	// build context). Open it the same way the storage path does.
+	// A deploy needs the full node substrate: the overlay, the DHT, the shard
+	// store (for a build context). Open it the same way the storage path does.
 	storage, err := store.Open(
 		filepath.Join(cfg.DataDir, "storage"),
 		cfg.DataShards, cfg.ParityShards, cfg.ChunkBytes, cfg.CapacityBytes,
@@ -277,8 +264,13 @@ func runDCSDeploy(cfg config.Config, opts dcsDeployOptions, logger *log.Logger) 
 	}
 	defer storage.Close()
 
-	logger.Printf("dcs-deploy: connecting to I2P and the DHT (this can take a minute)…")
-	node, err := p2p.Open(ctx, cfg.DataDir, cfg.I2PSAM, cfg.I2PHTTPProxy, storage, logger)
+	logger.Printf("dcs-deploy: joining AXON and the DHT (this can take a minute)…")
+	overlay, origin, err := startOverlay(ctx, cfg, false, logger)
+	if err != nil {
+		logger.Fatalf("dcs-deploy: join the overlay: %v", err)
+	}
+	defer overlay.Close()
+	node, err := p2p.Open(ctx, cfg.DataDir, p2p.Overlay{Runtime: overlay, Origin: origin}, storage, logger)
 	if err != nil {
 		logger.Fatalf("dcs-deploy: open node: %v", err)
 	}
@@ -347,7 +339,7 @@ func runDCSDeploy(cfg config.Config, opts dcsDeployOptions, logger *log.Logger) 
 	fmt.Println("Container deployed.")
 	fmt.Printf("  worker:       %s\n", worker.NodeID)
 	fmt.Printf("  container:    %s\n", reply.ContainerID)
-	fmt.Printf("  I2P address:  %s\n", reply.Destination)
+	fmt.Printf("  AXON address: %s\n", reply.Destination)
 	if reply.Private {
 		fmt.Println("  visibility:   PRIVATE — only you were told this address")
 	}
@@ -358,7 +350,12 @@ func runDCSDeploy(cfg config.Config, opts dcsDeployOptions, logger *log.Logger) 
 		fmt.Printf("  note:         %s\n", reply.Note)
 	}
 	fmt.Println()
-	fmt.Println("Reach it through your I2P proxy at the address above. It spins down on its own.")
+	proxy := cfg.Axon.ProxyListen
+	if proxy == "" {
+		proxy = config.DefaultProxyListen + " (enable axon.proxy_listen)"
+	}
+	fmt.Printf("Reach it through this node's AXON proxy, http://%s, at the address above.\n", proxy)
+	fmt.Println("It spins down on its own.")
 }
 
 func loadBuildDir(dir string) ([]dcs.BuildFile, error) {
@@ -406,19 +403,53 @@ func shortTime() string {
 
 // ---- adapters between the node's primitives and the dcs interfaces ----
 
-// samOpener opens a fresh I2P destination for a container's stable address.
-type samOpener struct{ sam string }
+// axonOpener starts a container's AXON hidden service from its key file, which
+// is what keeps the container's address stable across a restart.
+type axonOpener struct{ rt *runtime.Runtime }
 
-func (o *samOpener) Open(ctx context.Context, keyPath string) (dcs.Session, error) {
-	return syndii2p.Open(ctx, o.sam, keyPath)
+func (o *axonOpener) Open(_ context.Context, keyPath string) (dcs.Session, error) {
+	if o.rt == nil {
+		return nil, errors.New("dcs: the node is not on the AXON overlay")
+	}
+	seed, err := p2p.LoadOrCreateServiceSeed(keyPath)
+	if err != nil {
+		return nil, err
+	}
+	service, err := o.rt.Listen(seed)
+	if err != nil {
+		return nil, err
+	}
+	return axonSession{service}, nil
+}
+
+// axonSession is a container's service as the DCS package sees it.
+type axonSession struct{ *runtime.Service }
+
+func (s axonSession) Address() string { return s.Service.Addr() }
+
+// AcceptStreamPort reports the port a caller dialed: runtime.DialContext sends
+// the port of "<addr>.key.axon:8080" as the stream's metadata. A stream that
+// names none (or something else) reports 0, and the proxy uses its default.
+func (s axonSession) AcceptStreamPort() (net.Conn, int, error) {
+	conn, err := s.Service.Accept()
+	if err != nil {
+		return nil, 0, err
+	}
+	port := 0
+	if m, ok := conn.(interface{ Meta() []byte }); ok {
+		if p, perr := strconv.Atoi(string(m.Meta())); perr == nil && p > 0 && p < 65536 {
+			port = p
+		}
+	}
+	return conn, port, nil
 }
 
 // containerSessions supplies the accepting session a container's inbound proxy
-// runs on. It REUSES the session the address allocator already opened for the
-// container rather than opening a second one: a container has a single I2P
-// destination, and I2P rejects a second session on the same destination
-// (DUPLICATED_DEST). Reusing it also guarantees the proxy accepts on the very
-// destination the deployer was handed -- otherwise every port reads closed.
+// runs on. It REUSES the service the address allocator already started for the
+// container rather than starting a second one: a container has a single AXON
+// address, and a second service on the same key would compete with the first
+// for its intro points. Reusing it also guarantees the proxy accepts on the
+// very address the deployer was handed -- otherwise ports read closed.
 type containerSessions struct {
 	alloc *dcs.AddressAllocator
 }
@@ -433,7 +464,7 @@ func (sharedAccepter) Close() error { return nil }
 func (c *containerSessions) OpenForContainer(_ context.Context, containerID string) (dcs.SessionAccepter, error) {
 	sess, ok := c.alloc.AcceptSession(containerID)
 	if !ok {
-		return nil, fmt.Errorf("dcs: no allocated i2p session for container %s", containerID)
+		return nil, fmt.Errorf("dcs: no allocated AXON service for container %s", containerID)
 	}
 	return sharedAccepter{sess}, nil
 }

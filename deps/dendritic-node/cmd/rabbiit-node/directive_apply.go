@@ -10,7 +10,7 @@ import (
 // originURLs are the settings that point at the origin, and are therefore the
 // ones a move has to carry with it. Named individually rather than found by
 // scanning the config, because "any field containing a URL" would also catch
-// the management page, the SAM bridge and the I2P proxy -- all of which are
+// the management page and the AXON proxy -- both of which are
 // local and must never follow a directive anywhere.
 func originURLs(cfg *config.Config) map[string]*string {
 	return map[string]*string{

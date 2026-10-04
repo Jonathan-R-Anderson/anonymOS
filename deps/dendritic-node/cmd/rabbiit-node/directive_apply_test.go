@@ -19,7 +19,7 @@ func configPointingAtOrigin() *config.Config {
 		"https://rabbiit.io/.well-known/rabbiit/network.json",
 	}
 	cfg.UIListen = "127.0.0.1:9090"
-	cfg.I2PSAM = "127.0.0.1:7656"
+	cfg.Axon.ProxyListen = "127.0.0.1:4480"
 	return cfg
 }
 
@@ -66,14 +66,14 @@ func TestAMoveCarriesEveryOriginURL(t *testing.T) {
 }
 
 func TestLocalAddressesNeverFollowADirective(t *testing.T) {
-	// The management page, SAM and the I2P proxy are local. A directive that
+	// The management page and the AXON proxy are local. A directive that
 	// moved them would point this node's own internals at somebody else's host.
 	cfg := configPointingAtOrigin()
 	applyWithStore(t, cfg, &directive.Directive{
 		Kind: directive.KindMove, Sequence: 3, OriginDomain: "rabbiit.net"})
 
-	if cfg.UIListen != "127.0.0.1:9090" || cfg.I2PSAM != "127.0.0.1:7656" {
-		t.Fatalf("local addresses moved: ui=%s sam=%s", cfg.UIListen, cfg.I2PSAM)
+	if cfg.UIListen != "127.0.0.1:9090" || cfg.Axon.ProxyListen != "127.0.0.1:4480" {
+		t.Fatalf("local addresses moved: ui=%s axon proxy=%s", cfg.UIListen, cfg.Axon.ProxyListen)
 	}
 }
 

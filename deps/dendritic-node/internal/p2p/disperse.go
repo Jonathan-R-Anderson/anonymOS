@@ -35,7 +35,7 @@ import (
 
 const (
 	// disperseConcurrency bounds simultaneous shard pushes. Each one is a lease
-	// round trip over the I2P outproxy plus a stream, so this is about not
+	// round trip to the coordinator plus a stream, so this is about not
 	// burying the lease service, not about local CPU.
 	disperseConcurrency = 4
 	// candidateLimit caps the DHT capacity lookup. More than this and the
@@ -145,7 +145,7 @@ func (n *Node) storageCandidates(ctx context.Context) []placement.Candidate {
 			}
 			// Failure domains (T12.2). Taken from the LIVE CONNECTION the dial
 			// above just established, never from record.Destination -- that is
-			// an I2P b32, a public key deliberately unrelated to where the
+			// an AXON address, a public key deliberately unrelated to where the
 			// machine is, and §1.4's whole finding.
 			if pid, perr := peer.Decode(record.NodeID); perr == nil {
 				cand.Domains = n.domainKeysFor(pid)
@@ -447,7 +447,7 @@ func (n *Node) placeOne(
 	// A peer levelling has just taken this shard OFF is refusing it for the next
 	// six hours (DeleteRemoteShard writes that refusal, and it must: it is what
 	// stops the replicate loop undoing an operator's delete). Asking anyway would
-	// spend a lease and an I2P round trip to be told "recalled recently" -- which
+	// spend a lease and an overlay round trip to be told "recalled recently" -- which
 	// answeredNo counts as a refusal, so three of them would drop a healthy
 	// volunteer out of every candidate set over a refusal this node caused.
 	// Declining here is the mover skipping its own; see NoteShardMovedAway.

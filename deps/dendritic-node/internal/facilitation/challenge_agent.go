@@ -31,7 +31,7 @@ var (
 
 // ChallengeTTL bounds how long an answer is accepted. Short enough that a node
 // cannot fetch data back from a peer after being asked (which would let it pass
-// while not actually storing anything), long enough for an I2P round trip.
+// while not actually storing anything), long enough for an overlay round trip.
 const ChallengeTTL = 2 * time.Minute
 
 // StorageChallenge asks a node to prove it still holds a shard.

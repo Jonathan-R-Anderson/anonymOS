@@ -112,7 +112,7 @@ type Client struct {
 
 // DirectHTTPClient is the transport probes must use: no proxy.
 //
-// Probing through I2P would measure I2P. The question this answers is whether
+// Probing through the overlay would measure the overlay. The question this answers is whether
 // an ordinary reader on the ordinary internet can reach the site, so the
 // request has to leave the way an ordinary reader's would.
 func DirectHTTPClient() *http.Client {

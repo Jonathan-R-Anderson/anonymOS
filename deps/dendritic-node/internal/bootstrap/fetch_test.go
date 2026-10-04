@@ -50,12 +50,12 @@ func serveDoc(t *testing.T, signer ed25519.PrivateKey, publicKey string,
 	t.Helper()
 	raw := expires.Format(time.RFC3339)
 	doc := map[string]interface{}{
-		"version": 1, "peers": peers,
+		"version": DocumentVersion, "peers": peers,
 		"coordinator_public_key": publicKey, "expires_at": raw,
 	}
 	if signer != nil {
 		doc["signature"] = base64.StdEncoding.EncodeToString(
-			ed25519.Sign(signer, Message(peers, publicKey, raw)))
+			ed25519.Sign(signer, Message(peers, nil, "", publicKey, raw)))
 	}
 	body, _ := json.Marshal(doc)
 	return httptest.NewServer(http.HandlerFunc(
@@ -75,8 +75,8 @@ func fetch(t *testing.T, cfg Config, log Logger) (*Result, error) {
 	return Fetch(context.Background(), nil, fakeResolver{}, cfg, log, testNow)
 }
 
-var peersA = []string{"/garlic32/aaaa/p2p/12D3KooWA", "/garlic32/bbbb/p2p/12D3KooWB"}
-var peersEvil = []string{"/garlic32/evil/p2p/12D3KooWEvil"}
+var peersA = []string{"/axon/aaaa/p2p/12D3KooWA", "/axon/bbbb/p2p/12D3KooWB"}
+var peersEvil = []string{"/axon/evil/p2p/12D3KooWEvil"}
 
 // --- rule 1: key pinned, one good gateway is enough ----------------------
 

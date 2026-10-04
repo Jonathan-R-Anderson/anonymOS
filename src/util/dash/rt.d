@@ -1,6 +1,8 @@
 // dash runtime: the C library surface, a mark-and-sweep heap, symbols, and growable buffers.
 //
-// dash is built -betterC (no druntime, no GC) and linked against musl.  Everything the interpreter
+// dash is built -betterC (no druntime, no GC).  The process, file, directory, terminal, heap and
+// environment functions declared below are dash.native's -- native object ABI calls, no Linux
+// syscalls; musl supplies only the pure string / formatting / maths routines.  Everything the interpreter
 // allocates while evaluating comes from gcAlloc; the REPL collects BETWEEN top-level statements,
 // when the only live values are the ones reachable from the global environment -- so the collector
 // never has to find roots on the machine stack.
@@ -24,10 +26,6 @@ extern (C) @nogc nothrow {
     double strtod(const(char)*, char**);
     long   strtoll(const(char)*, char**, int);
     int    snprintf(char*, size_t, const(char)*, ...);
-    int    printf(const(char)*, ...);
-    int    fflush(void*);
-    extern __gshared void* stdout;
-    extern __gshared void* stderr;
     // processes / files
     int    fork();
     int    execve(const(char)*, const(char*)*, const(char*)*);
@@ -124,7 +122,10 @@ struct Hdr { Hdr* next; size_t size; Kind kind; bool mark; }
 __gshared Hdr* g_heap;
 __gshared size_t g_heapBytes, g_heapSinceGc;
 
+private __gshared uint g_allocTick;
 void* gcAlloc(size_t size, Kind kind) {
+    // ^C during a long computation: native events are polled here (there are no signal handlers).
+    if ((++g_allocTick & 0xFFF) == 0) { import dash.native : pollEvents; pollEvents(); }
     auto h = cast(Hdr*)calloc(1, Hdr.sizeof + size);
     if (h is null) { errOut("dash: out of memory\n"); _exit(111); }
     h.size = size; h.kind = kind; h.next = g_heap; g_heap = h;

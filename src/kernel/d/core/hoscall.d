@@ -44,6 +44,10 @@ import core.audit    : auditLog, AuditKind, auditCount;   // SHELL_AND_COMMANDS 
 // (no module static-ctor init order).
 import core.syscalls.posix : linux_sys_open, linux_sys_read, linux_sys_write,
                              linux_sys_close, linux_sys_lseek, linux_sys_fstat;
+import core.syscalls.posix : linux_sys_dup, linux_sys_dup2, linux_sys_dup3, linux_sys_pipe2,   // N1
+                             linux_sys_stat, linux_sys_lstat, linux_sys_getdents64, linux_sys_mkdir,
+                             linux_sys_rmdir, linux_sys_unlink, linux_sys_rename, linux_sys_chdir,
+                             linux_sys_getcwd, linux_sys_clock_gettime, linux_sys_ioctl, linux_sys_getpid;
 
 @nogc nothrow:
 
@@ -114,7 +118,41 @@ enum : ulong {
     HOSQ_MMIO_RD    = 26,  // mmio_read(arg=phys, buf=width 1/2/4/8) -> value / -errno
     HOSQ_MMIO_WR    = 27,  // mmio_write(arg=phys, buf=value, buflen=width) -> 0 / -errno
     HOSQ_VIRT2PHYS  = 28,  // virt_to_phys(arg=vaddr) -> phys / -errno  (caller's own space)
+
+    // N1 — the native runtime of dash: everything the native shell does to the OS, so it makes no
+    // Linux syscalls of its own (src/util/dash/native.d).  Path arguments resolve in the caller's
+    // namespace and working directory, exactly as the Linux verbs' do; records are native structs
+    // (NStat / NDirEnt below), not struct stat / linux_dirent64.
+    HOSQ_FORK       = 29,  // process_clone() -> child pid (parent) / 0 (child)          [kernel_main]
+    HOSQ_HANDLE_MOVE= 30,  // handle_move(arg=from, buf=to | -1 = lowest free, buflen=1: close-on-spawn)
+    HOSQ_CHAN_PAIR  = 31,  // channel_pair(buf=int[2] out, arg=1: close-on-spawn) -> 0   (a byte channel)
+    HOSQ_DIR_LIST   = 32,  // dir_list(arg=path, buf=NDirEnt records out, buflen) -> bytes / -ERANGE
+    HOSQ_STAT       = 33,  // stat(arg=path, buf=NStat out, buflen=1: do not follow a link) -> 0
+    HOSQ_MKDIR      = 34,  // mkdir(buf=path, arg=mode)
+    HOSQ_REMOVE     = 35,  // remove(buf=path, arg=1: a directory)
+    HOSQ_RENAME     = 36,  // rename(arg=old path, buf=new path)
+    HOSQ_CHDIR      = 37,  // chdir(buf=path)
+    HOSQ_GETCWD     = 38,  // getcwd(buf=out, buflen) -> length
+    HOSQ_KILL       = 39,  // process_signal(arg=pid, buf=signal)                         [kernel_main]
+    HOSQ_TIME       = 40,  // time(arg=0 realtime | 1 monotonic) -> nanoseconds
+    HOSQ_SLEEP      = 41,  // sleep(arg=milliseconds)                                       [kernel_main]
+    HOSQ_VM_ALLOC   = 42,  // vm_alloc(arg=bytes) -> address (zeroed, private)              [kernel_main]
+    HOSQ_VM_FREE    = 43,  // vm_free(arg=address, buf=bytes)                               [kernel_main]
+    HOSQ_EXIT       = 44,  // process_exit(arg=status) -- every thread                      [kernel_main]
+    HOSQ_TERM       = 45,  // terminal(arg=handle, buf=0 isatty | 1 raw | 2 restore | 3 size -> rows<<16|cols)
+    HOSQ_EVENTS     = 46,  // events() -> pending NEV_* bits (and clears them)
+    HOSQ_GETPID     = 47,  // pid of the caller
 }
+
+// HOSQ_OPEN flags above the rights bits (arg bits 32..): how a file object is opened.
+enum : ulong {
+    HOPEN_CREATE = 1UL << 32, HOPEN_TRUNC = 1UL << 33, HOPEN_APPEND = 1UL << 34,
+    HOPEN_EXCL   = 1UL << 35, HOPEN_DIR   = 1UL << 36, HOPEN_CLOEXEC = 1UL << 37,
+}
+
+// Native records (ABI v1).  NDirEnt: a header then the name, NUL-terminated, 8-aligned (reclen).
+struct NStat { ulong size; ulong mtime; ulong ino; uint mode; uint uid; uint gid; uint nlink; }
+struct NDirEnt { ushort reclen; ushort namelen; uint pad; NStat st; /* char name[namelen + 1] */ }
 
 
 // BARE_METAL L3: pack/unpack the (bus,slot,func,offset) selector carried in `arg`.
@@ -155,14 +193,134 @@ private long hosOpen(ulong pathPtr, ulong rights) @nogc nothrow {
     if (pathPtr == 0) return -14;                  // EFAULT
     const bool wr = (rights & CAP_RIGHT_WRITE) != 0;
     const bool rd = (rights & CAP_RIGHT_READ)  != 0;
-    const ulong flags = (wr && rd) ? 2UL : (wr ? 1UL : 0UL);   // O_RDWR / O_WRONLY / O_RDONLY
-    return linux_sys_open(pathPtr, flags, 0);      // the real backing fd is the native handle
+    ulong flags = (wr && rd) ? 2UL : (wr ? 1UL : 0UL);   // O_RDWR / O_WRONLY / O_RDONLY
+    // N1: how the object is opened (create / truncate / append / exclusive / a directory / not inherited)
+    if (rights & HOPEN_CREATE)  flags |= 0x40;
+    if (rights & HOPEN_TRUNC)   flags |= 0x200;
+    if (rights & HOPEN_APPEND)  flags |= 0x400;
+    if (rights & HOPEN_EXCL)    flags |= 0x80;
+    if (rights & HOPEN_DIR)     flags |= 0x10000;
+    if (rights & HOPEN_CLOEXEC) flags |= 0x80000;
+    return linux_sys_open(pathPtr, flags, 0x1B6);  // the real backing fd is the native handle (0666 & ~umask)
 }
 private long hosRead (ulong h, ulong buf, ulong len)    @nogc nothrow { return linux_sys_read (h, buf, len); }
 private long hosWrite(ulong h, ulong buf, ulong len)    @nogc nothrow { return linux_sys_write(h, buf, len); }
 private long hosClose(ulong h)                          @nogc nothrow { return linux_sys_close(h); }
 private long hosLseek(ulong h, ulong off, ulong whence) @nogc nothrow { return linux_sys_lseek(h, cast(long)off, whence); }
 private long hosFstat(ulong h, ulong statbuf)           @nogc nothrow { return linux_sys_fstat(h, statbuf); }
+
+// ── N1: the native runtime verbs ────────────────────────────────────────────────────────────────
+private void nstatFromLinux(ref NStat n, const(ubyte)* st) {
+    n.ino   = *cast(const(ulong)*)(st + 8);
+    n.nlink = cast(uint)*cast(const(ulong)*)(st + 16);
+    n.mode  = *cast(const(uint)*)(st + 24);
+    n.uid   = *cast(const(uint)*)(st + 28);
+    n.gid   = *cast(const(uint)*)(st + 32);
+    n.size  = *cast(const(ulong)*)(st + 48);
+    n.mtime = *cast(const(ulong)*)(st + 88);
+}
+private long hosStat(ulong pathPtr, ulong outPtr, ulong nofollow) {
+    if (pathPtr == 0 || outPtr == 0) return -14;
+    ubyte[144] st = 0;
+    const long r = nofollow ? linux_sys_lstat(pathPtr, cast(ulong)st.ptr) : linux_sys_stat(pathPtr, cast(ulong)st.ptr);
+    if (r < 0) return r;
+    NStat n; nstatFromLinux(n, st.ptr);
+    *cast(NStat*)outPtr = n;
+    return 0;
+}
+// Every entry of the directory at `pathPtr` (but "." and "..") as NDirEnt records, each with its
+// lstat; -ERANGE when they do not all fit (the caller retries with a larger buffer).
+private long hosDirList(ulong pathPtr, ulong outPtr, ulong outLen) {
+    if (pathPtr == 0 || outPtr == 0) return -14;
+    const long fd = linux_sys_open(pathPtr, 0x10000 | 0x80000, 0);     // O_DIRECTORY | O_CLOEXEC
+    if (fd < 0) return fd;
+    auto path = cast(const(char)*)pathPtr;
+    size_t pl = 0; while (path[pl] != 0 && pl < 900) ++pl;
+    char[1024] full = void;
+    foreach (k; 0 .. pl) full[k] = path[k];
+    size_t base = pl;
+    if (base == 0 || full[base - 1] != '/') full[base++] = '/';
+    ubyte[4096] ents = void;
+    auto o = cast(ubyte*)outPtr;
+    ulong used = 0;
+    long result = 0;
+    for (;;) {
+        const long n = linux_sys_getdents64(cast(ulong)fd, cast(ulong)ents.ptr, ents.length);
+        if (n < 0) { result = n; break; }
+        if (n == 0) { result = cast(long)used; break; }
+        size_t off = 0;
+        bool full_ = false;
+        while (off < cast(size_t)n) {
+            const ushort reclen = *cast(ushort*)(ents.ptr + off + 16);
+            auto name = cast(const(char)*)(ents.ptr + off + 19);
+            size_t nl = 0; while (name[nl] != 0 && nl < 255) ++nl;
+            off += reclen;
+            if ((nl == 1 && name[0] == '.') || (nl == 2 && name[0] == '.' && name[1] == '.')) continue;
+            const ulong rec = (NDirEnt.sizeof + nl + 1 + 7) & ~7UL;
+            if (used + rec > outLen) { full_ = true; break; }
+            auto de = cast(NDirEnt*)(o + used);
+            de.reclen = cast(ushort)rec; de.namelen = cast(ushort)nl; de.pad = 0;
+            if (base + nl < full.length) {
+                foreach (k; 0 .. nl) full[base + k] = name[k];
+                full[base + nl] = 0;
+                ubyte[144] st = 0;
+                if (linux_sys_lstat(cast(ulong)full.ptr, cast(ulong)st.ptr) == 0) nstatFromLinux(de.st, st.ptr);
+                else de.st = NStat.init;
+            }
+            auto dn = cast(char*)(o + used + NDirEnt.sizeof);
+            foreach (k; 0 .. nl) dn[k] = name[k];
+            dn[nl] = 0;
+            used += rec;
+        }
+        if (full_) { result = -34; break; }                              // ERANGE
+    }
+    linux_sys_close(cast(ulong)fd);
+    return result;
+}
+// The terminal behind `h`: isatty (0), raw input for the line editor (1: no canonical mode, echo or
+// flow control; ^C still signals -- a native task gets it as NEV_INT), restore (2), size (3).
+private __gshared ubyte[36][MAX_TASKS] g_hosTermSaved;
+private __gshared bool[MAX_TASKS] g_hosTermHave;
+private long hosTerm(ulong h, ulong mode) {
+    enum ulong TCGETS = 0x5401, TCSETSW = 0x5403, TIOCGWINSZ = 0x5413;
+    const int tid = cast(int)g_current_task_id;
+    ubyte[36] t = 0;
+    switch (mode) {
+        case 0: return linux_sys_ioctl(h, TCGETS, cast(ulong)t.ptr) == 0 ? 1 : 0;
+        case 1: {
+            if (linux_sys_ioctl(h, TCGETS, cast(ulong)t.ptr) != 0) return -25;   // ENOTTY
+            if (tid >= 0 && tid < MAX_TASKS) { g_hosTermSaved[tid][] = t[]; g_hosTermHave[tid] = true; }
+            *cast(uint*)(t.ptr + 12) &= ~(0x2u | 0x8u | 0x8000u);   // c_lflag: ICANON | ECHO | IEXTEN
+            *cast(uint*)(t.ptr + 0)  &= ~(0x400u | 0x100u);         // c_iflag: IXON | ICRNL
+            t[17 + 6] = 1; t[17 + 5] = 0;                           // VMIN = 1, VTIME = 0
+            return linux_sys_ioctl(h, TCSETSW, cast(ulong)t.ptr);
+        }
+        case 2:
+            if (tid < 0 || tid >= MAX_TASKS || !g_hosTermHave[tid]) return 0;
+            t[] = g_hosTermSaved[tid][];
+            return linux_sys_ioctl(h, TCSETSW, cast(ulong)t.ptr);
+        case 3: {
+            ushort[4] ws = 0;
+            if (linux_sys_ioctl(h, TIOCGWINSZ, cast(ulong)ws.ptr) != 0) return -25;
+            return (cast(long)ws[0] << 16) | ws[1];
+        }
+        default: return -22;
+    }
+}
+private long hosEvents() {
+    import core.task : g_taskNativeEvents;
+    const int tid = cast(int)g_current_task_id;
+    if (tid < 0 || tid >= MAX_TASKS) return 0;
+    const uint ev = g_taskNativeEvents[tid];
+    g_taskNativeEvents[tid] = 0;
+    return ev;
+}
+private long hosTime(ulong clock) {
+    ulong[2] ts = 0;
+    const long r = linux_sys_clock_gettime(clock == 1 ? 1 : 0, cast(ulong)ts.ptr);
+    if (r < 0) return r;
+    return cast(long)(ts[0] * 1_000_000_000UL + ts[1]);
+}
 
 // Z4b.3 — §6 native event subscription.  SIGCHLD (child-exit) + SIGINT (^C) already deliver to
 // native tasks (rt_sigframe / EINTR at a blocking device_read); this records the explicit native
@@ -1089,6 +1247,22 @@ public long hosQuery(ulong op, ulong arg, ulong buf, ulong buflen) {
         case HOSQ_SEND:      return hosWrite(arg, buf, buflen);  // Z4b.4: §8 channel send (over the fd)
         case HOSQ_RECV:      return hosRead(arg, buf, buflen);   // Z4b.4: §8 channel recv
         case HOSQ_SUBSCRIBE: return hosSubscribe(arg);           // Z4b.3: §6 event subscription
+        // N1: the native runtime verbs
+        case HOSQ_HANDLE_MOVE:
+            if (cast(long)buf < 0) return linux_sys_dup(arg);
+            return buflen ? linux_sys_dup3(arg, buf, 0x80000) : linux_sys_dup2(arg, buf);
+        case HOSQ_CHAN_PAIR: return linux_sys_pipe2(buf, arg ? 0x80000 : 0);
+        case HOSQ_DIR_LIST:  return hosDirList(arg, buf, buflen);
+        case HOSQ_STAT:      return hosStat(arg, buf, buflen);
+        case HOSQ_MKDIR:     return linux_sys_mkdir(buf, arg);
+        case HOSQ_REMOVE:    return arg ? linux_sys_rmdir(buf) : linux_sys_unlink(buf);
+        case HOSQ_RENAME:    return linux_sys_rename(arg, buf);
+        case HOSQ_CHDIR:     return linux_sys_chdir(buf);
+        case HOSQ_GETCWD:    return linux_sys_getcwd(buf, buflen);
+        case HOSQ_TIME:      return hosTime(arg);
+        case HOSQ_TERM:      return hosTerm(arg, buf);
+        case HOSQ_EVENTS:    return hosEvents();
+        case HOSQ_GETPID:    return linux_sys_getpid();
         // SHELL_AND_COMMANDS B5: "audit-log every privileged action".  These four are the whole
         // mutating surface of the native object ABI -- a task can attenuate and grant itself a
         // capability, clone a namespace, enter one, and change the identity it runs as -- and

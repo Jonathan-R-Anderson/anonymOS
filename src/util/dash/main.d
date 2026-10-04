@@ -290,6 +290,7 @@ private int selftest() {
 }
 
 extern (C) int main(int argc, char** argv) {
+    { import dash.native : g_beforeExit; g_beforeExit = &oflush; }   // exit() flushes dash's output
     valueInit(); evalInit(); libInit(); objectsInit();
     g_isDashCommand = &isDashCmd;
     g_dashBuiltin = &dashBuiltin;

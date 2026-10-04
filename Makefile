@@ -841,7 +841,13 @@ $(HOS_SH_BIN): $(DASH_SRCS)
 	@echo "==== Building dash (the native shell, D + musl) ===="
 	@mkdir -p build/dash
 	ldc2 -betterC -O2 -release -boundscheck=on -c $(DASH_SRCS) -I src/util -od=build/dash
-	$(MUSL_CC) -o $@ build/dash/*.o
+	@# N1: dash runs on the native object ABI only.  No crt0 and no libc start-up (dash.native._start);
+	@# musl's libc.a is searched only for pure routines (strings, formatting, maths), and
+	@# check-native-dash.sh refuses the binary if any `syscall` lies outside dash.native.hos_call or
+	@# anything reads the thread pointer (%fs) -- either would be the Linux layer.
+	clang -static -nostdlib -fuse-ld=lld -o $@ build/dash/*.o deps/musl/install/lib/libc.a \
+	    $$(clang -print-libgcc-file-name --rtlib=compiler-rt)
+	scripts/check-native-dash.sh $@
 
 # R0 — hello-wl: a "hello, Wayland" client in Rust, static-musl, validating the Rust toolchain.
 $(HELLO_WL_BIN): src/util/hello-wl.rs

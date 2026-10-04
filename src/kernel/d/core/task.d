@@ -303,6 +303,25 @@ __gshared ushort[MAX_TASKS] g_taskPkg1;
 // execve of any non-native image.  Native tasks ALSO speak the Linux ABI (downward
 // introspection: see the Linux process table, manage its permissions/settings).
 __gshared bool[MAX_TASKS] g_taskNativeAbi;
+// N1 (native dash): the task runs ON the native ABI only -- the native-runtime /hos-sh, which makes no
+// Linux syscalls of its own (dash/native.d).  Set with the native personality on execve of /hos-sh,
+// inherited by fork (a child between fork and spawn is still dash), cleared on execve of anything else.
+// Its signals arrive as native EVENTS (g_taskNativeEvents, read with HOSQ_EVENTS) instead of handlers.
+__gshared bool[MAX_TASKS] g_taskNativeOnly;
+__gshared uint[MAX_TASKS] g_taskNativeEvents;   // NEV_* bits pending for the task
+enum uint NEV_INT = 1, NEV_CHLD = 2, NEV_TSTP = 4, NEV_WINCH = 8, NEV_QUIT = 16, NEV_PIPE = 32;
+// The event a signal becomes for a native-only task (0: the signal keeps its normal meaning).
+uint nativeEventForSignal(int sig) {
+    switch (sig) {
+        case 2:  return NEV_INT;    // SIGINT
+        case 3:  return NEV_QUIT;   // SIGQUIT
+        case 13: return NEV_PIPE;   // SIGPIPE
+        case 17: return NEV_CHLD;   // SIGCHLD
+        case 20: return NEV_TSTP;   // SIGTSTP
+        case 28: return NEV_WINCH;  // SIGWINCH
+        default: return 0;
+    }
+}
 // A9.3n: the task runs an Android image (exec'd with the image's linker64; inherited by fork/clone).
 // Android-only kernel behaviour keys on it -- synchronous SIGSEGV delivery to ART's fault handler --
 // so every other process keeps exactly the behaviour it has always had.

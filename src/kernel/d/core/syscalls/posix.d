@@ -17490,12 +17490,39 @@ private long rtSymlinkCreate(const(char)* target, const(char)* linkPath) {
     return 0;
 }
 
+// A relative path made absolute against `dirfd` (AT_FDCWD: the cwd), into `buf`; the path itself when
+// it is already absolute; null for a dirfd with no known path (EBADF).  As rtMkdirSyscall does.
+private const(char)* atAbsPath(int dirfd, const(char)* path, char* buf, size_t cap) {
+    if (path is null || path[0] == '/') return path;
+    enum int AT_FDCWD = -100;
+    size_t bl = 0;
+    if (dirfd == AT_FDCWD) {
+        const cwd = cwdNow();
+        for (; bl < cwd.length && bl < 600; ++bl) buf[bl] = cwd[bl];
+    } else if (dirfd >= 0 && dirfd < 1024 && g_activeFdTabId >= 0 && g_activeFdTabId < FDTAB_COUNT
+               && g_fdPath[g_activeFdTabId][dirfd][0] == '/') {
+        const(char)* base = g_fdPath[g_activeFdTabId][dirfd].ptr;
+        while (bl < 600 && base[bl] != 0) { buf[bl] = base[bl]; ++bl; }
+    } else {
+        return null;
+    }
+    if (bl == 0 || buf[bl - 1] != '/') buf[bl++] = '/';
+    for (size_t i = 0; path[i] != 0 && bl + 1 < cap; ++i) buf[bl++] = path[i];
+    buf[bl] = 0;
+    return buf;
+}
+
+// D3: a relative link path resolves against the cwd / dirfd -- busybox `tar -C dir` creates every
+// symlink with a relative path (it was ENOENT: "can't create symlink ... No such file or directory").
 public long linux_sys_symlink(ulong t, ulong l)  {
-    return rtSymlinkCreate(cast(const(char)*)t, cast(const(char)*)l);
+    return linux_sys_symlinkat(t, cast(ulong)-100 /*AT_FDCWD*/, l);
 }
 public long linux_sys_symlinkat(ulong t, ulong d, ulong l) {
-    // AT_FDCWD / absolute link paths only (our shells always pass absolute paths).
-    return rtSymlinkCreate(cast(const(char)*)t, cast(const(char)*)l);
+    initFdTable();
+    char[1024] abs = void;
+    const(char)* lp = atAbsPath(cast(int)d, cast(const(char)*)l, abs.ptr, abs.length);
+    if (lp is null) return negErrno(EBADF);
+    return rtSymlinkCreate(cast(const(char)*)t, lp);
 }
 public long linux_sys_mknod(ulong p, ulong m, ulong d)   { return negErrno(EROFS); }
 public long linux_sys_mknodat(ulong d, ulong p, ulong m, ulong dv) { return negErrno(EROFS); }

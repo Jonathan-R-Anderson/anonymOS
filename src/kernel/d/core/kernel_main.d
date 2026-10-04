@@ -4,6 +4,9 @@ module core.kernel_main;
 
 import core.task;
 import core.hoscall : hosQuery, HOS_SYS_QUERY, HOSQ_DEV_READ, HOSQ_SPAWN, HOSQ_WAIT;   // Track B0 / Z4a–b native ABI
+import core.hoscall : HOSQ_FORK, HOSQ_KILL, HOSQ_SLEEP, HOSQ_VM_ALLOC, HOSQ_VM_FREE, HOSQ_EXIT;   // N1 native runtime
+import core.hoscall : HOSQ_READ, HOSQ_WRITE;
+import core.task : g_taskNativeOnly, g_taskNativeEvents, nativeEventForSignal, NEV_INT, NEV_QUIT, NEV_TSTP;
 import core.hoscall : configDomainsDump, domObjViewDump, domFsViewDump;   // DOMAIN_MANAGER DM0/DM2.4 boot proofs
 import core.hoscall : configPackagesDump;                                 // DOMAIN_MANAGER DM7 packages view proof
 import core.hoscall : configDisksDump;                                    // INSTALLER disks view proof
@@ -509,6 +512,9 @@ private long processVmRw(ulong pid, ulong liovA, ulong liovcnt, ulong riovA, ulo
     }
     return cast(long)total;
 }
+
+private __gshared ulong[MAX_TASKS] g_hosSleepUntil;   // N1: HOSQ_SLEEP deadline (pitMs), 0 = not sleeping
+private __gshared uint g_nativeOnlyLinuxLogN = 0;        // N1: Linux syscalls seen from a native-only task
 
 private enum ulong PIPE_WR_PARK_MS = 5000;
 private __gshared ulong[MAX_TASKS] g_pipeWrParkMs;   // D3: when a blocking pipe write started waiting
@@ -1366,6 +1372,8 @@ private int forkTask(int parentTid) {
         // NATIVE_OBJECT_ABI §3: the native personality is inherited across fork (native
         // helpers the shell spawns stay native; a Linux fork stays Linux).
         g_taskNativeAbi[childTid]   = g_taskNativeAbi[parentTid];
+        g_taskNativeOnly[childTid]  = g_taskNativeOnly[parentTid];   // N1: still dash until it spawns
+        g_taskNativeEvents[childTid] = 0;
         g_taskAndroid[childTid]     = g_taskAndroid[parentTid];      // A9.3n: a zygote fork is Android too
         g_androidUidP1[childTid] = g_androidUidP1[parentTid]; g_androidGidP1[childTid] = g_androidGidP1[parentTid];
         g_taskNativeLaunch[childTid] = g_taskNativeLaunch[parentTid];   // L5.2: inherit the native-launch authorization
@@ -1483,6 +1491,8 @@ private int cloneThread(int parentTid, ulong flags, ulong childStack,
     child.domainObjId = parent.domainObjId;
     child.execMode    = parent.execMode;      // DM13: the ratchet is inherited, never reset
     g_taskNativeAbi[childTid] = g_taskNativeAbi[parentTid]; // NATIVE_OBJECT_ABI §3: same personality
+    g_taskNativeOnly[childTid] = g_taskNativeOnly[parentTid];
+    g_taskNativeEvents[childTid] = 0;
     g_taskAndroid[childTid]   = g_taskAndroid[parentTid];   // A9.3n: threads share the image
     g_androidUidP1[childTid] = g_androidUidP1[parentTid]; g_androidGidP1[childTid] = g_androidGidP1[parentTid];
     g_taskNativeLaunch[childTid] = g_taskNativeLaunch[parentTid];   // L5.2: inherit the native-launch authorization
@@ -1833,6 +1843,10 @@ private long execveTask(int tid, ulong pathPtr, ulong argvPtr, ulong envpPtr) {
         // everything it spawns, can never reach the native object ABI even by exec'ing /hos-sh.
         const bool wasNative = g_taskNativeAbi[tid];
         g_taskNativeAbi[tid] = trustedNativeImage && (wasNative || g_taskNativeLaunch[tid]);
+        // N1: /hos-sh runs on the native ABI only (dash/native.d); any other image is a Linux program.
+        g_taskNativeOnly[tid] = g_taskNativeAbi[tid] && execName !is null && cstrEqK(execName, "hos-sh");
+        g_taskNativeEvents[tid] = 0;
+        g_threadCleartidVirt[tid] = 0;   // the old image's set_tid_address word is gone with it (as Linux)
         // Exec'ing the Linux interactive shell (/bin/zsh: execName "zsh", NOT the /hos-zsh request
         // path) drops the authorization; a re-run /wl-term from that shell inherits the cleared flag.
         if (execName !is null && cstrEqK(execName, "zsh") &&
@@ -2424,7 +2438,12 @@ private enum ulong VMFETCH_FIRST_MS = 20_000, VMFETCH_RETRY_MS = 15 * 60_000;
 private __gshared bool  g_autoPkgDone = false;
 private __gshared ulong g_autoPkgAtMs = 0;
 private void maybeAutoPkg() {
-    if (g_autoPkgDone || !g_netConfigured || !g_guiClientStarted) return;
+    if (g_autoPkgDone || !g_guiClientStarted) return;
+    // The network is needed only to install a package; a staged AUTORUN program (no AUTOPKG) runs
+    // without one -- QEMU builds without user-mode networking boot test images too.
+    {   import core.syscalls.posix : softwareAutoPkg;
+        char[64] pk = 0;
+        if (softwareAutoPkg(pk.ptr, pk.length) && !g_netConfigured) return; }
     {   import drivers.veracrypt_impl : bootIsAutoInstallRun;
         if (bootIsAutoInstallRun()) { g_autoPkgDone = true; return; } }   // the installed system does it
     const ulong now = pitMs();
@@ -5157,6 +5176,13 @@ private void dispatchSyscall(int tid) {
         return;
     }
 
+    // N1: the native shell makes no Linux syscalls of its own -- log any that slips through (bring-up
+    // audit; the build already refuses a stray `syscall` in dash, see the Makefile).
+    if (g_taskNativeOnly[tid] && rax != HOS_SYS_QUERY && g_nativeOnlyLinuxLogN < 64) {
+        ++g_nativeOnlyLinuxLogN;
+        klog("[native-only] Linux syscall "); klog_dec(rax); klog(" from t="); klog_dec(cast(ulong)tid); klog("\n");
+    }
+
     // Freeze probe: snapshot every syscall ENTRY.  During a hard freeze the kernel loop is stuck
     // inside ONE handler — entries stop, so the last snapshot names the stuck syscall + task, and
     // the cursor-IRQ overlay shows it with its in-flight time.
@@ -5723,6 +5749,26 @@ private void dispatchSyscall(int tid) {
                 if (ret == 0) { execCloseOnExec(); return; }   // image loaded — re-enter from scratch (regs reset)
                 break;
             }
+            // N1: the native runtime's process, memory and time verbs run the kernel's own
+            // implementations (fork, mmap, munmap, kill, exit_group) -- the native task makes no
+            // Linux syscall; the dispatcher just shares the code.
+            if (rdi == HOSQ_FORK) goto case 57;
+            if (rdi == HOSQ_EXIT) { rdi = rsi; goto case 231; }
+            if (rdi == HOSQ_KILL) { rdi = rsi; rsi = rdx; goto case 62; }
+            if (rdi == HOSQ_VM_ALLOC) {
+                if (rsi == 0) { ret = -22; break; }
+                rdi = 0; rsi = (rsi + 0xFFF) & ~0xFFFUL; rdx = 3 /*RW*/; r10 = 0x22 /*PRIVATE|ANON*/; r8 = cast(ulong)-1; r9 = 0;
+                goto case 9;
+            }
+            if (rdi == HOSQ_VM_FREE) { rdi = rsi; rsi = rdx; goto case 11; }
+            if (rdi == HOSQ_SLEEP) {
+                const ulong now = pitMs();
+                if (g_hosSleepUntil[ctid] == 0) g_hosSleepUntil[ctid] = now + rsi + 1;
+                const bool intr = (g_taskNativeEvents[ctid] & NEV_INT) != 0;
+                if (now >= g_hosSleepUntil[ctid] || intr) { g_hosSleepUntil[ctid] = 0; ret = intr ? -4 : 0; break; }
+                g_pollBlocked[ctid] = true; g_pollDeadline[ctid] = g_hosSleepUntil[ctid]; g_pollEpfd[ctid] = -1;
+                task.waiting = true; task.regs[REG_RIP] -= 2; scheduleNext(); return;
+            }
             if (rdi == HOSQ_WAIT) {
                 // Z4b.1: object_wait(pid, statusbuf, options) over wait4Task, with the SAME
                 // cooperative wait-block the Linux wait4 (case 61) uses — rewind RIP so the
@@ -6074,7 +6120,14 @@ private void dispatchSyscall(int tid) {
         (rax == 45 && (r10 & 0x40) == 0 && localBlockingRecvFd(rdi)) ||
         (rax == 47 && (rdx & 0x40) == 0 && localBlockingRecvFd(rdi)) ||
         (rax == HOS_SYS_QUERY && rdi == HOSQ_DEV_READ &&
-         (ptyBlockingReadFd(rsi) || pipeBlockingReadFd(rsi) || isConsoleFd(rsi)));
+         (ptyBlockingReadFd(rsi) || pipeBlockingReadFd(rsi) || isConsoleFd(rsi))) ||
+        // N1: the native shell reads every handle with HOSQ_READ -- a pipe, its terminal, a socket.
+        (rax == HOS_SYS_QUERY && rdi == HOSQ_READ &&
+         (ptyBlockingReadFd(rsi) || pipeBlockingReadFd(rsi) || isConsoleFd(rsi) || localBlockingRecvFd(rsi)));
+    // N1: a native-only task blocked reading its terminal hears ^C/^\/^Z as an event: end the read
+    // with EINTR (dash's line editor then reads HOSQ_EVENTS) instead of parking again.
+    if (blkRead && ret == -11 && g_taskNativeOnly[tid] && (g_taskNativeEvents[tid] & (NEV_INT | NEV_QUIT | NEV_TSTP)) != 0)
+        ret = -4;
     if (blkRead && ret == -11 /*EAGAIN*/) {
         // Z3: a pending handler-signal (e.g. ^C -> SIGINT for zsh) interrupts the blocking
         // read with EINTR — POSIX semantics.  RIP is still just past the `syscall`, so we
@@ -6165,18 +6218,19 @@ private void dispatchSyscall(int tid) {
     // D3: and write/writev into a FULL blocking pipe parks too -- for at most PIPE_WR_PARK_MS without
     // room, after which it fails EAGAIN as it always did, so a writer whose reader never drains (a
     // desktop child logging into an unread pipe) cannot hang where it used to carry on.
-    if ((rax == 1 || rax == 20) && ret != -11) g_pipeWrParkMs[tid] = 0;
-    if (ret == -11 && (rax == 42 || rax == 43 || rax == 288 || rax == 1 || rax == 20 ||
+    const bool hosWr = rax == HOS_SYS_QUERY && rdi == HOSQ_WRITE;     // N1: a native write (fd in rsi)
+    if ((rax == 1 || rax == 20 || hosWr) && ret != -11) g_pipeWrParkMs[tid] = 0;
+    if (ret == -11 && (rax == 42 || rax == 43 || rax == 288 || rax == 1 || rax == 20 || hosWr ||
                        (rax == 44 && (r10 & 0x40) == 0) || (rax == 46 && (rdx & 0x40) == 0))) {
         import core.syscalls.posix : inetTcpBlockingFd, pipeBlockingWriteFd;
         bool pipePark = false;
-        if ((rax == 1 || rax == 20) && pipeBlockingWriteFd(rdi)) {
+        if ((rax == 1 || rax == 20 || hosWr) && pipeBlockingWriteFd(hosWr ? rsi : rdi)) {
             const ulong nowMs = pitMs();
             if (g_pipeWrParkMs[tid] == 0) g_pipeWrParkMs[tid] = nowMs;
             if (nowMs - g_pipeWrParkMs[tid] < PIPE_WR_PARK_MS) pipePark = true;
             else g_pipeWrParkMs[tid] = 0;
         }
-        if (inetTcpBlockingFd(rdi) || pipePark) {
+        if ((!hosWr && inetTcpBlockingFd(rdi)) || pipePark) {
             g_pollBlocked[tid]  = true;
             g_pollDeadline[tid] = 0;
             g_pollEpfd[tid]     = -1;
@@ -7406,6 +7460,12 @@ private void kernelLoop() {
             exitTask(tid, g_taskGroupExitCode[tid]);
             bklRelease(&g_bkl);
             continue;
+        }
+        if (g_taskPendingSig[tid] != 0 && g_taskNativeOnly[tid]) {
+            // N1: a native-only task (dash) takes ^C, ^\, ^Z, SIGPIPE, SIGCHLD and SIGWINCH as native
+            // events (HOSQ_EVENTS), never as a handler or a default kill.
+            const uint ev = nativeEventForSignal(g_taskPendingSig[tid]);
+            if (ev != 0) { g_taskNativeEvents[tid] |= ev; g_taskPendingSig[tid] = 0; }
         }
         if (g_taskPendingSig[tid] != 0 && !sigAwaited(tid)) {   // an awaited one is the wait's (A9.4)
             int psig = g_taskPendingSig[tid];

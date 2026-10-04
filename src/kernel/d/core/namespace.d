@@ -269,6 +269,22 @@ public uint nsResolveCheck(uint nsObjId, const(char)* path, out const(char)* out
     return best.targetObjId;
 }
 
+// A path that is a strict ancestor of an allow binding -- "/" when "/tmp" is bound, "/home" when
+// "/home/user" is: a directory the namespace must show (read-only) so its bindings can be reached.
+public bool nsIsBindingAncestor(uint nsObjId, const(char)* path) {
+    auto ns = nsRecByObj(nsObjId);
+    if (ns is null || path is null || path[0] != '/') return false;
+    const uint plen = nsStrLen(path);
+    foreach (ref b; ns.binds) {
+        if (!b.inUse || b.denied || b.pathLen <= plen) continue;
+        if (plen == 1) return true;
+        bool pre = true;
+        foreach (k; 0 .. plen) if (b.path[k] != path[k]) { pre = false; break; }
+        if (pre && b.path[plen] == '/') return true;
+    }
+    return false;
+}
+
 public uint nsResolveWithRights(uint nsObjId, const(char)* path,
                                 out const(char)* outRest, out uint outRights) {
     bool denied;

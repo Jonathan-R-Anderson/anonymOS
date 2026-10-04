@@ -3276,6 +3276,12 @@ private int nsVerdictOne(uint ns, const(char)* path, uint need) {
     uint rights;
     bool denied;
     const uint target = nsResolveCheck(ns, path, rest, rights, denied);
+    // An ancestor of a binding ("/", "/home") is readable -- a confined shell must be able to stand
+    // in "/" and list its way down; getdents64 then shows only the entries the namespace reaches.
+    if (target == 0 && !denied && (need & CAP_RIGHT_WRITE) == 0) {
+        import core.namespace : nsIsBindingAncestor;
+        if (nsIsBindingAncestor(ns, path)) return 0;
+    }
     if (target == 0) return negErrno(denied ? EACCES : ENOENT);
     if ((rights & need) != need) return negErrno(EACCES);
     return 0;
@@ -15971,7 +15977,44 @@ private static immutable string[2] g_netClassEntries = ["lo", "wlan0"];
 private enum ulong SYNTHDIR_NMPLUGIN = 0x0E7C1B60;
 private static immutable string[1] g_nmPluginEntries = ["libnm-device-plugin-wifi.so"];
 
+// A confined task lists only what its namespace reaches: in a directory that is an ancestor of its
+// bindings ("/"), the entries outside every binding are dropped (no names of other domains' or the
+// system's files).  Entries under a binding -- and further ancestors -- stay.
 public long linux_sys_getdents64(ulong fd, ulong dirp, ulong count) {
+    const int tid = cast(int)g_current_task_id;
+    const bool confined = tid >= 0 && tid < MAX_TASKS && g_tasks[tid].domainObjId != 0;
+    const int ifd = cast(int)fd;
+    if (!confined || ifd < 0 || ifd >= 1024 || g_activeFdTabId < 0 || g_activeFdTabId >= FDTAB_COUNT)
+        return getdents64Raw(fd, dirp, count);
+    const(char)* dirPath = g_fdPath[g_activeFdTabId][ifd].ptr;
+    if (dirPath[0] == 0) return getdents64Raw(fd, dirp, count);
+    for (;;) {
+        const long r = getdents64Raw(fd, dirp, count);
+        if (r <= 0) return r;
+        auto b = cast(ubyte*)dirp;
+        size_t rd = 0, wr = 0;
+        char[1024] child = void;
+        size_t dl = 0; while (dirPath[dl] != 0 && dl < 900) { child[dl] = dirPath[dl]; ++dl; }
+        if (dl == 0 || child[dl - 1] != '/') child[dl++] = '/';
+        while (rd < cast(size_t)r) {
+            const ushort reclen = *cast(ushort*)(b + rd + 16);
+            auto name = cast(const(char)*)(b + rd + 19);
+            bool keep = (name[0] == '.' && name[1] == 0) || (name[0] == '.' && name[1] == '.' && name[2] == 0);
+            if (!keep) {
+                size_t n = 0; while (name[n] != 0 && dl + n < child.length - 1) { child[dl + n] = name[n]; ++n; }
+                child[dl + n] = 0;
+                keep = nsPathVerdict(child.ptr, CAP_RIGHT_READ) == 0;
+            }
+            if (keep) {
+                if (wr != rd) foreach (k; 0 .. reclen) b[wr + k] = b[rd + k];
+                wr += reclen;
+            }
+            rd += reclen;
+        }
+        if (wr > 0) return cast(long)wr;               // a batch emptied by the filter: read on
+    }
+}
+private long getdents64Raw(ulong fd, ulong dirp, ulong count) {
     initFdTable();
     int ifd = cast(int)fd;
     if (ifd < 0 || ifd >= 1024 || g_fdTable[ifd].type == FileType.FD_NONE) return negErrno(EBADF);

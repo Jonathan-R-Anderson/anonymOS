@@ -152,11 +152,9 @@ func (v *Validator) round(ctx context.Context) error {
 
 // auditReport is the body posted to /api/v1/gateway/audit.
 //
-// A TAGGED STRUCT RATHER THAN A MAP LITERAL, and the reason is not style.
-// T16.3's schema audit (internal/axon/telemetry) reads STRUCT FIELD NAMES, so a
-// payload assembled as map[string]any has no field names to read and passes the
-// audit by being invisible to it. This one was a map, and a field naming a real
-// third party could have been added to it without anything noticing.
+// A TAGGED STRUCT RATHER THAN A MAP LITERAL, so every field the node sends
+// about a third party is declared here, by name, where a reviewer can see it --
+// a map could gain one without anything noticing.
 //
 // The field names and JSON keys are unchanged, and the signature is over
 // `message` rather than over this encoding, so the wire format the backend

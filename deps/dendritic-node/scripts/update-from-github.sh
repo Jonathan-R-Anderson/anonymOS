@@ -25,10 +25,8 @@ HEALTH_INTERVAL="${RABBIIT_UPDATE_HEALTH_INTERVAL:-5}"
 # adversary against a real deployment, and until this block existed there was
 # nothing here to be an adversary against.
 #
-# Note this is NOT what internal/axon/release verifies. That package signs a
-# MANIFEST over built artifacts, which is the right mechanism for a binary
-# download and the wrong one here: this script ships no binary, it ships a
-# commit and builds it. The thing to authenticate is therefore the commit.
+# This script ships no binary: it ships a commit and builds it, so the thing to
+# authenticate is the commit, not a checksum over built artifacts.
 #
 # RABBIIT_ALLOWED_SIGNERS points at an ssh allowed-signers file (git's
 # gpg.format=ssh convention). When it is set, an unsigned or wrongly-signed head

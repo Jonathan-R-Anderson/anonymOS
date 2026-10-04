@@ -9,6 +9,7 @@ require (
 	github.com/aws/aws-sdk-go-v2/credentials v1.17.3
 	github.com/aws/aws-sdk-go-v2/service/s3 v1.51.4
 	github.com/decred/dcrd/dcrec/secp256k1/v4 v4.4.1
+	github.com/fxamacker/cbor/v2 v2.9.2
 	github.com/huin/goupnp v1.3.0
 	github.com/ipfs/go-cid v0.6.2
 	github.com/jackpal/go-nat-pmp v1.0.2
@@ -46,7 +47,6 @@ require (
 	github.com/dunglas/httpsfv v1.1.0 // indirect
 	github.com/filecoin-project/go-clock v0.1.0 // indirect
 	github.com/flynn/noise v1.1.0 // indirect
-	github.com/fxamacker/cbor/v2 v2.9.2 // indirect
 	github.com/go-logr/logr v1.4.3 // indirect
 	github.com/go-logr/stdr v1.2.2 // indirect
 	github.com/godbus/dbus/v5 v5.1.0 // indirect

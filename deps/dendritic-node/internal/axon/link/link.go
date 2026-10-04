@@ -3,7 +3,6 @@ package link
 import (
 	"context"
 	"crypto/ed25519"
-	"encoding/hex"
 	"errors"
 	"fmt"
 	"io"
@@ -379,38 +378,4 @@ func Drain(cs CellStream) error {
 			return err
 		}
 	}
-}
-
-// ContainmentIDs returns every spelling of one node's identity.
-//
-// A node has two: the AXON NodeIdentity as hex, which dht.Table and
-// peer.Peerbook check, and the libp2p peer id as base58, which the bootstrap
-// path and the storage network use. They derive from the same key -- see
-// NodeIDFromPublic -- but they are DIFFERENT STRINGS, and a containment list
-// stores opaque strings.
-//
-// WHY THIS FUNCTION EXISTS. An incident drill (E16.4) found that a responder
-// denying only the AXON id watched the host walk back in through bootstrap, and
-// the first fix for it was a paragraph in the runbook telling them to type both.
-// A runbook paragraph is not a mechanism: it is read under pressure, by someone
-// who has never done this before, at the one moment a half-applied containment
-// is worst. One call, both spellings.
-//
-// The hex is computed here rather than imported from internal/axon/dht, because
-// that package imports this one's neighbours and the dependency would run the
-// wrong way for a two-line encoding. dht.ContactID is the same bytes; a test in
-// internal/axon/contain asserts the two agree rather than trusting the comment.
-//
-// This collapses when the storage stack moves onto the AXON transport and there
-// is one identity left (OUTSTANDING.md 2.9).
-func ContainmentIDs(pub ed25519.PublicKey) ([]string, error) {
-	if len(pub) != ed25519.PublicKeySize {
-		return nil, fmt.Errorf("axon/link: containment ids need a %d-byte key, got %d",
-			ed25519.PublicKeySize, len(pub))
-	}
-	id, err := NodeIDFromPublic(pub)
-	if err != nil {
-		return nil, err
-	}
-	return []string{hex.EncodeToString(pub), id.String()}, nil
 }

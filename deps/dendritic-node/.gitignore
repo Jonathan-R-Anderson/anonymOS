@@ -1,9 +1,2 @@
 dist/
 /rabbiit-node
-# Built Go component binaries (phase-12 outputs) — artifacts, not source, like
-# rabbiit-node above.  ~37 MB of ELF; rebuilt from cmd/ + internal/.
-/p12-deploy
-/p12-failover
-/p12-evidence
-/p12-signer
-/p12-detection

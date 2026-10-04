@@ -7,14 +7,12 @@ import (
 )
 
 // TestTableConcurrentAccess hammers a Table from many goroutines doing the
-// operations a live DHT does concurrently: admit, query, sample, eject, sweep.
+// operations a live DHT does concurrently: admit, query, sample, eject.
 // dht is documented "race-clean", but until -race actually ran (2026-08-21)
 // nothing verified that under concurrency. Run with -race.
 func TestTableConcurrentAccess(t *testing.T) {
 	srv := mkSRV(0x42)
 	table := NewTable(MustDeriveKey(ClassRelay, []byte("self")))
-	list := contained(t, ContactID(func() [32]byte { var p [32]byte; p[0] = 3; return p }()))
-	table.SetContainment(list)
 
 	mk := func(i int) Contact {
 		addr := netip.AddrFrom4([4]byte{10, byte(i / 250), byte(i % 250), 1})
@@ -46,9 +44,6 @@ func TestTableConcurrentAccess(t *testing.T) {
 				_ = table.Closest(key, 8, true)
 				_ = table.Siblings()
 				_ = table.Len()
-				if i%100 == 0 {
-					table.SweepContained()
-				}
 			}
 		}()
 	}

@@ -57,11 +57,6 @@ var (
 	ErrASNCapReached    = errors.New("axon/dht: per-ASN admission cap reached for this bucket")
 	ErrBucketFull       = errors.New("axon/dht: bucket is full")
 	ErrUnverified       = errors.New("axon/dht: entry is unverified and may not be counted toward a replica set")
-	// ErrContained is an admission refused because the operator contained this
-	// peer. Distinct from every cap error on purpose: a cap refusal describes the
-	// NETWORK and this one describes a DECISION somebody made, and an operator
-	// debugging a thin table needs to tell those apart immediately.
-	ErrContained = errors.New("axon/dht: peer is contained by operator decision")
 )
 
 // Contact is one routing-table entry: a peer's compact RelayDescriptor
@@ -96,23 +91,6 @@ type Table struct {
 	buckets map[int][]Contact
 	// siblings is the s=16 nodes closest to self, under the tighter caps.
 	siblings []Contact
-	// contained is the operator's containment list, or nil.
-	//
-	// CONSULTED, NOT OWNED. The policy lives in internal/axon/contain because
-	// the peerbook needs the same answer and two copies of a denial rule is one
-	// copy too many -- a peer contained in one structure and admitted by the
-	// other is contained nowhere. Nil denies nothing, so a table built without
-	// one behaves exactly as it did before containment existed.
-	contained Denier
-}
-
-// Denier answers whether a peer is contained. Satisfied by *contain.List.
-//
-// An interface rather than the concrete type so this package does not import
-// the containment list, which imports nothing from here: the dependency runs
-// one way and the test doubles stay trivial.
-type Denier interface {
-	Denied(id string) bool
 }
 
 // NewTable builds an empty table for a node at `self`.
@@ -120,27 +98,13 @@ func NewTable(self Key) *Table {
 	return &Table{self: self, buckets: map[int][]Contact{}}
 }
 
-// SetContainment wires the operator's containment list in.
-//
-// Existing entries are NOT swept here. Contain does that, and separating them
-// is deliberate: a responder containing one relay should not silently reshape
-// the table according to a list they have not read. Call SweepContained
-// explicitly after loading a list from disk at startup.
-func (t *Table) SetContainment(d Denier) {
-	t.mu.Lock()
-	t.contained = d
-	t.mu.Unlock()
-}
-
-// ContactID is how a contact is spelled in the containment list.
+// ContactID is a contact's node identity key as hex.
 func ContactID(pub [32]byte) string { return hex.EncodeToString(pub[:]) }
 
 // Eject removes a peer from every bucket and from the sibling list.
 //
-// Returns how many entries went. EJECTING WITHOUT DENYING IS THEATRE: Admit
-// re-inserts the peer on the next FIND_NODE that mentions it, so a responder
-// who called only this would watch the relay walk back in. Deny in the
-// containment list first, or use it through SweepContained.
+// Returns how many entries went. Admit re-inserts the peer on the next
+// FIND_NODE that mentions it.
 func (t *Table) Eject(pub [32]byte) int {
 	t.mu.Lock()
 	defer t.mu.Unlock()
@@ -176,36 +140,6 @@ func (t *Table) ejectLocked(pub [32]byte) int {
 	return removed
 }
 
-// SweepContained ejects every peer the containment list currently denies.
-//
-// This is what makes a denial retroactive. A list loaded from disk at startup
-// describes peers an operator ejected in an earlier incident, and without this
-// the table would happily re-learn all of them -- containment that lapses
-// across the restart it was supposed to survive.
-func (t *Table) SweepContained() int {
-	t.mu.Lock()
-	defer t.mu.Unlock()
-	if t.contained == nil {
-		return 0
-	}
-	seen := map[[32]byte]bool{}
-	for _, b := range t.buckets {
-		for _, c := range b {
-			seen[c.NodeIDPub] = true
-		}
-	}
-	for _, c := range t.siblings {
-		seen[c.NodeIDPub] = true
-	}
-	removed := 0
-	for pub := range seen {
-		if t.contained.Denied(ContactID(pub)) {
-			removed += t.ejectLocked(pub)
-		}
-	}
-	return removed
-}
-
 // Self is the table's own KadID.
 func (t *Table) Self() Key { return t.self }
 
@@ -229,14 +163,6 @@ func (t *Table) Admit(c Contact) error {
 
 	t.mu.Lock()
 	defer t.mu.Unlock()
-
-	// Containment is checked FIRST, before the caps and before the re-admission
-	// upgrade below. A contained peer must not be able to refresh an existing
-	// entry either, or a relay an operator ejected keeps its slot by being
-	// mentioned once more.
-	if t.contained != nil && t.contained.Denied(ContactID(c.NodeIDPub)) {
-		return fmt.Errorf("%w: %s", ErrContained, ContactID(c.NodeIDPub)[:16])
-	}
 
 	// The sibling list is a SEPARATE structure with its own, tighter caps, and
 	// it is maintained independently of bucket admission.

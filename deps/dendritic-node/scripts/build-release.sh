@@ -38,22 +38,5 @@ do
     go build -trimpath -buildvcs=false -ldflags="-s -w" -o "$output" ./cmd/rabbiit-node
 done
 
-# P16 / T16.1 — the manifest.
-#
-# This used to end here, with seven binaries and nothing else: no checksums, no
-# manifest, no signature. `scripts/update-from-github.sh` then installed
-# whatever the network returned. §18.14 names the update channel as the
-# strongest adversary against a real deployment and it was completely open.
-#
-# The manifest is written UNSIGNED. Signing is a separate step, run by a
-# keyholder, deliberately NOT here: a signing key on the build machine belongs
-# to whoever has compromised the build.
-#
-#   go run ./cmd/axon-release sign   -in dist/manifest.json -key release.key -id release-2026
-#   go run ./cmd/axon-release verify -in dist/manifest.json -dir dist -pub release.pub
-#
-# An unsigned manifest is refused by the verifier with "release is unsigned", so
-# shipping one by mistake fails closed rather than silently skipping the check.
-VERSION="${RELEASE_VERSION:-0.0.0}"
-echo "writing dist/manifest.json (version ${VERSION}, UNSIGNED)"
-go run ./cmd/axon-release manifest -dir dist -version "$VERSION"
+# Checksums: scripts/check-release.sh builds, verifies and writes a .sha256
+# beside every artifact -- the form the installer checks before running one.

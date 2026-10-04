@@ -58,6 +58,46 @@ $(cmd)                      $?   $$   $HOME
 * Builtins: `cd`, `pwd`, `exit`, `export`, `unset`, `source`, `history`, `jobs`, `wait`, `which`,
   `type`, `help`, `linux`.
 
+### Control flow, functions, expansions
+
+The command half is a full shell language:
+
+```
+if [ -f notes.txt ]; then echo yes; elif test -d notes; then echo dir; else echo no; fi
+for f in *.txt; do echo "$f"; done          for i in {1..5}; do ...; done
+while read -r line; do echo "$line"; done < file        until [ $n -le 0 ]; do n=$((n - 1)); done
+case $x in a|b) echo ab;; *.gz) echo gz;; *) echo other;; esac
+greet() { local who=${1:-world}; echo "hello $who"; return 0; }      function f { ...; }
+{ echo a; echo b; } | wc -l          (cd /tmp && ls)          [[ $v == *.gz && -n $v ]]
+cat <<EOF                cat <<'EOF'              read a b <<< "one two"
+text with $vars          literal $text
+EOF                      EOF
+```
+
+* `break [n]`, `continue [n]`, `return [n]`, `shift [n]`, `set -- args`, `local`, `read [-r] [-p p]`,
+  `test` / `[ ]`, `[[ ]]` (`==` matches a pattern, `=~` a regular expression), `eval`, `source file args`.
+* `$1 .. $9 ${10}`, `$#`, `$@`, `"$@"` (one word each), `$*`, `$0`, `$!`, `$?`, `$$`.
+* `${v:-w} ${v:=w} ${v:+w} ${v:?w} ${#v} ${v#p} ${v##p} ${v%p} ${v%%p} ${v/p/r} ${v//p/r} ${v:o:l}
+  ${v^^} ${v,,}` and brace expansion `{a,b}`, `{1..5}`, `{a..e}`.
+* A variable holding a whole number is a number: `n=$((n + 1))` works.
+
+### Object commands
+
+`ls`, `stat`, `find`, `cat FILE`, `mkdir`, `rmdir`, `rm`, `cp`, `mv`, `touch`, `ps`, `kill`, `env` run in
+the shell itself and answer with **objects** -- File, Process and records:
+
+```
+λ ls /tmp                                     -- a table: mode size modified name kind path owner
+λ ls |> filter (\f -> f.size > 1000) |> map (.name)
+λ ls | grep txt                               -- into a command, a File is its name
+λ find . -name "*.d" |> length
+λ (file "notes.txt").lines |> take 3          -- .read .lines .write .append .delete .rename .copy .children .parent
+λ ps |> filter (\p -> p.rssKb > 10000)
+```
+
+A flag an object command does not implement runs the program of that name instead (`command ls`
+always does).
+
 ## 3. Expressions (the Haskell half)
 
 ```
@@ -155,7 +195,13 @@ Destructive object operations (identity switch, namespace enter, delete) need `-
 (`arm`), or report what they would do under `dry-run`; every privileged action is audit-logged by
 the kernel.
 
-## 6. Linux
+## 6. Native, and Linux
+
+dash itself runs on the OS's **native object ABI only** -- it makes no Linux system call (the build
+checks it, and the kernel logs any): its files, processes, channels, directories, terminal, memory and
+signals are native objects and events.  Ordinary programs it starts are Linux programs.
+
+## 6a. Linux
 
 * `linux` — start the Linux shell (zsh) on this terminal; `exit` returns to dash.  The Linux shell
   and everything it starts can never reach the native object ABI (a one-way trapdoor).

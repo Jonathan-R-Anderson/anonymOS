@@ -55,6 +55,8 @@ extern (C) @nogc nothrow {
     int    usleep(uint);
     int    unlink(const(char)*);
     int    mkdir(const(char)*, uint);
+    int    rmdir(const(char)*);
+    int    rename(const(char)*, const(char)*);
     int    ioctl(int, ulong, ...);
     alias sighandler_t = void function(int);
     sighandler_t signal(int, sighandler_t);

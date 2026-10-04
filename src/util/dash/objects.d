@@ -270,6 +270,8 @@ private Value* c_usb(Value** a, void* c) {
     return r;
 }
 private Value* c_vnet(Value** a, void* c) { auto v = jsonDoc("/config/vnet.json"); return v ? v : err("cannot read /config/vnet.json"); }
+// The running processes as Process objects (also the `ps` object command, dash.fsobj).
+Value* procsList() { return c_procs(null, null); }
 private Value* c_procs(Value** a, void* c) {
     auto pids = dirNames("/proc");
     ListB lb;

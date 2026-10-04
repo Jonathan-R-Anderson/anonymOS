@@ -153,9 +153,19 @@ private Value* lookupForCmd(const(char)[] name, void* env) {
     }
     return null;
 }
+// A plain integer ("42", "-7"; no leading zeros) is kept as an Int, so bash arithmetic works --
+// `n=$((n + 1))` -- while $n still expands to the same text.
+private bool plainInt(const(char)[] v) {
+    size_t k = (v.length && v[0] == '-') ? 1 : 0;
+    if (k == v.length || v.length - k > 18) return false;
+    if (v[k] == '0' && v.length - k > 1) return false;
+    foreach (c; v[k .. $]) if (c < '0' || c > '9') return false;
+    return true;
+}
 private void setShellVar(const(char)[] name, const(char)[] value) {
     const s = intern(name);
-    setGlobal(s, mkStr(value), GF.ShellVar);
+    if (plainInt(value)) { Buf b; b.put(value); setGlobal(s, mkInt(strtoll(b.cstr(), null, 10)), GF.ShellVar); b.dispose(); }
+    else setGlobal(s, mkStr(value), GF.ShellVar);
     auto zn = cz(name);
     if (getenv(zn)) { auto zv = cz(value); setenv(zn, zv, 1); free(zv); }   // an exported variable stays in sync
     free(zn);

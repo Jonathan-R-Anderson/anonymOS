@@ -52,6 +52,7 @@ bool incomplete(const(char)[] text) {
         else if (c == ')' || c == ']' || c == '}') --depth;
     }
     if (dq || depth > 0) return true;
+    if (shellOpenBlocks(text) > 0) return true;        // an open if/for/while/case/{ or here-document
     auto t = trim(text);
     if (t.length == 0) return false;
     if (t[$ - 1] == '\\') return true;
@@ -292,9 +293,12 @@ private int selftest() {
 extern (C) int main(int argc, char** argv) {
     { import dash.native : g_beforeExit; g_beforeExit = &oflush; }   // exit() flushes dash's output
     valueInit(); evalInit(); libInit(); objectsInit();
+    { import dash.fsobj : fsobjInit, objCommand; fsobjInit(); g_objCommand = &objCommand; }
+    g_displayValue = &display;
     g_isDashCommand = &isDashCmd;
     g_dashBuiltin = &dashBuiltin;
     g_runFile = &runFile;
+    g_sourceFile = &runFile;                            // the `source` / `.` builtin
     signal(SIGINT, cast(sighandler_t)&onSigint);
     signal(SIGQUIT, SIG_IGN);
     signal(SIGTSTP, SIG_IGN);

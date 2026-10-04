@@ -68,11 +68,136 @@ bool looksLikeDefinition(const(char)[] text) {
     return false;
 }
 
+// ── the shell's control flow at statement level ────────────────────────────────────────────────
+private bool wsOrEnd(const(char)[] t, size_t k) { return k >= t.length || t[k] == ' ' || t[k] == '\t' || t[k] == '\n' || t[k] == ';'; }
+private const(char)[] wordAt(const(char)[] t, size_t k) {
+    while (k < t.length && (t[k] == ' ' || t[k] == '\t')) ++k;
+    size_t e = k;
+    while (e < t.length && t[e] != ' ' && t[e] != '\t' && t[e] != '\n' && t[e] != ';' && t[e] != '&' && t[e] != '|' && t[e] != '(' && t[e] != ')') ++e;
+    return t[k .. e];
+}
+// Is `if` (whose word ends at `e`) the shell's: a ';' or newline before its `then`, or a test/command
+// condition?  Haskell's `if c then a else b` has neither.
+private bool shellIfLike(const(char)[] t, size_t e) {
+    for (size_t k = e; k + 4 <= t.length; ++k) {
+        if (t[k] == '"') { ++k; while (k < t.length && t[k] != '"') { if (t[k] == '\\') ++k; ++k; } continue; }
+        if (t[k .. k + 4] == "then" && (k == 0 || t[k - 1] == ' ' || t[k - 1] == '\t' || t[k - 1] == '\n' || t[k - 1] == ';') && wsOrEnd(t, k + 4)) {
+            foreach (c; t[e .. k]) if (c == ';' || c == '\n') return true;
+            return false;
+        }
+    }
+    const nw = wordAt(t, e);
+    if (nw == "[" || nw == "[[" || nw == "test" || nw == "!" || nw == "true" || nw == "false") return true;
+    return nw.length && nameClass(nw) == 2;
+}
+private bool recordAfterBrace(const(char)[] t, size_t k) {    // `{ name = ...` or `{}`: a Haskell record
+    while (k < t.length && (t[k] == ' ' || t[k] == '\t')) ++k;
+    if (k < t.length && t[k] == '}') return true;
+    size_t e = k; while (e < t.length && (isAlpha(t[e]) || isDigit(t[e]) || t[e] == '_')) ++e;
+    if (e == k) return false;
+    while (e < t.length && (t[e] == ' ' || t[e] == '\t')) ++e;
+    return e + 1 < t.length && t[e] == '=' && t[e + 1] != '=' && e > k && (t[e - 1] == ' ' || t[e - 1] == '\t');
+}
+// The statement is the shell's control flow: a compound command or a function definition.
+bool isShellCompound(const(char)[] text) {
+    const w = wordAt(text, 0);
+    switch (w) {
+        case "for", "while", "until", "function", "select": return true;
+        case "if": return shellIfLike(text, 2);
+        case "case": { const subj = wordAt(text, 4); size_t k = 4; while (k < text.length && (text[k] == ' ' || text[k] == '\t')) ++k; return wordAt(text, k + subj.length) == "in"; }
+        default: break;
+    }
+    if (text.length && text[0] == '{' && wsOrEnd(text, 1)) return !recordAfterBrace(text, 1);
+    if (text.length > 2 && text[0] == '[' && text[1] == '[' && wsOrEnd(text, 2)) return true;   // [[ test ]]
+    if (text.length > 1 && text[0] == '(' && text[1] != '(') {           // (cmd ...): a subshell
+        const sw = wordAt(text, 1);
+        if (sw.length && nameClass(sw) == 2) return true;
+    }
+    size_t j = 0;
+    while (j < text.length && (isAlpha(text[j]) || isDigit(text[j]) || text[j] == '_' || text[j] == '-' || text[j] == '.')) ++j;
+    size_t k = j; while (k < text.length && (text[k] == ' ' || text[k] == '\t')) ++k;
+    return j > 0 && isAlpha(text[0]) && k + 1 < text.length && text[k] == '(' && text[k + 1] == ')';
+}
+// How many shell blocks are still open in `text` (if/for/while/until/case/{ without fi/done/esac/}),
+// counting reserved words only in command position; an unterminated here-document counts as one.
+int shellOpenBlocks(const(char)[] text) {
+    int depth = 0;
+    bool cmdPos = true;
+    Vec!(const(char)[]) hd;                     // here-document delimiters waiting for their lines
+    scope (exit) hd.dispose();
+    size_t i = 0;
+    while (i < text.length) {
+        const c = text[i];
+        if (c == ' ' || c == '\t') { ++i; continue; }
+        if (c == '\n') {
+            ++i; cmdPos = true;
+            foreach (d; hd[]) {                     // skip each body up to its delimiter line
+                bool found = false;
+                while (i < text.length) {
+                    size_t e = i; while (e < text.length && text[e] != '\n') ++e;
+                    auto line = text[i .. e];
+                    size_t a = 0; while (a < line.length && line[a] == '\t') ++a;
+                    i = e < text.length ? e + 1 : e;
+                    if (line[a .. $] == d) { found = true; break; }
+                }
+                if (!found) return depth + 1;
+            }
+            hd.clear();
+            continue;
+        }
+        if (c == ';' || c == '&' || c == '|' || c == '(' || c == ')') { ++i; cmdPos = true; continue; }
+        if (c == '#' && (i == 0 || text[i - 1] == ' ' || text[i - 1] == '\t' || text[i - 1] == '\n')) {
+            while (i < text.length && text[i] != '\n') ++i;
+            continue;
+        }
+        if (c == '<' && i + 1 < text.length && text[i + 1] == '<' && (i + 2 >= text.length || text[i + 2] != '<')) {
+            i += 2; if (i < text.length && text[i] == '-') ++i;
+            while (i < text.length && (text[i] == ' ' || text[i] == '\t')) ++i;
+            Buf d;
+            while (i < text.length && text[i] != ' ' && text[i] != '\t' && text[i] != '\n' && text[i] != ';') {
+                if (text[i] != '\'' && text[i] != '"' && text[i] != '\\') d.put(text[i]);
+                ++i;
+            }
+            if (d.n) hd.push(permDup(d.str()));
+            d.dispose();
+            cmdPos = false;
+            continue;
+        }
+        size_t e = i;
+        while (e < text.length && text[e] != ' ' && text[e] != '\t' && text[e] != '\n' && text[e] != ';' &&
+               text[e] != '&' && text[e] != '|' && text[e] != '(' && text[e] != ')') {
+            if (text[e] == '"' || text[e] == '\'') {
+                const q = text[e]; ++e;
+                while (e < text.length && text[e] != q) { if (q == '"' && text[e] == '\\') ++e; ++e; }
+                if (e >= text.length) return depth + 1;      // an open quote
+            }
+            ++e;
+        }
+        const w = text[i .. e];
+        if (cmdPos) {
+            if (w == "if") { if (shellIfLike(text, e)) ++depth; }
+            else if (w == "case") { const subj = wordAt(text, e); size_t k = e; while (k < text.length && (text[k] == ' ' || text[k] == '\t')) ++k; if (wordAt(text, k + subj.length) == "in") ++depth; }
+            else if (w == "for" || w == "while" || w == "until" || w == "select") ++depth;
+            else if (w == "{") { if (!recordAfterBrace(text, e)) ++depth; }
+            else if (w == "fi" || w == "done" || w == "esac" || w == "}") { if (depth > 0) --depth; }
+            cmdPos = w == "then" || w == "do" || w == "else" || w == "elif" || w == "{" || w == "if" ||
+                     w == "while" || w == "until" || w == "!" || w == "}";
+        } else cmdPos = false;
+        i = e;
+    }
+    return depth + (hd.n ? 1 : 0);
+}
+
 // What kind of statement is this?
 SC classify(const(char)[] text, out bool forced) {
     forced = false;
     if (text.length == 0 || text[0] == '#') return SC.Empty;
     if (text[0] == ':' ) return SC.Meta;
+    if (isShellCompound(text)) return SC.Cmd;            // if/for/while/case/{ }/name(): the shell's
+    {   // a shell function you defined runs as one, even if a library function has its name
+        const fw = identAt(text);
+        if (fw.length && findFunc(fw) !is null) return SC.Cmd;
+    }
     if (text[0] == '=' && (text.length == 1 || text[1] == ' ')) { forced = true; return SC.Expr; }
     const c = text[0];
     if (isDigit(c) || c == '"' || c == '(' || c == '[' || c == '\\' || c == '{') return SC.Expr;
@@ -188,7 +313,9 @@ Value* commandStyleCall(const(char)[] text) {
     if (!f) return null;
     auto cl = parseCommand(text);
     if (!cl || cl.items.length != 1 || cl.items[0].pipes.length != 1 || cl.items[0].pipes[0].cmds.length != 1) return null;
-    auto sc = cl.items[0].pipes[0].cmds[0];
+    auto cm = cl.items[0].pipes[0].cmds[0];
+    if (cm.k != CK.Simple) return null;
+    auto sc = cm.sc;
     Vec!(char*) argv;
     foreach (k, ref wd; sc.words) { if (k == 0) continue; if (!expandWord(wd, null, argv)) { argv.dispose(); return null; } }
     auto args = newItems(argv.n);
@@ -230,6 +357,11 @@ private size_t topLevelSemi(const(char)[] s, bool cmd) {
         }
     }
     return size_t.max;
+}
+
+private bool hasHeredoc(const(char)[] t) {
+    for (size_t k = 0; k + 2 < t.length; ++k) if (t[k] == '<' && t[k + 1] == '<' && t[k + 2] != '<') return true;
+    return false;
 }
 
 // ── running a statement ─────────────────────────────────────────────────────────────────────────
@@ -285,6 +417,12 @@ void runStatement(const(char)[] text) {
             return;
         }
         case SC.Expr: case SC.Cmd: {
+            // the shell's control flow is one command (its own parser handles ';', newlines, here-docs)
+            if (sc == SC.Cmd && (isShellCompound(text) || shellOpenBlocks(text) > 0 || hasHeredoc(text))) {
+                runCommandText(text, null);
+                reportError();
+                return;
+            }
             // `;` separates statements: each part is classified on its own (`pwd; me.domain`)
             const cut = topLevelSemi(text, sc == SC.Cmd);
             if (cut != size_t.max) {
@@ -303,6 +441,29 @@ void runStatement(const(char)[] text) {
     }
 }
 
+// `text` as an object command when it is one simple command (no redirections, assignments, pipes)
+// whose name is an object command: its answer (null on error), handled = it was.
+Value* objCommandText(const(char)[] text, out bool handled) {
+    handled = false;
+    const w = wordAt(text, 0);
+    import dash.fsobj : isObjCommand, objCommand;
+    if (!isObjCommand(w)) return null;
+    auto cl = parseCommand(text);
+    if (!cl) { clearErr(); return null; }
+    if (cl.items.length != 1 || cl.items[0].pipes.length != 1 || cl.items[0].pipes[0].cmds.length != 1 || cl.items[0].background) return null;
+    auto cm = cl.items[0].pipes[0].cmds[0];
+    if (cm.k != CK.Simple || cm.sc.redirs.length || cm.sc.assignNames.length) return null;
+    Vec!(char*) argv;
+    foreach (ref wd; cm.sc.words) if (!expandWord(wd, null, argv)) { foreach (x; argv[]) free(x); argv.dispose(); return null; }
+    Vec!(const(char)[]) av;
+    foreach (a; argv[]) av.push(a[0 .. strlen(a)]);
+    auto v = objCommand(av[], handled);
+    av.dispose();
+    foreach (x; argv[]) free(x); argv.dispose();
+    if (handled && v !is null) g_lastStatus = 0;
+    return v;
+}
+
 void runStages(Stage[] stages) {
     Value* cur = null;
     foreach (k, ref sg; stages) {
@@ -311,6 +472,12 @@ void runStages(Stage[] stages) {
         const nextIsFn = !last && !stages[k + 1].cmd;
         if (sg.text.length == 0) { setErr(k == 0 ? "empty statement" : "an empty pipeline stage"); return; }
         if (sg.cmd) {
+            // an object command (ls, ps, find, cat file...) answers with a value, like a function stage
+            if (cur is null) {
+                bool handled;
+                auto ov = objCommandText(sg.text, handled);
+                if (handled) { if (ov is null) return; cur = ov; continue; }
+            }
             if (cur is null) {
                 if (nextIsFn || (!last && stages[k + 1].cmd)) {
                     Buf o; runCapture(sg.text, null, o);

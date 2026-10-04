@@ -262,6 +262,9 @@ private void escChar(ref Buf b, char c, char q) {
 void textOf(ref Buf b, Value* v) {
     switch (v.t) {
         case VT.Str: b.put(v.s[0 .. v.n]); break;
+        case VT.Obj:                                   // a File as text (piped into a command): its name
+            if (v.name == intern("File")) { auto nm = field(v, intern("name")); if (nm) { textOf(b, nm); break; } }
+            showValue(b, v); break;
         case VT.Char: b.put(cast(char)v.i); break;
         case VT.Unit: break;
         default: showValue(b, v); break;
